@@ -6,58 +6,101 @@ function App() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [users, setUsers] = useState([]);
+  const [roles, setRoles] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [responsables, setResponsables] = useState([]);
+  const [solicitudes, setSolicitudes] = useState([]);
+  const [cuentasCobro, setCuentasCobro] = useState([]);
   const [showForm, setShowForm] = useState(false);
-  const [showResponsableForm, setShowResponsableForm] = useState(false);
-  const [editingResponsable, setEditingResponsable] = useState(null);
-  const [filterCECO, setFilterCECO] = useState('all');
-  const [filterEmpresa, setFilterEmpresa] = useState('all');
+  const [showRoleForm, setShowRoleForm] = useState(false);
+  const [showUserForm, setShowUserForm] = useState(false);
+  const [editingRole, setEditingRole] = useState(null);
+  const [editingUser, setEditingUser] = useState(null);
 
-  const [formData, setFormData] = useState({
-    empresa: '',
-    ceco: '',
-    tipoPago: '',
-    detalle: '',
-    valor: '',
-    fecha: new Date().toISOString().split('T')[0],
-    responsable: ''
-  });
-
-  const [responsableData, setResponsableData] = useState({
-    nombre: '',
-    empresa: '',
-    tipo: 'PROVEEDOR DE SERVICIOS PROFESIONALES'
-  });
-
-  const usuarios = [
-    { email: 'admin@amholding.com', password: 'admin123', role: 'Administradores' },
-    { email: 'gerente@amholding.com', password: 'gerente123', role: 'Gerentes' },
-    { email: 'contador@amholding.com', password: 'contador123', role: 'Contadores' }
+  // Roles y usuarios iniciales
+  const defaultRoles = [
+    {
+      id: 'admin',
+      nombre: 'Administrador',
+      descripcion: 'Super usuario con acceso total',
+      permisos: {
+        gastos: { ver: true, crear: true, editar: true, eliminar: true, exportar: true },
+        responsables: { ver: true, crear: true, editar: true, eliminar: true, asignar_roles: true },
+        solicitudes: { ver: true, crear: true, aprobar: true, rechazar: true },
+        cuentas_cobro: { ver: true, crear: true, aprobar: true, marcar_pagada: true },
+        dashboard: { ver: true, ver_analytics: true },
+        roles: { crear: true, editar: true, eliminar: true, asignar: true }
+      }
+    },
+    {
+      id: 'responsable',
+      nombre: 'Responsable',
+      descripcion: 'Usuario básico',
+      permisos: {
+        gastos: { ver: false, crear: false, editar: false, eliminar: false, exportar: false },
+        responsables: { ver: false, crear: false, editar: false, eliminar: false, asignar_roles: false },
+        solicitudes: { ver: true, crear: true, aprobar: false, rechazar: false },
+        cuentas_cobro: { ver: true, crear: true, aprobar: false, marcar_pagada: false },
+        dashboard: { ver: true, ver_analytics: false },
+        roles: { crear: false, editar: false, eliminar: false, asignar: false }
+      }
+    },
+    {
+      id: 'revisor',
+      nombre: 'Revisor',
+      descripcion: 'Aprueba solicitudes',
+      permisos: {
+        gastos: { ver: true, crear: false, editar: false, eliminar: false, exportar: false },
+        responsables: { ver: true, crear: false, editar: false, eliminar: false, asignar_roles: false },
+        solicitudes: { ver: true, crear: false, aprobar: true, rechazar: true },
+        cuentas_cobro: { ver: true, crear: false, aprobar: false, marcar_pagada: false },
+        dashboard: { ver: true, ver_analytics: false },
+        roles: { crear: false, editar: false, eliminar: false, asignar: false }
+      }
+    },
+    {
+      id: 'contador',
+      nombre: 'Contador',
+      descripcion: 'Exporta y genera reportes',
+      permisos: {
+        gastos: { ver: true, crear: false, editar: false, eliminar: false, exportar: true },
+        responsables: { ver: true, crear: false, editar: false, eliminar: false, asignar_roles: false },
+        solicitudes: { ver: true, crear: false, aprobar: false, rechazar: false },
+        cuentas_cobro: { ver: true, crear: false, aprobar: false, marcar_pagada: false },
+        dashboard: { ver: true, ver_analytics: true },
+        roles: { crear: false, editar: false, eliminar: false, asignar: false }
+      }
+    }
   ];
 
-  const CECOS = [
-    { id: 'CECO-001-GF', nombre: 'Gastos fijos' },
-    { id: 'CECO-002-NM', nombre: 'Nómina' },
-    { id: 'CECO-003-GR', nombre: 'Gastos de representación' },
-    { id: 'CECO-004-HR', nombre: 'Honorarios' },
-    { id: 'CECO-005-AM', nombre: 'Gastos personales Andrei Martinez' },
-    { id: 'CECO-006-VI', nombre: 'Viajes (Caelum)' },
-    { id: 'CECO-007-PRS', nombre: 'Préstamos interbancarios' },
-    { id: 'CECO-008-TRS', nombre: 'Traslado de fondos' },
-    { id: 'CECO-009-RTE', nombre: 'Retenciones' },
-    { id: 'CECO-010-SS', nombre: 'Seguridad social' }
+  const defaultUsers = [
+    { id: 1, nombre: 'Admin', email: 'admin@amholding.com', password: 'admin123', rol_id: 'admin', empresa: 'AM HOLDING', activo: true }
   ];
-
-  const EMPRESAS = ['AM SPORTS', 'PRO GLOBAL', 'PRONOVA', 'FORSEVEN', 'ARKO', 'CUBO'];
-  const TIPOS_PAGO = ['ADMINISTRATIVOS', 'REEMBOLSO', 'ANTICIPO', 'GIRO INTERNO', 'PAGOS GENERAL'];
 
   useEffect(() => {
+    const savedRoles = localStorage.getItem('amRoles');
+    const savedUsers = localStorage.getItem('amUsers');
     const savedTransactions = localStorage.getItem('amTransactions');
     const savedResponsables = localStorage.getItem('amResponsables');
-    if (savedTransactions) setTransactions(JSON.parse(savedTransactions));
-    if (savedResponsables) setResponsables(JSON.parse(savedResponsables));
+    const savedSolicitudes = localStorage.getItem('amSolicitudes');
+    const savedCuentasCobro = localStorage.getItem('amCuentasCobro');
+
+    setRoles(savedRoles ? JSON.parse(savedRoles) : defaultRoles);
+    setUsers(savedUsers ? JSON.parse(savedUsers) : defaultUsers);
+    setTransactions(savedTransactions ? JSON.parse(savedTransactions) : []);
+    setResponsables(savedResponsables ? JSON.parse(savedResponsables) : []);
+    setSolicitudes(savedSolicitudes ? JSON.parse(savedSolicitudes) : []);
+    setCuentasCobro(savedCuentasCobro ? JSON.parse(savedCuentasCobro) : []);
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('amRoles', JSON.stringify(roles));
+  }, [roles]);
+
+  useEffect(() => {
+    localStorage.setItem('amUsers', JSON.stringify(users));
+  }, [users]);
 
   useEffect(() => {
     localStorage.setItem('amTransactions', JSON.stringify(transactions));
@@ -67,92 +110,74 @@ function App() {
     localStorage.setItem('amResponsables', JSON.stringify(responsables));
   }, [responsables]);
 
+  useEffect(() => {
+    localStorage.setItem('amSolicitudes', JSON.stringify(solicitudes));
+  }, [solicitudes]);
+
+  useEffect(() => {
+    localStorage.setItem('amCuentasCobro', JSON.stringify(cuentasCobro));
+  }, [cuentasCobro]);
+
+  // Obtener permisos del usuario actual
+  const getUserRole = () => {
+    if (!user) return null;
+    return roles.find(r => r.id === user.rol_id);
+  };
+
+  const canAccess = (module, permission) => {
+    const userRole = getUserRole();
+    if (!userRole) return false;
+    if (user.rol_id === 'admin') return true;
+    return userRole.permisos[module] && userRole.permisos[module][permission];
+  };
+
   const handleLogin = () => {
-    const usuarioEncontrado = usuarios.find(u => u.email === email && u.password === password);
+    const usuarioEncontrado = users.find(u => u.email === email && u.password === password && u.activo);
     if (usuarioEncontrado) {
-      setUser({ email, role: usuarioEncontrado.role });
+      setUser(usuarioEncontrado);
       setError('');
+      setEmail('');
+      setPassword('');
     } else {
       setError('Email o contraseña incorrectos');
     }
   };
 
-  const handleAddResponsable = () => {
-    if (!responsableData.nombre || !responsableData.empresa) {
-      alert('Completa nombre y empresa');
-      return;
-    }
-    if (editingResponsable) {
-      setResponsables(responsables.map(r => r.id === editingResponsable.id ? { ...responsableData, id: editingResponsable.id } : r));
-      setEditingResponsable(null);
+  const handleCreateRole = (roleData) => {
+    if (editingRole) {
+      setRoles(roles.map(r => r.id === editingRole.id ? { ...roleData, id: editingRole.id } : r));
+      setEditingRole(null);
     } else {
-      setResponsables([...responsables, { id: Date.now(), ...responsableData }]);
+      setRoles([...roles, { ...roleData, id: Date.now().toString() }]);
     }
-    setResponsableData({ nombre: '', empresa: '', tipo: 'PROVEEDOR DE SERVICIOS PROFESIONALES' });
-    setShowResponsableForm(false);
+    setShowRoleForm(false);
   };
 
-  const handleDeleteResponsable = (id) => {
-    setResponsables(responsables.filter(r => r.id !== id));
-  };
-
-  const handleAddTransaction = () => {
-    if (!formData.empresa || !formData.ceco || !formData.valor || !formData.detalle) {
-      alert('Completa todos los campos');
+  const handleDeleteRole = (roleId) => {
+    if (users.some(u => u.rol_id === roleId)) {
+      alert('No puedes eliminar un rol que tiene usuarios asignados');
       return;
     }
-    const newTransaction = {
-      id: Date.now(),
-      ...formData,
-      valor: parseFloat(formData.valor),
-      createdBy: user.email
-    };
-    setTransactions([newTransaction, ...transactions]);
-    setFormData({ empresa: '', ceco: '', tipoPago: '', detalle: '', valor: '', fecha: new Date().toISOString().split('T')[0], responsable: '' });
-    setShowForm(false);
+    setRoles(roles.filter(r => r.id !== roleId));
   };
 
-  const handleDeleteTransaction = (id) => {
-    setTransactions(transactions.filter(t => t.id !== id));
+  const handleCreateUser = (userData) => {
+    if (editingUser) {
+      setUsers(users.map(u => u.id === editingUser.id ? { ...userData, id: editingUser.id } : u));
+      setEditingUser(null);
+    } else {
+      setUsers([...users, { ...userData, id: Date.now() }]);
+    }
+    setShowUserForm(false);
   };
 
-  const responsablesDelEmpresa = formData.empresa ? responsables.filter(r => r.empresa === formData.empresa) : responsables;
+  const handleDeleteUser = (userId) => {
+    setUsers(users.filter(u => u.id !== userId));
+  };
 
-  const filteredTransactions = transactions.filter(t => {
-    const cecoMatch = filterCECO === 'all' || t.ceco === filterCECO;
-    const empresaMatch = filterEmpresa === 'all' || t.empresa === filterEmpresa;
-    return cecoMatch && empresaMatch;
-  });
-
-  const totalGastos = filteredTransactions.reduce((sum, t) => sum + t.valor, 0);
-
-  const gastosPorCECO = CECOS.filter(c => filteredTransactions.some(t => t.ceco === c.id))
-    .map(c => ({
-      ...c,
-      total: filteredTransactions.filter(t => t.ceco === c.id).reduce((sum, t) => sum + t.valor, 0)
-    }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 5);
-
-  const gastosPorEmpresa = EMPRESAS.filter(e => filteredTransactions.some(t => t.empresa === e))
-    .map(e => ({
-      empresa: e,
-      total: filteredTransactions.filter(t => t.empresa === e).reduce((sum, t) => sum + t.valor, 0)
-    }))
-    .sort((a, b) => b.total - a.total);
-
-  const exportarCSV = () => {
-    const headers = ['Fecha', 'Empresa', 'CECO', 'Tipo Pago', 'Responsable', 'Detalle', 'Valor'];
-    let csv = headers.join(',') + '\n';
-    filteredTransactions.forEach(t => {
-      csv += [t.fecha, t.empresa, t.ceco, t.tipoPago, t.responsable || '', `"${t.detalle}"`, t.valor].join(',') + '\n';
-    });
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `reportes_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
+  const handleLogout = () => {
+    setUser(null);
+    setActiveTab('dashboard');
   };
 
   if (!user) {
@@ -163,21 +188,8 @@ function App() {
           <p style={{ color: '#a0a0a0', margin: '0 0 2rem 0', fontSize: '1rem' }}>Control de Gastos Corporativos</p>
           
           <div style={{ marginBottom: '1.5rem' }}>
-            <input
-              type="email"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', borderRadius: '4px', color: '#C4A747', marginBottom: '1rem', fontFamily: 'inherit', boxSizing: 'border-box' }}
-            />
-            <input
-              type="password"
-              placeholder="Contraseña"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-              style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', borderRadius: '4px', color: '#C4A747', fontFamily: 'inherit', boxSizing: 'border-box' }}
-            />
+            <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', borderRadius: '4px', color: '#C4A747', marginBottom: '1rem', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+            <input type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleLogin()} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', borderRadius: '4px', color: '#C4A747', fontFamily: 'inherit', boxSizing: 'border-box' }} />
           </div>
 
           {error && <p style={{ color: '#dc2626', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>❌ {error}</p>}
@@ -188,9 +200,7 @@ function App() {
 
           <p style={{ color: '#7a7a7a', margin: '1.5rem 0 0 0', fontSize: '0.85rem' }}>
             Demo:<br/>
-            admin@amholding.com / admin123<br/>
-            gerente@amholding.com / gerente123<br/>
-            contador@amholding.com / contador123
+            admin@amholding.com / admin123
           </p>
         </div>
       </div>
@@ -203,300 +213,383 @@ function App() {
         <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <h1 style={{ fontSize: '1.5rem', color: '#C4A747', margin: 0 }}>AM HOLDING</h1>
-            <p style={{ fontSize: '0.85rem', color: '#a0a0a0', margin: '0.25rem 0 0 0' }}>{user.email} • {user.role}</p>
+            <p style={{ fontSize: '0.85rem', color: '#a0a0a0', margin: '0.25rem 0 0 0' }}>{user.nombre} • {getUserRole()?.nombre || 'Sin rol'}</p>
           </div>
-          <button onClick={() => setUser(null)} style={{ backgroundColor: 'rgba(196, 167, 71, 0.1)', border: '1px solid #C4A747', borderRadius: '4px', padding: '0.75rem 1.25rem', color: '#C4A747', cursor: 'pointer', fontWeight: 'bold', fontFamily: 'inherit' }}>
+          <button onClick={handleLogout} style={{ backgroundColor: 'rgba(196, 167, 71, 0.1)', border: '1px solid #C4A747', borderRadius: '4px', padding: '0.75rem 1.25rem', color: '#C4A747', cursor: 'pointer', fontWeight: 'bold', fontFamily: 'inherit' }}>
             Salir
           </button>
         </div>
 
-        <div style={{ maxWidth: '1400px', margin: '1rem auto 0', display: 'flex', gap: '2rem', borderTop: '1px solid rgba(196, 167, 71, 0.2)', paddingTop: '1rem', overflowX: 'auto' }}>
-          {user.role === 'Administradores' && (
+        <nav style={{ maxWidth: '1400px', margin: '1rem auto 0', display: 'flex', gap: '2rem', borderTop: '1px solid rgba(196, 167, 71, 0.2)', paddingTop: '1rem', overflowX: 'auto', flexWrap: 'wrap' }}>
+          {canAccess('dashboard', 'ver') && (
+            <button onClick={() => setActiveTab('dashboard')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'dashboard' ? '3px solid #C4A747' : 'none', color: activeTab === 'dashboard' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem', whiteSpace: 'nowrap' }}>
+              📊 Dashboard
+            </button>
+          )}
+          
+          {canAccess('gastos', 'crear') && (
+            <button onClick={() => setActiveTab('registro')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'registro' ? '3px solid #C4A747' : 'none', color: activeTab === 'registro' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem', whiteSpace: 'nowrap' }}>
+              ➕ Nuevo Gasto
+            </button>
+          )}
+
+          {canAccess('gastos', 'ver') && (
+            <button onClick={() => setActiveTab('movimientos')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'movimientos' ? '3px solid #C4A747' : 'none', color: activeTab === 'movimientos' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem', whiteSpace: 'nowrap' }}>
+              📋 Movimientos
+            </button>
+          )}
+
+          {canAccess('responsables', 'crear') && (
+            <button onClick={() => setActiveTab('responsables')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'responsables' ? '3px solid #C4A747' : 'none', color: activeTab === 'responsables' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem', whiteSpace: 'nowrap' }}>
+              👥 Responsables
+            </button>
+          )}
+
+          {canAccess('cuentas_cobro', 'ver') && (
+            <button onClick={() => setActiveTab('cuentas')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'cuentas' ? '3px solid #C4A747' : 'none', color: activeTab === 'cuentas' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem', whiteSpace: 'nowrap' }}>
+              💰 Cuentas Cobro
+            </button>
+          )}
+
+          {canAccess('roles', 'crear') && (
             <>
-              <button onClick={() => setActiveTab('registro')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'registro' ? '3px solid #C4A747' : 'none', color: activeTab === 'registro' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem', whiteSpace: 'nowrap' }}>➕ Nuevo Gasto</button>
-              <button onClick={() => setActiveTab('responsables')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'responsables' ? '3px solid #C4A747' : 'none', color: activeTab === 'responsables' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem', whiteSpace: 'nowrap' }}>👥 Responsables</button>
+              <button onClick={() => setActiveTab('roles')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'roles' ? '3px solid #C4A747' : 'none', color: activeTab === 'roles' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem', whiteSpace: 'nowrap' }}>
+                ⚙️ Roles
+              </button>
+
+              <button onClick={() => setActiveTab('usuarios')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'usuarios' ? '3px solid #C4A747' : 'none', color: activeTab === 'usuarios' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem', whiteSpace: 'nowrap' }}>
+                👤 Usuarios
+              </button>
             </>
           )}
-          <button onClick={() => setActiveTab('dashboard')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'dashboard' ? '3px solid #C4A747' : 'none', color: activeTab === 'dashboard' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem', whiteSpace: 'nowrap' }}>📊 Dashboard</button>
-          <button onClick={() => setActiveTab('movimientos')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'movimientos' ? '3px solid #C4A747' : 'none', color: activeTab === 'movimientos' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem', whiteSpace: 'nowrap' }}>📋 Movimientos</button>
-          {user.role === 'Contadores' && (
-            <button onClick={() => setActiveTab('reportes')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'reportes' ? '3px solid #C4A747' : 'none', color: activeTab === 'reportes' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem', whiteSpace: 'nowrap' }}>📥 Reportes</button>
-          )}
-        </div>
+        </nav>
       </header>
 
       <main style={{ maxWidth: '1400px', margin: '0 auto', padding: '2rem 1rem' }}>
-        {activeTab === 'dashboard' && (
-          <>
-            <div style={{ display: 'flex', gap: '2rem', marginBottom: '2rem', backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
-              <div>
-                <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>CECO</label>
-                <select value={filterCECO} onChange={(e) => setFilterCECO(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit' }}>
-                  <option value="all">Todos</option>
-                  {CECOS.map(c => <option key={c.id} value={c.id}>{c.id}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>EMPRESA</label>
-                <select value={filterEmpresa} onChange={(e) => setFilterEmpresa(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit' }}>
-                  <option value="all">Todas</option>
-                  {EMPRESAS.map(e => <option key={e} value={e}>{e}</option>)}
-                </select>
-              </div>
-            </div>
-
+        
+        {/* DASHBOARD */}
+        {activeTab === 'dashboard' && canAccess('dashboard', 'ver') && (
+          <div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
               <div style={{ backgroundColor: '#1a1a1a', padding: '1.75rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}>
                 <p style={{ fontSize: '0.85rem', color: '#a0a0a0', margin: 0, textTransform: 'uppercase' }}>Total Gastos</p>
-                <p style={{ fontSize: '2rem', fontWeight: '700', color: '#C4A747', margin: '0.5rem 0 0 0' }}>${(totalGastos / 1000000).toFixed(1)}M</p>
+                <p style={{ fontSize: '2rem', fontWeight: '700', color: '#C4A747', margin: '0.5rem 0 0 0' }}>${(transactions.reduce((sum, t) => sum + t.valor, 0) / 1000000).toFixed(1)}M</p>
               </div>
               <div style={{ backgroundColor: '#1a1a1a', padding: '1.75rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}>
                 <p style={{ fontSize: '0.85rem', color: '#a0a0a0', margin: 0, textTransform: 'uppercase' }}>Registros</p>
-                <p style={{ fontSize: '2rem', fontWeight: '700', color: '#C4A747', margin: '0.5rem 0 0 0' }}>{filteredTransactions.length}</p>
+                <p style={{ fontSize: '2rem', fontWeight: '700', color: '#C4A747', margin: '0.5rem 0 0 0' }}>{transactions.length}</p>
               </div>
               <div style={{ backgroundColor: '#1a1a1a', padding: '1.75rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}>
-                <p style={{ fontSize: '0.85rem', color: '#a0a0a0', margin: 0, textTransform: 'uppercase' }}>Promedio</p>
-                <p style={{ fontSize: '2rem', fontWeight: '700', color: '#C4A747', margin: '0.5rem 0 0 0' }}>${filteredTransactions.length > 0 ? (totalGastos / filteredTransactions.length / 1000000).toFixed(2) : '0'}M</p>
+                <p style={{ fontSize: '0.85rem', color: '#a0a0a0', margin: 0, textTransform: 'uppercase' }}>Solicitudes Pendientes</p>
+                <p style={{ fontSize: '2rem', fontWeight: '700', color: '#C4A747', margin: '0.5rem 0 0 0' }}>{solicitudes.filter(s => s.estado === 'PENDIENTE').length}</p>
+              </div>
+              <div style={{ backgroundColor: '#1a1a1a', padding: '1.75rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}>
+                <p style={{ fontSize: '0.85rem', color: '#a0a0a0', margin: 0, textTransform: 'uppercase' }}>Usuarios Activos</p>
+                <p style={{ fontSize: '2rem', fontWeight: '700', color: '#C4A747', margin: '0.5rem 0 0 0' }}>{users.filter(u => u.activo).length}</p>
               </div>
             </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '2rem' }}>
-              <div style={{ backgroundColor: '#1a1a1a', padding: '1.75rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: '600', color: '#fff', margin: '0 0 1.5rem 0' }}>💰 Top CECOs</h3>
-                {gastosPorCECO.map((c, idx) => (
-                  <div key={c.id} style={{ marginBottom: '1.25rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                      <div>
-                        <strong style={{ fontSize: '0.95rem' }}>{c.id}</strong>
-                        <p style={{ fontSize: '0.75rem', color: '#7a7a7a', margin: '0.25rem 0 0 0' }}>{c.nombre}</p>
-                      </div>
-                      <span style={{ fontSize: '0.95rem', fontWeight: '600', color: '#C4A747' }}>${(c.total / 1000000).toFixed(1)}M</span>
-                    </div>
-                    <div style={{ height: '6px', backgroundColor: 'rgba(196, 167, 71, 0.3)', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div style={{ height: '100%', backgroundColor: '#C4A747', width: `${(c.total / Math.max(...gastosPorCECO.map(x => x.total))) * 100}%` }}></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ backgroundColor: '#1a1a1a', padding: '1.75rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: '600', color: '#fff', margin: '0 0 1.5rem 0' }}>🏢 Por Empresa</h3>
-                {gastosPorEmpresa.map((e, idx) => (
-                  <div key={e.empresa} style={{ marginBottom: '1.25rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                      <strong style={{ fontSize: '0.95rem' }}>{e.empresa}</strong>
-                      <span style={{ fontSize: '0.95rem', fontWeight: '600', color: '#C4A747' }}>${(e.total / 1000000).toFixed(1)}M</span>
-                    </div>
-                    <div style={{ height: '6px', backgroundColor: 'rgba(196, 167, 71, 0.3)', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div style={{ height: '100%', backgroundColor: '#C4A747', width: `${(e.total / Math.max(...gastosPorEmpresa.map(x => x.total), 1)) * 100}%` }}></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+            
+            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', textAlign: 'center' }}>
+              <h2 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>✅ Sistema Operativo</h2>
+              <p style={{ color: '#a0a0a0', margin: 0 }}>Bienvenido {user.nombre} • {getUserRole()?.nombre}</p>
             </div>
-          </>
+          </div>
         )}
 
-        {activeTab === 'registro' && user.role === 'Administradores' && (
-          <>
-            <button onClick={() => setShowForm(!showForm)} style={{ backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', padding: '0.75rem 1.5rem', fontWeight: 'bold', cursor: 'pointer', marginBottom: '2rem', fontFamily: 'inherit' }}>
-              {showForm ? 'Cancelar' : 'Nuevo Gasto'}
+        {/* GESTIÓN DE ROLES */}
+        {activeTab === 'roles' && canAccess('roles', 'crear') && (
+          <div>
+            <button onClick={() => { setShowRoleForm(!showRoleForm); setEditingRole(null); }} style={{ backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', padding: '0.75rem 1.5rem', fontWeight: 'bold', cursor: 'pointer', marginBottom: '2rem', fontFamily: 'inherit' }}>
+              ➕ Crear Rol
             </button>
 
-            {showForm && (
-              <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
-                <h2 style={{ fontSize: '1.25rem', fontWeight: '600', margin: '0 0 1.75rem 0', color: '#C4A747' }}>📝 Registrar Gasto</h2>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
-                  <div>
-                    <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>EMPRESA</label>
-                    <select value={formData.empresa} onChange={(e) => setFormData({...formData, empresa: e.target.value, responsable: ''})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }}>
-                      <option value="">Seleccionar</option>
-                      {EMPRESAS.map(e => <option key={e} value={e}>{e}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>CECO</label>
-                    <select value={formData.ceco} onChange={(e) => setFormData({...formData, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }}>
-                      <option value="">Seleccionar</option>
-                      {CECOS.map(c => <option key={c.id} value={c.id}>{c.id}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
-                  <div>
-                    <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>TIPO DE PAGO</label>
-                    <select value={formData.tipoPago} onChange={(e) => setFormData({...formData, tipoPago: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }}>
-                      <option value="">Seleccionar</option>
-                      {TIPOS_PAGO.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>VALOR</label>
-                    <input type="number" value={formData.valor} onChange={(e) => setFormData({...formData, valor: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }} placeholder="0.00" />
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
-                  <div>
-                    <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>RESPONSABLE / PROVEEDOR</label>
-                    <select value={formData.responsable} onChange={(e) => setFormData({...formData, responsable: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }}>
-                      <option value="">Seleccionar</option>
-                      {responsablesDelEmpresa.map(r => <option key={r.id} value={r.nombre}>{r.nombre}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>FECHA</label>
-                    <input type="date" value={formData.fecha} onChange={(e) => setFormData({...formData, fecha: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }} />
-                  </div>
-                </div>
-
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>DETALLE</label>
-                  <textarea value={formData.detalle} onChange={(e) => setFormData({...formData, detalle: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box', minHeight: '100px' }} placeholder="Descripción del gasto" />
-                </div>
-
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button onClick={handleAddTransaction} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>💾 Guardar</button>
-                  <button onClick={() => setShowForm(false)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#2a2a2a', color: '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>❌ Cancelar</button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-
-        {activeTab === 'responsables' && user.role === 'Administradores' && (
-          <>
-            <button onClick={() => { setShowResponsableForm(!showResponsableForm); setEditingResponsable(null); setResponsableData({ nombre: '', empresa: '', tipo: 'PROVEEDOR DE SERVICIOS PROFESIONALES' }); }} style={{ backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', padding: '0.75rem 1.5rem', fontWeight: 'bold', cursor: 'pointer', marginBottom: '2rem', fontFamily: 'inherit' }}>
-              {showResponsableForm ? 'Cancelar' : '➕ Nuevo Responsable'}
-            </button>
-
-            {showResponsableForm && (
-              <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
-                <h2 style={{ fontSize: '1.25rem', fontWeight: '600', margin: '0 0 1.75rem 0', color: '#C4A747' }}>{editingResponsable ? '✏️ Editar Responsable' : '👥 Agregar Responsable'}</h2>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
-                  <div>
-                    <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>NOMBRE</label>
-                    <input type="text" value={responsableData.nombre} onChange={(e) => setResponsableData({...responsableData, nombre: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }} placeholder="Nombre completo" />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>EMPRESA</label>
-                    <select value={responsableData.empresa} onChange={(e) => setResponsableData({...responsableData, empresa: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }}>
-                      <option value="">Seleccionar</option>
-                      {EMPRESAS.map(e => <option key={e} value={e}>{e}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                <div style={{ marginBottom: '2rem' }}>
-                  <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>TIPO</label>
-                  <select value={responsableData.tipo} onChange={(e) => setResponsableData({...responsableData, tipo: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }}>
-                    <option value="PROVEEDOR DE SERVICIOS PROFESIONALES">PROVEEDOR DE SERVICIOS PROFESIONALES</option>
-                    <option value="PROVEEDOR SERVICIO EMPRESARIAL">PROVEEDOR SERVICIO EMPRESARIAL</option>
-                    <option value="PROVEEDOR SERVICIOS FINANCIEROS">PROVEEDOR SERVICIOS FINANCIEROS</option>
-                    <option value="EMPLEADO">EMPLEADO</option>
-                  </select>
-                </div>
-
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button onClick={handleAddResponsable} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>💾 {editingResponsable ? 'Actualizar' : 'Guardar'}</button>
-                  <button onClick={() => { setShowResponsableForm(false); setEditingResponsable(null); }} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#2a2a2a', color: '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>❌ Cancelar</button>
-                </div>
-              </div>
-            )}
+            {showRoleForm && <RoleForm onSubmit={handleCreateRole} onCancel={() => setShowRoleForm(false)} editingRole={editingRole} />}
 
             <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: '600', margin: '0 0 1.75rem 0', color: '#C4A747' }}>👥 Responsables ({responsables.length})</h2>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: '600', margin: '0 0 1.75rem 0', color: '#C4A747' }}>⚙️ Roles ({roles.length})</h2>
               
-              {responsables.length === 0 ? (
-                <p style={{ color: '#7a7a7a', textAlign: 'center', padding: '2rem' }}>Sin responsables registrados</p>
-              ) : (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-                    <thead>
-                      <tr style={{ backgroundColor: '#0f0f0f', borderBottom: '2px solid #C4A747' }}>
-                        <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Nombre</th>
-                        <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Empresa</th>
-                        <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Tipo</th>
-                        <th style={{ padding: '1rem 0.75rem', textAlign: 'center', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Acción</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {responsables.map(r => (
-                        <tr key={r.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                          <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}><strong>{r.nombre}</strong></td>
-                          <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}>{r.empresa}</td>
-                          <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}><small>{r.tipo}</small></td>
-                          <td style={{ padding: '1rem 0.75rem', textAlign: 'center', display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
-                            <button onClick={() => { setEditingResponsable(r); setResponsableData(r); setShowResponsableForm(true); }} style={{ background: 'rgba(196, 167, 71, 0.15)', border: '1px solid #C4A747', borderRadius: '4px', padding: '0.5rem 0.75rem', cursor: 'pointer', color: '#C4A747', fontFamily: 'inherit' }}>✏️</button>
-                            <button onClick={() => handleDeleteResponsable(r.id)} style={{ background: 'rgba(220, 53, 69, 0.15)', border: '1px solid #dc3545', borderRadius: '4px', padding: '0.5rem 0.75rem', cursor: 'pointer', color: '#ff6b6b', fontFamily: 'inherit' }}>🗑️</button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-
-        {activeTab === 'movimientos' && (
-          <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: '600', margin: '0 0 1.75rem 0', color: '#C4A747' }}>📋 Movimientos ({filteredTransactions.length})</h2>
-            
-            {filteredTransactions.length === 0 ? (
-              <p style={{ color: '#7a7a7a', textAlign: 'center', padding: '2rem' }}>Sin registros</p>
-            ) : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
                   <thead>
                     <tr style={{ backgroundColor: '#0f0f0f', borderBottom: '2px solid #C4A747' }}>
-                      <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Fecha</th>
-                      <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Empresa</th>
-                      <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>CECO</th>
-                      <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Responsable</th>
-                      <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Detalle</th>
-                      <th style={{ padding: '1rem 0.75rem', textAlign: 'right', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Valor</th>
-                      {user.role === 'Administradores' && <th style={{ padding: '1rem 0.75rem', textAlign: 'center', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Acción</th>}
+                      <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Nombre</th>
+                      <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Descripción</th>
+                      <th style={{ padding: '1rem 0.75rem', textAlign: 'center', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Acción</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredTransactions.map(t => (
-                      <tr key={t.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                        <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}>{t.fecha}</td>
-                        <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}><strong>{t.empresa}</strong></td>
-                        <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}><small>{t.ceco}</small></td>
-                        <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}>{t.responsable || '-'}</td>
-                        <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.detalle}</td>
-                        <td style={{ padding: '1rem 0.75rem', textAlign: 'right', fontWeight: 'bold', color: '#C4A747' }}>${t.valor.toLocaleString('es-CO', { maximumFractionDigits: 0 })}</td>
-                        {user.role === 'Administradores' && (
-                          <td style={{ padding: '1rem 0.75rem', textAlign: 'center' }}>
-                            <button onClick={() => handleDeleteTransaction(t.id)} style={{ background: 'rgba(220, 53, 69, 0.15)', border: '1px solid #dc3545', borderRadius: '4px', padding: '0.5rem 0.75rem', cursor: 'pointer', color: '#ff6b6b', fontFamily: 'inherit' }}>🗑️</button>
-                          </td>
-                        )}
+                    {roles.map(r => (
+                      <tr key={r.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                        <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}><strong>{r.nombre}</strong></td>
+                        <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}>{r.descripcion}</td>
+                        <td style={{ padding: '1rem 0.75rem', textAlign: 'center', display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                          <button onClick={() => { setEditingRole(r); setShowRoleForm(true); }} style={{ background: 'rgba(196, 167, 71, 0.15)', border: '1px solid #C4A747', borderRadius: '4px', padding: '0.5rem 0.75rem', cursor: 'pointer', color: '#C4A747', fontFamily: 'inherit' }}>✏️</button>
+                          {!['admin', 'responsable', 'revisor', 'contador'].includes(r.id) && (
+                            <button onClick={() => handleDeleteRole(r.id)} style={{ background: 'rgba(220, 53, 69, 0.15)', border: '1px solid #dc3545', borderRadius: '4px', padding: '0.5rem 0.75rem', cursor: 'pointer', color: '#ff6b6b', fontFamily: 'inherit' }}>🗑️</button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            )}
+            </div>
           </div>
         )}
 
-        {activeTab === 'reportes' && user.role === 'Contadores' && (
-          <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: '600', margin: '0 0 1rem 0', color: '#C4A747' }}>📥 Exportar Reportes</h2>
-            <p style={{ color: '#a0a0a0', margin: '0 0 2rem 0' }}>Total de registros: {filteredTransactions.length} | Total gastos: ${(totalGastos / 1000000).toFixed(2)}M</p>
-            
-            <button onClick={exportarCSV} style={{ backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', padding: '0.75rem 1.5rem', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>
-              📥 Descargar CSV
+        {/* GESTIÓN DE USUARIOS */}
+        {activeTab === 'usuarios' && canAccess('roles', 'asignar') && (
+          <div>
+            <button onClick={() => { setShowUserForm(!showUserForm); setEditingUser(null); }} style={{ backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', padding: '0.75rem 1.5rem', fontWeight: 'bold', cursor: 'pointer', marginBottom: '2rem', fontFamily: 'inherit' }}>
+              ➕ Crear Usuario
             </button>
+
+            {showUserForm && <UserForm onSubmit={handleCreateUser} onCancel={() => setShowUserForm(false)} editingUser={editingUser} roles={roles} />}
+
+            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: '600', margin: '0 0 1.75rem 0', color: '#C4A747' }}>👤 Usuarios ({users.length})</h2>
+              
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#0f0f0f', borderBottom: '2px solid #C4A747' }}>
+                      <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Nombre</th>
+                      <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Email</th>
+                      <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Rol</th>
+                      <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Empresa</th>
+                      <th style={{ padding: '1rem 0.75rem', textAlign: 'center', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map(u => (
+                      <tr key={u.id} style={{ borderBottom: '1px solid #2a2a2a', opacity: u.activo ? 1 : 0.5 }}>
+                        <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}><strong>{u.nombre}</strong></td>
+                        <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}>{u.email}</td>
+                        <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}>{roles.find(r => r.id === u.rol_id)?.nombre}</td>
+                        <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}>{u.empresa}</td>
+                        <td style={{ padding: '1rem 0.75rem', textAlign: 'center', display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                          <button onClick={() => { setEditingUser(u); setShowUserForm(true); }} style={{ background: 'rgba(196, 167, 71, 0.15)', border: '1px solid #C4A747', borderRadius: '4px', padding: '0.5rem 0.75rem', cursor: 'pointer', color: '#C4A747', fontFamily: 'inherit' }}>✏️</button>
+                          {u.id !== user.id && (
+                            <button onClick={() => handleDeleteUser(u.id)} style={{ background: 'rgba(220, 53, 69, 0.15)', border: '1px solid #dc3545', borderRadius: '4px', padding: '0.5rem 0.75rem', cursor: 'pointer', color: '#ff6b6b', fontFamily: 'inherit' }}>🗑️</button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* OTROS TABS - Placeholder */}
+        {activeTab === 'registro' && canAccess('gastos', 'crear') && (
+          <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+            <h2 style={{ color: '#C4A747' }}>➕ Nuevo Gasto</h2>
+            <p style={{ color: '#a0a0a0' }}>Funcionalidad de registro de gastos (próxima fase)</p>
+          </div>
+        )}
+
+        {activeTab === 'movimientos' && canAccess('gastos', 'ver') && (
+          <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+            <h2 style={{ color: '#C4A747' }}>📋 Movimientos</h2>
+            <p style={{ color: '#a0a0a0' }}>Total registros: {transactions.length}</p>
+          </div>
+        )}
+
+        {activeTab === 'responsables' && canAccess('responsables', 'crear') && (
+          <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+            <h2 style={{ color: '#C4A747' }}>👥 Responsables</h2>
+            <p style={{ color: '#a0a0a0' }}>Total: {responsables.length}</p>
+          </div>
+        )}
+
+        {activeTab === 'cuentas' && canAccess('cuentas_cobro', 'ver') && (
+          <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+            <h2 style={{ color: '#C4A747' }}>💰 Cuentas de Cobro</h2>
+            <p style={{ color: '#a0a0a0' }}>Total: {cuentasCobro.length}</p>
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+// Componente: Formulario de Rol
+function RoleForm({ onSubmit, onCancel, editingRole }) {
+  const [formData, setFormData] = useState(editingRole || {
+    nombre: '',
+    descripcion: '',
+    permisos: {
+      gastos: { ver: false, crear: false, editar: false, eliminar: false, exportar: false },
+      responsables: { ver: false, crear: false, editar: false, eliminar: false, asignar_roles: false },
+      solicitudes: { ver: false, crear: false, aprobar: false, rechazar: false },
+      cuentas_cobro: { ver: false, crear: false, aprobar: false, marcar_pagada: false },
+      dashboard: { ver: false, ver_analytics: false },
+      roles: { crear: false, editar: false, eliminar: false, asignar: false }
+    }
+  });
+
+  const togglePermiso = (modulo, permiso) => {
+    setFormData({
+      ...formData,
+      permisos: {
+        ...formData.permisos,
+        [modulo]: {
+          ...formData.permisos[modulo],
+          [permiso]: !formData.permisos[modulo][permiso]
+        }
+      }
+    });
+  };
+
+  return (
+    <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
+      <h2 style={{ fontSize: '1.25rem', fontWeight: '600', margin: '0 0 1.75rem 0', color: '#C4A747' }}>{editingRole ? '✏️ Editar Rol' : '➕ Crear Rol'}</h2>
+      
+      <div style={{ marginBottom: '2rem' }}>
+        <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>NOMBRE</label>
+        <input type="text" value={formData.nombre} onChange={(e) => setFormData({...formData, nombre: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: '1rem' }} placeholder="Ej: Revisor Especializado" />
+        
+        <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>DESCRIPCIÓN</label>
+        <input type="text" value={formData.descripcion} onChange={(e) => setFormData({...formData, descripcion: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: '2rem' }} placeholder="Descripción del rol" />
+      </div>
+
+      <div style={{ marginBottom: '2rem' }}>
+        <h3 style={{ color: '#C4A747', marginBottom: '1rem' }}>PERMISOS</h3>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', backgroundColor: '#0f0f0f', padding: '1rem', borderRadius: '4px' }}>
+          <div>
+            <h4 style={{ color: '#a0a0a0', fontSize: '0.9rem', marginBottom: '0.75rem' }}>Gastos</h4>
+            {['ver', 'crear', 'editar', 'eliminar', 'exportar'].map(p => (
+              <label key={p} style={{ display: 'block', color: '#d0d0d0', marginBottom: '0.5rem', cursor: 'pointer' }}>
+                <input type="checkbox" checked={formData.permisos.gastos[p]} onChange={() => togglePermiso('gastos', p)} style={{ marginRight: '0.5rem' }} />
+                {p.charAt(0).toUpperCase() + p.slice(1)}
+              </label>
+            ))}
+          </div>
+
+          <div>
+            <h4 style={{ color: '#a0a0a0', fontSize: '0.9rem', marginBottom: '0.75rem' }}>Responsables</h4>
+            {['ver', 'crear', 'editar', 'eliminar', 'asignar_roles'].map(p => (
+              <label key={p} style={{ display: 'block', color: '#d0d0d0', marginBottom: '0.5rem', cursor: 'pointer' }}>
+                <input type="checkbox" checked={formData.permisos.responsables[p]} onChange={() => togglePermiso('responsables', p)} style={{ marginRight: '0.5rem' }} />
+                {p.replace('_', ' ').charAt(0).toUpperCase() + p.slice(1).replace('_', ' ')}
+              </label>
+            ))}
+          </div>
+
+          <div>
+            <h4 style={{ color: '#a0a0a0', fontSize: '0.9rem', marginBottom: '0.75rem' }}>Solicitudes</h4>
+            {['ver', 'crear', 'aprobar', 'rechazar'].map(p => (
+              <label key={p} style={{ display: 'block', color: '#d0d0d0', marginBottom: '0.5rem', cursor: 'pointer' }}>
+                <input type="checkbox" checked={formData.permisos.solicitudes[p]} onChange={() => togglePermiso('solicitudes', p)} style={{ marginRight: '0.5rem' }} />
+                {p.charAt(0).toUpperCase() + p.slice(1)}
+              </label>
+            ))}
+          </div>
+
+          <div>
+            <h4 style={{ color: '#a0a0a0', fontSize: '0.9rem', marginBottom: '0.75rem' }}>Cuentas de Cobro</h4>
+            {['ver', 'crear', 'aprobar', 'marcar_pagada'].map(p => (
+              <label key={p} style={{ display: 'block', color: '#d0d0d0', marginBottom: '0.5rem', cursor: 'pointer' }}>
+                <input type="checkbox" checked={formData.permisos.cuentas_cobro[p]} onChange={() => togglePermiso('cuentas_cobro', p)} style={{ marginRight: '0.5rem' }} />
+                {p.replace('_', ' ').charAt(0).toUpperCase() + p.slice(1).replace('_', ' ')}
+              </label>
+            ))}
+          </div>
+
+          <div>
+            <h4 style={{ color: '#a0a0a0', fontSize: '0.9rem', marginBottom: '0.75rem' }}>Dashboard</h4>
+            {['ver', 'ver_analytics'].map(p => (
+              <label key={p} style={{ display: 'block', color: '#d0d0d0', marginBottom: '0.5rem', cursor: 'pointer' }}>
+                <input type="checkbox" checked={formData.permisos.dashboard[p]} onChange={() => togglePermiso('dashboard', p)} style={{ marginRight: '0.5rem' }} />
+                {p === 'ver_analytics' ? 'Ver Analytics' : 'Ver'}
+              </label>
+            ))}
+          </div>
+
+          <div>
+            <h4 style={{ color: '#a0a0a0', fontSize: '0.9rem', marginBottom: '0.75rem' }}>Roles</h4>
+            {['crear', 'editar', 'eliminar', 'asignar'].map(p => (
+              <label key={p} style={{ display: 'block', color: '#d0d0d0', marginBottom: '0.5rem', cursor: 'pointer' }}>
+                <input type="checkbox" checked={formData.permisos.roles[p]} onChange={() => togglePermiso('roles', p)} style={{ marginRight: '0.5rem' }} />
+                {p.charAt(0).toUpperCase() + p.slice(1)}
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: '1rem' }}>
+        <button onClick={() => onSubmit(formData)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>
+          💾 {editingRole ? 'Actualizar' : 'Crear'}
+        </button>
+        <button onClick={onCancel} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#2a2a2a', color: '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>
+          ❌ Cancelar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Componente: Formulario de Usuario
+function UserForm({ onSubmit, onCancel, editingUser, roles }) {
+  const [formData, setFormData] = useState(editingUser || {
+    nombre: '',
+    email: '',
+    password: Math.random().toString(36).slice(-8),
+    rol_id: '',
+    empresa: '',
+    activo: true
+  });
+
+  return (
+    <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
+      <h2 style={{ fontSize: '1.25rem', fontWeight: '600', margin: '0 0 1.75rem 0', color: '#C4A747' }}>{editingUser ? '✏️ Editar Usuario' : '👤 Crear Usuario'}</h2>
+      
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
+        <div>
+          <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>NOMBRE</label>
+          <input type="text" value={formData.nombre} onChange={(e) => setFormData({...formData, nombre: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }} placeholder="Nombre completo" />
+        </div>
+
+        <div>
+          <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>EMAIL</label>
+          <input type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }} placeholder="email@company.com" />
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
+        <div>
+          <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>ROL</label>
+          <select value={formData.rol_id} onChange={(e) => setFormData({...formData, rol_id: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }}>
+            <option value="">Seleccionar</option>
+            {roles.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+          </select>
+        </div>
+
+        <div>
+          <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>EMPRESA</label>
+          <input type="text" value={formData.empresa} onChange={(e) => setFormData({...formData, empresa: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }} placeholder="Empresa" />
+        </div>
+      </div>
+
+      {!editingUser && (
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>CONTRASEÑA (auto-generada)</label>
+          <input type="text" value={formData.password} disabled style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#7a7a7a', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: '1rem' }}>
+        <button onClick={() => onSubmit(formData)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>
+          💾 {editingUser ? 'Actualizar' : 'Crear'}
+        </button>
+        <button onClick={onCancel} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#2a2a2a', color: '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>
+          ❌ Cancelar
+        </button>
+      </div>
     </div>
   );
 }
