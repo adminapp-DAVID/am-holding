@@ -45,18 +45,16 @@ export default function App() {
   useEffect(() => {
     const saved = localStorage.getItem('amResponsables');
     const savedProv = localStorage.getItem('amProveedores');
-    setResponsables(saved ? JSON.parse(saved) : responsablesDefault);
-    setProveedores(savedProv ? JSON.parse(savedProv) : []);
+    if (!saved) {
+      setResponsables(responsablesDefault);
+    } else {
+      setResponsables(JSON.parse(saved));
+    }
+    if (savedProv) {
+      setProveedores(JSON.parse(savedProv));
+    }
   }, [responsablesDefault]);
-
-  useEffect(() => {
-    localStorage.setItem('amResponsables', JSON.stringify(responsables));
-  }, [responsables]);
-
-  useEffect(() => {
-    localStorage.setItem('amProveedores', JSON.stringify(proveedores));
-  }, [proveedores]);
-
+  
   const handleLogin = () => {
     const found = users.find(u => u.email === email && u.password === password);
     if (found) {
