@@ -7,7 +7,7 @@ function App() {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#0f0f0f', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui' }}>
         <div style={{ backgroundColor: '#1a1a1a', border: '2px solid #C4A747', borderRadius: '8px', padding: '3rem 2rem', textAlign: 'center', maxWidth: '500px' }}>
-          <h1 style={{ fontSize: '2.5rem', color: '#C4A747', margin: '0 0 1rem 0' }}>🏆 AM HOLDING</h1>
+          <img src="/logo.png" alt="AM HOLDING" style={{ maxWidth: '100%', maxHeight: '120px', objectFit: 'contain', marginBottom: '1rem' }} />
           <p style={{ color: '#a0a0a0', margin: '0 0 2rem 0', fontSize: '1rem' }}>Control de Gastos Corporativos</p>
           <button onClick={() => setUser('admin')} style={{ width: '100%', padding: '1rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '1rem', fontSize: '1rem', fontFamily: 'inherit' }}>👨‍💼 Admin</button>
           <button onClick={() => setUser('gerente')} style={{ width: '100%', padding: '1rem', backgroundColor: '#2a2a2a', color: '#C4A747', border: '2px solid #C4A747', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '1rem', fontSize: '1rem', fontFamily: 'inherit' }}>📊 Gerente</button>
