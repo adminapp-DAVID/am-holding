@@ -7,7 +7,10 @@ function App() {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('dashboard');
   const [transactions, setTransactions] = useState([]);
+  const [responsables, setResponsables] = useState([]);
   const [showForm, setShowForm] = useState(false);
+  const [showResponsableForm, setShowResponsableForm] = useState(false);
+  const [editingResponsable, setEditingResponsable] = useState(null);
   const [filterCECO, setFilterCECO] = useState('all');
   const [filterEmpresa, setFilterEmpresa] = useState('all');
 
@@ -17,7 +20,14 @@ function App() {
     tipoPago: '',
     detalle: '',
     valor: '',
-    fecha: new Date().toISOString().split('T')[0]
+    fecha: new Date().toISOString().split('T')[0],
+    responsable: ''
+  });
+
+  const [responsableData, setResponsableData] = useState({
+    nombre: '',
+    empresa: '',
+    tipo: 'PROVEEDOR DE SERVICIOS PROFESIONALES'
   });
 
   const usuarios = [
@@ -43,13 +53,19 @@ function App() {
   const TIPOS_PAGO = ['ADMINISTRATIVOS', 'REEMBOLSO', 'ANTICIPO', 'GIRO INTERNO', 'PAGOS GENERAL'];
 
   useEffect(() => {
-    const saved = localStorage.getItem('amTransactions');
-    if (saved) setTransactions(JSON.parse(saved));
+    const savedTransactions = localStorage.getItem('amTransactions');
+    const savedResponsables = localStorage.getItem('amResponsables');
+    if (savedTransactions) setTransactions(JSON.parse(savedTransactions));
+    if (savedResponsables) setResponsables(JSON.parse(savedResponsables));
   }, []);
 
   useEffect(() => {
     localStorage.setItem('amTransactions', JSON.stringify(transactions));
   }, [transactions]);
+
+  useEffect(() => {
+    localStorage.setItem('amResponsables', JSON.stringify(responsables));
+  }, [responsables]);
 
   const handleLogin = () => {
     const usuarioEncontrado = usuarios.find(u => u.email === email && u.password === password);
@@ -59,6 +75,25 @@ function App() {
     } else {
       setError('Email o contraseña incorrectos');
     }
+  };
+
+  const handleAddResponsable = () => {
+    if (!responsableData.nombre || !responsableData.empresa) {
+      alert('Completa nombre y empresa');
+      return;
+    }
+    if (editingResponsable) {
+      setResponsables(responsables.map(r => r.id === editingResponsable.id ? { ...responsableData, id: editingResponsable.id } : r));
+      setEditingResponsable(null);
+    } else {
+      setResponsables([...responsables, { id: Date.now(), ...responsableData }]);
+    }
+    setResponsableData({ nombre: '', empresa: '', tipo: 'PROVEEDOR DE SERVICIOS PROFESIONALES' });
+    setShowResponsableForm(false);
+  };
+
+  const handleDeleteResponsable = (id) => {
+    setResponsables(responsables.filter(r => r.id !== id));
   };
 
   const handleAddTransaction = () => {
@@ -73,13 +108,15 @@ function App() {
       createdBy: user.email
     };
     setTransactions([newTransaction, ...transactions]);
-    setFormData({ empresa: '', ceco: '', tipoPago: '', detalle: '', valor: '', fecha: new Date().toISOString().split('T')[0] });
+    setFormData({ empresa: '', ceco: '', tipoPago: '', detalle: '', valor: '', fecha: new Date().toISOString().split('T')[0], responsable: '' });
     setShowForm(false);
   };
 
   const handleDeleteTransaction = (id) => {
     setTransactions(transactions.filter(t => t.id !== id));
   };
+
+  const responsablesDelEmpresa = formData.empresa ? responsables.filter(r => r.empresa === formData.empresa) : responsables;
 
   const filteredTransactions = transactions.filter(t => {
     const cecoMatch = filterCECO === 'all' || t.ceco === filterCECO;
@@ -105,10 +142,10 @@ function App() {
     .sort((a, b) => b.total - a.total);
 
   const exportarCSV = () => {
-    const headers = ['Fecha', 'Empresa', 'CECO', 'Tipo Pago', 'Detalle', 'Valor'];
+    const headers = ['Fecha', 'Empresa', 'CECO', 'Tipo Pago', 'Responsable', 'Detalle', 'Valor'];
     let csv = headers.join(',') + '\n';
     filteredTransactions.forEach(t => {
-      csv += [t.fecha, t.empresa, t.ceco, t.tipoPago, `"${t.detalle}"`, t.valor].join(',') + '\n';
+      csv += [t.fecha, t.empresa, t.ceco, t.tipoPago, t.responsable || '', `"${t.detalle}"`, t.valor].join(',') + '\n';
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -173,14 +210,17 @@ function App() {
           </button>
         </div>
 
-        <div style={{ maxWidth: '1400px', margin: '1rem auto 0', display: 'flex', gap: '2rem', borderTop: '1px solid rgba(196, 167, 71, 0.2)', paddingTop: '1rem' }}>
+        <div style={{ maxWidth: '1400px', margin: '1rem auto 0', display: 'flex', gap: '2rem', borderTop: '1px solid rgba(196, 167, 71, 0.2)', paddingTop: '1rem', overflowX: 'auto' }}>
           {user.role === 'Administradores' && (
-            <button onClick={() => setActiveTab('registro')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'registro' ? '3px solid #C4A747' : 'none', color: activeTab === 'registro' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem' }}>➕ Nuevo Gasto</button>
+            <>
+              <button onClick={() => setActiveTab('registro')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'registro' ? '3px solid #C4A747' : 'none', color: activeTab === 'registro' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem', whiteSpace: 'nowrap' }}>➕ Nuevo Gasto</button>
+              <button onClick={() => setActiveTab('responsables')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'responsables' ? '3px solid #C4A747' : 'none', color: activeTab === 'responsables' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem', whiteSpace: 'nowrap' }}>👥 Responsables</button>
+            </>
           )}
-          <button onClick={() => setActiveTab('dashboard')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'dashboard' ? '3px solid #C4A747' : 'none', color: activeTab === 'dashboard' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem' }}>📊 Dashboard</button>
-          <button onClick={() => setActiveTab('movimientos')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'movimientos' ? '3px solid #C4A747' : 'none', color: activeTab === 'movimientos' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem' }}>📋 Movimientos</button>
+          <button onClick={() => setActiveTab('dashboard')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'dashboard' ? '3px solid #C4A747' : 'none', color: activeTab === 'dashboard' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem', whiteSpace: 'nowrap' }}>📊 Dashboard</button>
+          <button onClick={() => setActiveTab('movimientos')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'movimientos' ? '3px solid #C4A747' : 'none', color: activeTab === 'movimientos' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem', whiteSpace: 'nowrap' }}>📋 Movimientos</button>
           {user.role === 'Contadores' && (
-            <button onClick={() => setActiveTab('reportes')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'reportes' ? '3px solid #C4A747' : 'none', color: activeTab === 'reportes' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem' }}>📥 Reportes</button>
+            <button onClick={() => setActiveTab('reportes')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'reportes' ? '3px solid #C4A747' : 'none', color: activeTab === 'reportes' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem', whiteSpace: 'nowrap' }}>📥 Reportes</button>
           )}
         </div>
       </header>
@@ -270,7 +310,7 @@ function App() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
                   <div>
                     <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>EMPRESA</label>
-                    <select value={formData.empresa} onChange={(e) => setFormData({...formData, empresa: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }}>
+                    <select value={formData.empresa} onChange={(e) => setFormData({...formData, empresa: e.target.value, responsable: ''})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }}>
                       <option value="">Seleccionar</option>
                       {EMPRESAS.map(e => <option key={e} value={e}>{e}</option>)}
                     </select>
@@ -298,6 +338,20 @@ function App() {
                   </div>
                 </div>
 
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>RESPONSABLE / PROVEEDOR</label>
+                    <select value={formData.responsable} onChange={(e) => setFormData({...formData, responsable: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }}>
+                      <option value="">Seleccionar</option>
+                      {responsablesDelEmpresa.map(r => <option key={r.id} value={r.nombre}>{r.nombre}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>FECHA</label>
+                    <input type="date" value={formData.fecha} onChange={(e) => setFormData({...formData, fecha: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                  </div>
+                </div>
+
                 <div style={{ marginBottom: '1rem' }}>
                   <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>DETALLE</label>
                   <textarea value={formData.detalle} onChange={(e) => setFormData({...formData, detalle: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box', minHeight: '100px' }} placeholder="Descripción del gasto" />
@@ -309,6 +363,83 @@ function App() {
                 </div>
               </div>
             )}
+          </>
+        )}
+
+        {activeTab === 'responsables' && user.role === 'Administradores' && (
+          <>
+            <button onClick={() => { setShowResponsableForm(!showResponsableForm); setEditingResponsable(null); setResponsableData({ nombre: '', empresa: '', tipo: 'PROVEEDOR DE SERVICIOS PROFESIONALES' }); }} style={{ backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', padding: '0.75rem 1.5rem', fontWeight: 'bold', cursor: 'pointer', marginBottom: '2rem', fontFamily: 'inherit' }}>
+              {showResponsableForm ? 'Cancelar' : '➕ Nuevo Responsable'}
+            </button>
+
+            {showResponsableForm && (
+              <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: '600', margin: '0 0 1.75rem 0', color: '#C4A747' }}>{editingResponsable ? '✏️ Editar Responsable' : '👥 Agregar Responsable'}</h2>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>NOMBRE</label>
+                    <input type="text" value={responsableData.nombre} onChange={(e) => setResponsableData({...responsableData, nombre: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }} placeholder="Nombre completo" />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>EMPRESA</label>
+                    <select value={responsableData.empresa} onChange={(e) => setResponsableData({...responsableData, empresa: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }}>
+                      <option value="">Seleccionar</option>
+                      {EMPRESAS.map(e => <option key={e} value={e}>{e}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '2rem' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>TIPO</label>
+                  <select value={responsableData.tipo} onChange={(e) => setResponsableData({...responsableData, tipo: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }}>
+                    <option value="PROVEEDOR DE SERVICIOS PROFESIONALES">PROVEEDOR DE SERVICIOS PROFESIONALES</option>
+                    <option value="PROVEEDOR SERVICIO EMPRESARIAL">PROVEEDOR SERVICIO EMPRESARIAL</option>
+                    <option value="PROVEEDOR SERVICIOS FINANCIEROS">PROVEEDOR SERVICIOS FINANCIEROS</option>
+                    <option value="EMPLEADO">EMPLEADO</option>
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <button onClick={handleAddResponsable} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>💾 {editingResponsable ? 'Actualizar' : 'Guardar'}</button>
+                  <button onClick={() => { setShowResponsableForm(false); setEditingResponsable(null); }} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#2a2a2a', color: '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>❌ Cancelar</button>
+                </div>
+              </div>
+            )}
+
+            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: '600', margin: '0 0 1.75rem 0', color: '#C4A747' }}>👥 Responsables ({responsables.length})</h2>
+              
+              {responsables.length === 0 ? (
+                <p style={{ color: '#7a7a7a', textAlign: 'center', padding: '2rem' }}>Sin responsables registrados</p>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#0f0f0f', borderBottom: '2px solid #C4A747' }}>
+                        <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Nombre</th>
+                        <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Empresa</th>
+                        <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Tipo</th>
+                        <th style={{ padding: '1rem 0.75rem', textAlign: 'center', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Acción</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {responsables.map(r => (
+                        <tr key={r.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                          <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}><strong>{r.nombre}</strong></td>
+                          <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}>{r.empresa}</td>
+                          <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}><small>{r.tipo}</small></td>
+                          <td style={{ padding: '1rem 0.75rem', textAlign: 'center', display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                            <button onClick={() => { setEditingResponsable(r); setResponsableData(r); setShowResponsableForm(true); }} style={{ background: 'rgba(196, 167, 71, 0.15)', border: '1px solid #C4A747', borderRadius: '4px', padding: '0.5rem 0.75rem', cursor: 'pointer', color: '#C4A747', fontFamily: 'inherit' }}>✏️</button>
+                            <button onClick={() => handleDeleteResponsable(r.id)} style={{ background: 'rgba(220, 53, 69, 0.15)', border: '1px solid #dc3545', borderRadius: '4px', padding: '0.5rem 0.75rem', cursor: 'pointer', color: '#ff6b6b', fontFamily: 'inherit' }}>🗑️</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </>
         )}
 
@@ -326,6 +457,7 @@ function App() {
                       <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Fecha</th>
                       <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Empresa</th>
                       <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>CECO</th>
+                      <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Responsable</th>
                       <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Detalle</th>
                       <th style={{ padding: '1rem 0.75rem', textAlign: 'right', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Valor</th>
                       {user.role === 'Administradores' && <th style={{ padding: '1rem 0.75rem', textAlign: 'center', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Acción</th>}
@@ -337,6 +469,7 @@ function App() {
                         <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}>{t.fecha}</td>
                         <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}><strong>{t.empresa}</strong></td>
                         <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}><small>{t.ceco}</small></td>
+                        <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}>{t.responsable || '-'}</td>
                         <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.detalle}</td>
                         <td style={{ padding: '1rem 0.75rem', textAlign: 'right', fontWeight: 'bold', color: '#C4A747' }}>${t.valor.toLocaleString('es-CO', { maximumFractionDigits: 0 })}</td>
                         {user.role === 'Administradores' && (
