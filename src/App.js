@@ -47,7 +47,7 @@ export default function App() {
     const savedProv = localStorage.getItem('amProveedores');
     setResponsables(saved ? JSON.parse(saved) : responsablesDefault);
     setProveedores(savedProv ? JSON.parse(savedProv) : []);
-  }, []);
+  }, [responsablesDefault]);
 
   useEffect(() => {
     localStorage.setItem('amResponsables', JSON.stringify(responsables));
