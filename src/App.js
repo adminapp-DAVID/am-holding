@@ -1,10 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 function App() {
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [transactions, setTransactions] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [filterCECO, setFilterCECO] = useState('all');
+  const [filterEmpresa, setFilterEmpresa] = useState('all');
+
+  const [formData, setFormData] = useState({
+    empresa: '',
+    ceco: '',
+    tipoPago: '',
+    detalle: '',
+    valor: '',
+    fecha: new Date().toISOString().split('T')[0]
+  });
 
   const usuarios = [
     { email: 'admin@amholding.com', password: 'admin123', role: 'Administradores' },
@@ -12,15 +26,96 @@ function App() {
     { email: 'contador@amholding.com', password: 'contador123', role: 'Contadores' }
   ];
 
+  const CECOS = [
+    { id: 'CECO-001-GF', nombre: 'Gastos fijos' },
+    { id: 'CECO-002-NM', nombre: 'Nómina' },
+    { id: 'CECO-003-GR', nombre: 'Gastos de representación' },
+    { id: 'CECO-004-HR', nombre: 'Honorarios' },
+    { id: 'CECO-005-AM', nombre: 'Gastos personales Andrei Martinez' },
+    { id: 'CECO-006-VI', nombre: 'Viajes (Caelum)' },
+    { id: 'CECO-007-PRS', nombre: 'Préstamos interbancarios' },
+    { id: 'CECO-008-TRS', nombre: 'Traslado de fondos' },
+    { id: 'CECO-009-RTE', nombre: 'Retenciones' },
+    { id: 'CECO-010-SS', nombre: 'Seguridad social' }
+  ];
+
+  const EMPRESAS = ['AM SPORTS', 'PRO GLOBAL', 'PRONOVA', 'FORSEVEN', 'ARKO', 'CUBO'];
+  const TIPOS_PAGO = ['ADMINISTRATIVOS', 'REEMBOLSO', 'ANTICIPO', 'GIRO INTERNO', 'PAGOS GENERAL'];
+
+  useEffect(() => {
+    const saved = localStorage.getItem('amTransactions');
+    if (saved) setTransactions(JSON.parse(saved));
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('amTransactions', JSON.stringify(transactions));
+  }, [transactions]);
+
   const handleLogin = () => {
     const usuarioEncontrado = usuarios.find(u => u.email === email && u.password === password);
-    
     if (usuarioEncontrado) {
       setUser({ email, role: usuarioEncontrado.role });
       setError('');
     } else {
       setError('Email o contraseña incorrectos');
     }
+  };
+
+  const handleAddTransaction = () => {
+    if (!formData.empresa || !formData.ceco || !formData.valor || !formData.detalle) {
+      alert('Completa todos los campos');
+      return;
+    }
+    const newTransaction = {
+      id: Date.now(),
+      ...formData,
+      valor: parseFloat(formData.valor),
+      createdBy: user.email
+    };
+    setTransactions([newTransaction, ...transactions]);
+    setFormData({ empresa: '', ceco: '', tipoPago: '', detalle: '', valor: '', fecha: new Date().toISOString().split('T')[0] });
+    setShowForm(false);
+  };
+
+  const handleDeleteTransaction = (id) => {
+    setTransactions(transactions.filter(t => t.id !== id));
+  };
+
+  const filteredTransactions = transactions.filter(t => {
+    const cecoMatch = filterCECO === 'all' || t.ceco === filterCECO;
+    const empresaMatch = filterEmpresa === 'all' || t.empresa === filterEmpresa;
+    return cecoMatch && empresaMatch;
+  });
+
+  const totalGastos = filteredTransactions.reduce((sum, t) => sum + t.valor, 0);
+
+  const gastosPorCECO = CECOS.filter(c => filteredTransactions.some(t => t.ceco === c.id))
+    .map(c => ({
+      ...c,
+      total: filteredTransactions.filter(t => t.ceco === c.id).reduce((sum, t) => sum + t.valor, 0)
+    }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 5);
+
+  const gastosPorEmpresa = EMPRESAS.filter(e => filteredTransactions.some(t => t.empresa === e))
+    .map(e => ({
+      empresa: e,
+      total: filteredTransactions.filter(t => t.empresa === e).reduce((sum, t) => sum + t.valor, 0)
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  const exportarCSV = () => {
+    const headers = ['Fecha', 'Empresa', 'CECO', 'Tipo Pago', 'Detalle', 'Valor'];
+    let csv = headers.join(',') + '\n';
+    filteredTransactions.forEach(t => {
+      csv += [t.fecha, t.empresa, t.ceco, t.tipoPago, `"${t.detalle}"`, t.valor].join(',') + '\n';
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `reportes_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
   };
 
   if (!user) {
@@ -77,14 +172,197 @@ function App() {
             Salir
           </button>
         </div>
+
+        <div style={{ maxWidth: '1400px', margin: '1rem auto 0', display: 'flex', gap: '2rem', borderTop: '1px solid rgba(196, 167, 71, 0.2)', paddingTop: '1rem' }}>
+          {user.role === 'Administradores' && (
+            <button onClick={() => setActiveTab('registro')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'registro' ? '3px solid #C4A747' : 'none', color: activeTab === 'registro' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem' }}>➕ Nuevo Gasto</button>
+          )}
+          <button onClick={() => setActiveTab('dashboard')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'dashboard' ? '3px solid #C4A747' : 'none', color: activeTab === 'dashboard' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem' }}>📊 Dashboard</button>
+          <button onClick={() => setActiveTab('movimientos')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'movimientos' ? '3px solid #C4A747' : 'none', color: activeTab === 'movimientos' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem' }}>📋 Movimientos</button>
+          {user.role === 'Contadores' && (
+            <button onClick={() => setActiveTab('reportes')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'reportes' ? '3px solid #C4A747' : 'none', color: activeTab === 'reportes' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem' }}>📥 Reportes</button>
+          )}
+        </div>
       </header>
 
       <main style={{ maxWidth: '1400px', margin: '0 auto', padding: '2rem 1rem' }}>
-        <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', textAlign: 'center' }}>
-          <h2 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>✅ App Funcionando</h2>
-          <p style={{ color: '#a0a0a0', margin: 0 }}>Rol actual: <strong>{user.role}</strong></p>
-          <p style={{ color: '#10b981', margin: '1rem 0 0 0' }}>Tu app está en línea y lista para personalizarse</p>
-        </div>
+        {activeTab === 'dashboard' && (
+          <>
+            <div style={{ display: 'flex', gap: '2rem', marginBottom: '2rem', backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+              <div>
+                <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>CECO</label>
+                <select value={filterCECO} onChange={(e) => setFilterCECO(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit' }}>
+                  <option value="all">Todos</option>
+                  {CECOS.map(c => <option key={c.id} value={c.id}>{c.id}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>EMPRESA</label>
+                <select value={filterEmpresa} onChange={(e) => setFilterEmpresa(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit' }}>
+                  <option value="all">Todas</option>
+                  {EMPRESAS.map(e => <option key={e} value={e}>{e}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
+              <div style={{ backgroundColor: '#1a1a1a', padding: '1.75rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}>
+                <p style={{ fontSize: '0.85rem', color: '#a0a0a0', margin: 0, textTransform: 'uppercase' }}>Total Gastos</p>
+                <p style={{ fontSize: '2rem', fontWeight: '700', color: '#C4A747', margin: '0.5rem 0 0 0' }}>${(totalGastos / 1000000).toFixed(1)}M</p>
+              </div>
+              <div style={{ backgroundColor: '#1a1a1a', padding: '1.75rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}>
+                <p style={{ fontSize: '0.85rem', color: '#a0a0a0', margin: 0, textTransform: 'uppercase' }}>Registros</p>
+                <p style={{ fontSize: '2rem', fontWeight: '700', color: '#C4A747', margin: '0.5rem 0 0 0' }}>{filteredTransactions.length}</p>
+              </div>
+              <div style={{ backgroundColor: '#1a1a1a', padding: '1.75rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}>
+                <p style={{ fontSize: '0.85rem', color: '#a0a0a0', margin: 0, textTransform: 'uppercase' }}>Promedio</p>
+                <p style={{ fontSize: '2rem', fontWeight: '700', color: '#C4A747', margin: '0.5rem 0 0 0' }}>${filteredTransactions.length > 0 ? (totalGastos / filteredTransactions.length / 1000000).toFixed(2) : '0'}M</p>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '2rem' }}>
+              <div style={{ backgroundColor: '#1a1a1a', padding: '1.75rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: '600', color: '#fff', margin: '0 0 1.5rem 0' }}>💰 Top CECOs</h3>
+                {gastosPorCECO.map((c, idx) => (
+                  <div key={c.id} style={{ marginBottom: '1.25rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <div>
+                        <strong style={{ fontSize: '0.95rem' }}>{c.id}</strong>
+                        <p style={{ fontSize: '0.75rem', color: '#7a7a7a', margin: '0.25rem 0 0 0' }}>{c.nombre}</p>
+                      </div>
+                      <span style={{ fontSize: '0.95rem', fontWeight: '600', color: '#C4A747' }}>${(c.total / 1000000).toFixed(1)}M</span>
+                    </div>
+                    <div style={{ height: '6px', backgroundColor: 'rgba(196, 167, 71, 0.3)', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', backgroundColor: '#C4A747', width: `${(c.total / Math.max(...gastosPorCECO.map(x => x.total))) * 100}%` }}></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ backgroundColor: '#1a1a1a', padding: '1.75rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: '600', color: '#fff', margin: '0 0 1.5rem 0' }}>🏢 Por Empresa</h3>
+                {gastosPorEmpresa.map((e, idx) => (
+                  <div key={e.empresa} style={{ marginBottom: '1.25rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <strong style={{ fontSize: '0.95rem' }}>{e.empresa}</strong>
+                      <span style={{ fontSize: '0.95rem', fontWeight: '600', color: '#C4A747' }}>${(e.total / 1000000).toFixed(1)}M</span>
+                    </div>
+                    <div style={{ height: '6px', backgroundColor: 'rgba(196, 167, 71, 0.3)', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', backgroundColor: '#C4A747', width: `${(e.total / Math.max(...gastosPorEmpresa.map(x => x.total), 1)) * 100}%` }}></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {activeTab === 'registro' && user.role === 'Administradores' && (
+          <>
+            <button onClick={() => setShowForm(!showForm)} style={{ backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', padding: '0.75rem 1.5rem', fontWeight: 'bold', cursor: 'pointer', marginBottom: '2rem', fontFamily: 'inherit' }}>
+              {showForm ? 'Cancelar' : 'Nuevo Gasto'}
+            </button>
+
+            {showForm && (
+              <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: '600', margin: '0 0 1.75rem 0', color: '#C4A747' }}>📝 Registrar Gasto</h2>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>EMPRESA</label>
+                    <select value={formData.empresa} onChange={(e) => setFormData({...formData, empresa: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }}>
+                      <option value="">Seleccionar</option>
+                      {EMPRESAS.map(e => <option key={e} value={e}>{e}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>CECO</label>
+                    <select value={formData.ceco} onChange={(e) => setFormData({...formData, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }}>
+                      <option value="">Seleccionar</option>
+                      {CECOS.map(c => <option key={c.id} value={c.id}>{c.id}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>TIPO DE PAGO</label>
+                    <select value={formData.tipoPago} onChange={(e) => setFormData({...formData, tipoPago: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }}>
+                      <option value="">Seleccionar</option>
+                      {TIPOS_PAGO.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>VALOR</label>
+                    <input type="number" value={formData.valor} onChange={(e) => setFormData({...formData, valor: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }} placeholder="0.00" />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>DETALLE</label>
+                  <textarea value={formData.detalle} onChange={(e) => setFormData({...formData, detalle: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box', minHeight: '100px' }} placeholder="Descripción del gasto" />
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <button onClick={handleAddTransaction} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>💾 Guardar</button>
+                  <button onClick={() => setShowForm(false)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#2a2a2a', color: '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>❌ Cancelar</button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {activeTab === 'movimientos' && (
+          <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: '600', margin: '0 0 1.75rem 0', color: '#C4A747' }}>📋 Movimientos ({filteredTransactions.length})</h2>
+            
+            {filteredTransactions.length === 0 ? (
+              <p style={{ color: '#7a7a7a', textAlign: 'center', padding: '2rem' }}>Sin registros</p>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#0f0f0f', borderBottom: '2px solid #C4A747' }}>
+                      <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Fecha</th>
+                      <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Empresa</th>
+                      <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>CECO</th>
+                      <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Detalle</th>
+                      <th style={{ padding: '1rem 0.75rem', textAlign: 'right', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Valor</th>
+                      {user.role === 'Administradores' && <th style={{ padding: '1rem 0.75rem', textAlign: 'center', fontWeight: '600', color: '#C4A747', fontSize: '0.85rem', textTransform: 'uppercase' }}>Acción</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredTransactions.map(t => (
+                      <tr key={t.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                        <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}>{t.fecha}</td>
+                        <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}><strong>{t.empresa}</strong></td>
+                        <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}><small>{t.ceco}</small></td>
+                        <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.detalle}</td>
+                        <td style={{ padding: '1rem 0.75rem', textAlign: 'right', fontWeight: 'bold', color: '#C4A747' }}>${t.valor.toLocaleString('es-CO', { maximumFractionDigits: 0 })}</td>
+                        {user.role === 'Administradores' && (
+                          <td style={{ padding: '1rem 0.75rem', textAlign: 'center' }}>
+                            <button onClick={() => handleDeleteTransaction(t.id)} style={{ background: 'rgba(220, 53, 69, 0.15)', border: '1px solid #dc3545', borderRadius: '4px', padding: '0.5rem 0.75rem', cursor: 'pointer', color: '#ff6b6b', fontFamily: 'inherit' }}>🗑️</button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'reportes' && user.role === 'Contadores' && (
+          <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: '600', margin: '0 0 1rem 0', color: '#C4A747' }}>📥 Exportar Reportes</h2>
+            <p style={{ color: '#a0a0a0', margin: '0 0 2rem 0' }}>Total de registros: {filteredTransactions.length} | Total gastos: ${(totalGastos / 1000000).toFixed(2)}M</p>
+            
+            <button onClick={exportarCSV} style={{ backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', padding: '0.75rem 1.5rem', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>
+              📥 Descargar CSV
+            </button>
+          </div>
+        )}
       </main>
     </div>
   );
