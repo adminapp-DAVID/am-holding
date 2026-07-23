@@ -5,47 +5,48 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [users, setUsers] = useState([]);
-  const [roles, setRoles] = useState([]);
   const [responsables, setResponsables] = useState([]);
   const [proveedores, setProveedores] = useState([]);
   const [gastos, setGastos] = useState([]);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showResponsableForm, setShowResponsableForm] = useState(false);
-  const [showGastoForm, setShowGastoForm] = useState(false);
   const [showProveedorForm, setShowProveedorForm] = useState(false);
+  const [showGastoForm, setShowGastoForm] = useState(false);
+  const [formResponsable, setFormResponsable] = useState({ nombre: '', empresa: '' });
+  const [formProveedor, setFormProveedor] = useState({ nombre: '', tipo: '', empresa: '' });
+  const [formGasto, setFormGasto] = useState({ empresa: '', tipo: 'RESPONSABLE', responsable: '', proveedor: '', detalle: '', valor: '' });
 
   const RESPONSABLES_DEFAULT = [
-    { nombre: 'Cristian Alejandro Giraldo Carvajal', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
-    { nombre: 'David Dario Andrade Hernández', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
-    { nombre: 'José David Martínez', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
-    { nombre: 'Luis Rodrigo Rivas Arboleda', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
-    { nombre: 'Cristian Camilo Tabares Arango', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
-    { nombre: 'Arnulfo Beitar Cordoba', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
-    { nombre: 'Yeison Alejandro Mejía Flórez', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
-    { nombre: 'Daniel Dario Ríos', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
-    { nombre: 'Wilfer Andrés Zapata Quiroz', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
-    { nombre: 'Jamell Orlando Ramos', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
-    { nombre: 'Sara Cobaleda Vasquez', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
-    { nombre: 'Julián Suárez Quevedo', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
-    { nombre: 'Sergio Alejandro Mejía Valencia', empresa: 'PRO INVESTMENTS GLOBAL SAS', tipo: 'EMPLEADO' },
-    { nombre: 'Caren Paola Garzón Márquez', empresa: 'PRO INVESTMENTS GLOBAL SAS', tipo: 'EMPLEADO' },
-    { nombre: 'Santiago Espinosa', empresa: 'PRO INVESTMENTS GLOBAL SAS', tipo: 'EMPLEADO' },
-    { nombre: 'Daniela Salazar', empresa: 'PRO INVESTMENTS GLOBAL SAS', tipo: 'EMPLEADO' },
-    { nombre: 'Andrei Martinez Orjuela', empresa: 'PRONOVA CAPITAL SAS', tipo: 'EMPLEADO' },
-    { nombre: 'Daniel Santiago Tarquino', empresa: 'FOR SEVEN MEDIA SAS', tipo: 'EMPLEADO' },
-    { nombre: 'Juan Camilo Duarte', empresa: 'FOR SEVEN MEDIA SAS', tipo: 'EMPLEADO' },
-    { nombre: 'Fabio Andres Galeano', empresa: 'FOR SEVEN MEDIA SAS', tipo: 'EMPLEADO' },
-    { nombre: 'Jerónimo Giraldo', empresa: 'FOR SEVEN MEDIA SAS', tipo: 'EMPLEADO' },
-    { nombre: 'Nestor Ovidio', empresa: 'ARKO', tipo: 'EMPLEADO' },
-    { nombre: 'Jose Pagan', empresa: 'ARKO', tipo: 'EMPLEADO' },
-    { nombre: 'Esteban Espindola', empresa: 'ARKO', tipo: 'EMPLEADO' }
+    { id: 1, nombre: 'Cristian Alejandro Giraldo Carvajal', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
+    { id: 2, nombre: 'David Dario Andrade Hernández', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
+    { id: 3, nombre: 'José David Martínez', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
+    { id: 4, nombre: 'Luis Rodrigo Rivas Arboleda', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
+    { id: 5, nombre: 'Cristian Camilo Tabares Arango', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
+    { id: 6, nombre: 'Arnulfo Beitar Cordoba', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
+    { id: 7, nombre: 'Yeison Alejandro Mejía Flórez', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
+    { id: 8, nombre: 'Daniel Dario Ríos', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
+    { id: 9, nombre: 'Wilfer Andrés Zapata Quiroz', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
+    { id: 10, nombre: 'Jamell Orlando Ramos', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
+    { id: 11, nombre: 'Sara Cobaleda Vasquez', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
+    { id: 12, nombre: 'Julián Suárez Quevedo', empresa: 'AM SPORTS GROUP SAS', tipo: 'EMPLEADO' },
+    { id: 13, nombre: 'Sergio Alejandro Mejía Valencia', empresa: 'PRO INVESTMENTS GLOBAL SAS', tipo: 'EMPLEADO' },
+    { id: 14, nombre: 'Caren Paola Garzón Márquez', empresa: 'PRO INVESTMENTS GLOBAL SAS', tipo: 'EMPLEADO' },
+    { id: 15, nombre: 'Santiago Espinosa', empresa: 'PRO INVESTMENTS GLOBAL SAS', tipo: 'EMPLEADO' },
+    { id: 16, nombre: 'Daniela Salazar', empresa: 'PRO INVESTMENTS GLOBAL SAS', tipo: 'EMPLEADO' },
+    { id: 17, nombre: 'Andrei Martinez Orjuela', empresa: 'PRONOVA CAPITAL SAS', tipo: 'EMPLEADO' },
+    { id: 18, nombre: 'Daniel Santiago Tarquino', empresa: 'FOR SEVEN MEDIA SAS', tipo: 'EMPLEADO' },
+    { id: 19, nombre: 'Juan Camilo Duarte', empresa: 'FOR SEVEN MEDIA SAS', tipo: 'EMPLEADO' },
+    { id: 20, nombre: 'Fabio Andres Galeano', empresa: 'FOR SEVEN MEDIA SAS', tipo: 'EMPLEADO' },
+    { id: 21, nombre: 'Jerónimo Giraldo', empresa: 'FOR SEVEN MEDIA SAS', tipo: 'EMPLEADO' },
+    { id: 22, nombre: 'Nestor Ovidio', empresa: 'ARKO', tipo: 'EMPLEADO' },
+    { id: 23, nombre: 'Jose Pagan', empresa: 'ARKO', tipo: 'EMPLEADO' },
+    { id: 24, nombre: 'Esteban Espindola', empresa: 'ARKO', tipo: 'EMPLEADO' }
   ];
 
   const EMPRESAS = ['AM SPORTS GROUP SAS', 'PRO INVESTMENTS GLOBAL SAS', 'PRONOVA CAPITAL SAS', 'FOR SEVEN MEDIA SAS', 'ARKO'];
 
   useEffect(() => {
     const savedUsers = localStorage.getItem('amUsers');
-    const savedRoles = localStorage.getItem('amRoles');
     const savedResponsables = localStorage.getItem('amResponsables');
     const savedProveedores = localStorage.getItem('amProveedores');
     const savedGastos = localStorage.getItem('amGastos');
@@ -58,22 +59,9 @@ export default function App() {
       setUsers(JSON.parse(savedUsers));
     }
 
-    if (!savedRoles) {
-      const defaultRoles = [
-        { id: 'admin', nombre: 'Administrador' },
-        { id: 'responsable', nombre: 'Responsable' },
-        { id: 'revisor', nombre: 'Revisor' },
-        { id: 'contador', nombre: 'Contador' }
-      ];
-      setRoles(defaultRoles);
-      localStorage.setItem('amRoles', JSON.stringify(defaultRoles));
-    } else {
-      setRoles(JSON.parse(savedRoles));
-    }
-
     if (!savedResponsables) {
-      setResponsables(RESPONSABLES_DEFAULT.map((r, idx) => ({ ...r, id: idx })));
-      localStorage.setItem('amResponsables', JSON.stringify(RESPONSABLES_DEFAULT.map((r, idx) => ({ ...r, id: idx }))));
+      setResponsables(RESPONSABLES_DEFAULT);
+      localStorage.setItem('amResponsables', JSON.stringify(RESPONSABLES_DEFAULT));
     } else {
       setResponsables(JSON.parse(savedResponsables));
     }
@@ -105,8 +93,13 @@ export default function App() {
     }
   };
 
-  const handleAddResponsable = (data) => {
-    setResponsables([...responsables, { id: Date.now(), ...data }]);
+  const handleAddResponsable = () => {
+    if (!formResponsable.nombre || !formResponsable.empresa) {
+      alert('Completa todos los campos');
+      return;
+    }
+    setResponsables([...responsables, { id: Date.now(), ...formResponsable, tipo: 'EMPLEADO' }]);
+    setFormResponsable({ nombre: '', empresa: '' });
     setShowResponsableForm(false);
   };
 
@@ -114,8 +107,13 @@ export default function App() {
     setResponsables(responsables.filter(r => r.id !== id));
   };
 
-  const handleAddProveedor = (data) => {
-    setProveedores([...proveedores, { id: Date.now(), ...data }]);
+  const handleAddProveedor = () => {
+    if (!formProveedor.nombre || !formProveedor.empresa) {
+      alert('Completa todos los campos');
+      return;
+    }
+    setProveedores([...proveedores, { id: Date.now(), ...formProveedor }]);
+    setFormProveedor({ nombre: '', tipo: '', empresa: '' });
     setShowProveedorForm(false);
   };
 
@@ -123,8 +121,21 @@ export default function App() {
     setProveedores(proveedores.filter(p => p.id !== id));
   };
 
-  const handleAddGasto = (data) => {
-    setGastos([...gastos, { id: Date.now(), ...data, fecha: new Date().toISOString().split('T')[0] }]);
+  const handleAddGasto = () => {
+    if (!formGasto.empresa || !formGasto.detalle || !formGasto.valor) {
+      alert('Completa empresa, detalle y valor');
+      return;
+    }
+    if (formGasto.tipo === 'RESPONSABLE' && !formGasto.responsable) {
+      alert('Selecciona un responsable');
+      return;
+    }
+    if (formGasto.tipo === 'PROVEEDOR' && !formGasto.proveedor) {
+      alert('Selecciona un proveedor');
+      return;
+    }
+    setGastos([...gastos, { id: Date.now(), ...formGasto, valor: parseFloat(formGasto.valor), fecha: new Date().toISOString().split('T')[0] }]);
+    setFormGasto({ empresa: '', tipo: 'RESPONSABLE', responsable: '', proveedor: '', detalle: '', valor: '' });
     setShowGastoForm(false);
   };
 
@@ -148,6 +159,10 @@ export default function App() {
     );
   }
 
+  const responsablesDelEmpresa = formGasto.empresa ? responsables.filter(r => r.empresa === formGasto.empresa) : [];
+  const proveedoresDelEmpresa = formGasto.empresa ? proveedores.filter(p => p.empresa === formGasto.empresa) : [];
+  const totalGastos = gastos.reduce((sum, g) => sum + (g.valor || 0), 0);
+
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0f0f0f', color: '#fff' }}>
       <header style={{ backgroundColor: '#1a1a1a', borderBottom: '2px solid #C4A747', padding: '2rem 1rem' }}>
@@ -165,22 +180,15 @@ export default function App() {
           <button onClick={() => setActiveTab('dashboard')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'dashboard' ? '3px solid #C4A747' : 'none', color: activeTab === 'dashboard' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem' }}>
             📊 Dashboard
           </button>
-
-          {user.rol === 'admin' && (
-            <>
-              <button onClick={() => setActiveTab('gestion')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'gestion' ? '3px solid #C4A747' : 'none', color: activeTab === 'gestion' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem' }}>
-                👥 Gestión
-              </button>
-
-              <button onClick={() => setActiveTab('gastos')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'gastos' ? '3px solid #C4A747' : 'none', color: activeTab === 'gastos' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem' }}>
-                ➕ Registrar Gasto
-              </button>
-
-              <button onClick={() => setActiveTab('movimientos')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'movimientos' ? '3px solid #C4A747' : 'none', color: activeTab === 'movimientos' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem' }}>
-                📋 Movimientos
-              </button>
-            </>
-          )}
+          <button onClick={() => setActiveTab('gestion')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'gestion' ? '3px solid #C4A747' : 'none', color: activeTab === 'gestion' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem' }}>
+            👥 Gestión
+          </button>
+          <button onClick={() => setActiveTab('gastos')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'gastos' ? '3px solid #C4A747' : 'none', color: activeTab === 'gastos' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem' }}>
+            ➕ Gasto
+          </button>
+          <button onClick={() => setActiveTab('movimientos')} style={{ background: 'none', border: 'none', borderBottom: activeTab === 'movimientos' ? '3px solid #C4A747' : 'none', color: activeTab === 'movimientos' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', paddingBottom: '0.5rem' }}>
+            📋 Movimientos
+          </button>
         </nav>
       </header>
 
@@ -197,40 +205,50 @@ export default function App() {
               <p style={{ fontSize: '2rem', fontWeight: '700', color: '#C4A747', margin: '0.5rem 0 0 0' }}>{proveedores.length}</p>
             </div>
             <div style={{ backgroundColor: '#1a1a1a', padding: '1.75rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}>
-              <p style={{ fontSize: '0.85rem', color: '#a0a0a0', margin: 0 }}>GASTOS REGISTRADOS</p>
+              <p style={{ fontSize: '0.85rem', color: '#a0a0a0', margin: 0 }}>GASTOS</p>
               <p style={{ fontSize: '2rem', fontWeight: '700', color: '#C4A747', margin: '0.5rem 0 0 0' }}>{gastos.length}</p>
             </div>
             <div style={{ backgroundColor: '#1a1a1a', padding: '1.75rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}>
-              <p style={{ fontSize: '0.85rem', color: '#a0a0a0', margin: 0 }}>TOTAL GASTOS</p>
-              <p style={{ fontSize: '2rem', fontWeight: '700', color: '#C4A747', margin: '0.5rem 0 0 0' }}>${(gastos.reduce((s, g) => s + (parseFloat(g.valor) || 0), 0) / 1000000).toFixed(1)}M</p>
+              <p style={{ fontSize: '0.85rem', color: '#a0a0a0', margin: 0 }}>TOTAL</p>
+              <p style={{ fontSize: '2rem', fontWeight: '700', color: '#C4A747', margin: '0.5rem 0 0 0' }}>${(totalGastos / 1000000).toFixed(1)}M</p>
             </div>
           </div>
         )}
 
-        {activeTab === 'gestion' && user.rol === 'admin' && (
+        {activeTab === 'gestion' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
             
             {/* RESPONSABLES */}
             <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                <h2 style={{ color: '#C4A747', margin: 0 }}>👥 Responsables ({responsables.length})</h2>
+                <h2 style={{ color: '#C4A747', margin: 0 }}>👥 Responsables</h2>
                 <button onClick={() => setShowResponsableForm(!showResponsableForm)} style={{ backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', padding: '0.5rem 1rem', fontWeight: 'bold', cursor: 'pointer' }}>
-                  ➕ Agregar
+                  ➕
                 </button>
               </div>
 
               {showResponsableForm && (
-                <ResponsableForm onSubmit={handleAddResponsable} onCancel={() => setShowResponsableForm(false)} empresas={EMPRESAS} />
+                <div style={{ backgroundColor: '#0f0f0f', padding: '1rem', borderRadius: '4px', marginBottom: '1rem' }}>
+                  <input type="text" placeholder="Nombre" value={formResponsable.nombre} onChange={(e) => setFormResponsable({...formResponsable, nombre: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '0.75rem', boxSizing: 'border-box' }} />
+                  <select value={formResponsable.empresa} onChange={(e) => setFormResponsable({...formResponsable, empresa: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '0.75rem', boxSizing: 'border-box' }}>
+                    <option value="">Empresa</option>
+                    {EMPRESAS.map(e => <option key={e} value={e}>{e}</option>)}
+                  </select>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button onClick={handleAddResponsable} style={{ flex: 1, padding: '0.5rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>Guardar</button>
+                    <button onClick={() => setShowResponsableForm(false)} style={{ flex: 1, padding: '0.5rem', backgroundColor: '#2a2a2a', color: '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>Cancelar</button>
+                  </div>
+                </div>
               )}
 
-              <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                {responsables.map(r => (
-                  <div key={r.id} style={{ backgroundColor: '#0f0f0f', padding: '1rem', borderRadius: '4px', marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
+                {responsables.slice(0, 20).map(r => (
+                  <div key={r.id} style={{ backgroundColor: '#0f0f0f', padding: '0.75rem', borderRadius: '4px', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <strong style={{ color: '#C4A747' }}>{r.nombre}</strong>
-                      <p style={{ fontSize: '0.85rem', color: '#a0a0a0', margin: '0.25rem 0 0 0' }}>{r.empresa}</p>
+                      <p style={{ color: '#C4A747', margin: 0, fontSize: '0.9rem', fontWeight: 'bold' }}>{r.nombre.split(' ')[0]}</p>
+                      <p style={{ fontSize: '0.75rem', color: '#7a7a7a', margin: '0.25rem 0 0 0' }}>{r.empresa.split(' ')[0]}</p>
                     </div>
-                    <button onClick={() => handleDeleteResponsable(r.id)} style={{ background: 'rgba(220, 53, 69, 0.15)', border: '1px solid #dc3545', borderRadius: '4px', padding: '0.5rem 0.75rem', cursor: 'pointer', color: '#ff6b6b' }}>🗑️</button>
+                    <button onClick={() => handleDeleteResponsable(r.id)} style={{ background: 'rgba(220, 53, 69, 0.2)', border: 'none', borderRadius: '3px', padding: '0.4rem 0.6rem', cursor: 'pointer', color: '#ff6b6b', fontSize: '0.85rem' }}>🗑️</button>
                   </div>
                 ))}
               </div>
@@ -239,24 +257,35 @@ export default function App() {
             {/* PROVEEDORES */}
             <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                <h2 style={{ color: '#C4A747', margin: 0 }}>🏢 Proveedores ({proveedores.length})</h2>
+                <h2 style={{ color: '#C4A747', margin: 0 }}>🏢 Proveedores</h2>
                 <button onClick={() => setShowProveedorForm(!showProveedorForm)} style={{ backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', padding: '0.5rem 1rem', fontWeight: 'bold', cursor: 'pointer' }}>
-                  ➕ Agregar
+                  ➕
                 </button>
               </div>
 
               {showProveedorForm && (
-                <ProveedorForm onSubmit={handleAddProveedor} onCancel={() => setShowProveedorForm(false)} empresas={EMPRESAS} />
+                <div style={{ backgroundColor: '#0f0f0f', padding: '1rem', borderRadius: '4px', marginBottom: '1rem' }}>
+                  <input type="text" placeholder="Nombre" value={formProveedor.nombre} onChange={(e) => setFormProveedor({...formProveedor, nombre: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '0.75rem', boxSizing: 'border-box' }} />
+                  <input type="text" placeholder="Tipo de servicio" value={formProveedor.tipo} onChange={(e) => setFormProveedor({...formProveedor, tipo: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '0.75rem', boxSizing: 'border-box' }} />
+                  <select value={formProveedor.empresa} onChange={(e) => setFormProveedor({...formProveedor, empresa: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '0.75rem', boxSizing: 'border-box' }}>
+                    <option value="">Empresa</option>
+                    {EMPRESAS.map(e => <option key={e} value={e}>{e}</option>)}
+                  </select>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button onClick={handleAddProveedor} style={{ flex: 1, padding: '0.5rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>Guardar</button>
+                    <button onClick={() => setShowProveedorForm(false)} style={{ flex: 1, padding: '0.5rem', backgroundColor: '#2a2a2a', color: '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>Cancelar</button>
+                  </div>
+                </div>
               )}
 
-              <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+              <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
                 {proveedores.map(p => (
-                  <div key={p.id} style={{ backgroundColor: '#0f0f0f', padding: '1rem', borderRadius: '4px', marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div key={p.id} style={{ backgroundColor: '#0f0f0f', padding: '0.75rem', borderRadius: '4px', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <strong style={{ color: '#C4A747' }}>{p.nombre}</strong>
-                      <p style={{ fontSize: '0.85rem', color: '#a0a0a0', margin: '0.25rem 0 0 0' }}>{p.tipo} • {p.empresa}</p>
+                      <p style={{ color: '#C4A747', margin: 0, fontSize: '0.9rem', fontWeight: 'bold' }}>{p.nombre}</p>
+                      <p style={{ fontSize: '0.75rem', color: '#7a7a7a', margin: '0.25rem 0 0 0' }}>{p.tipo}</p>
                     </div>
-                    <button onClick={() => handleDeleteProveedor(p.id)} style={{ background: 'rgba(220, 53, 69, 0.15)', border: '1px solid #dc3545', borderRadius: '4px', padding: '0.5rem 0.75rem', cursor: 'pointer', color: '#ff6b6b' }}>🗑️</button>
+                    <button onClick={() => handleDeleteProveedor(p.id)} style={{ background: 'rgba(220, 53, 69, 0.2)', border: 'none', borderRadius: '3px', padding: '0.4rem 0.6rem', cursor: 'pointer', color: '#ff6b6b', fontSize: '0.85rem' }}>🗑️</button>
                   </div>
                 ))}
               </div>
@@ -264,14 +293,67 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'gastos' && user.rol === 'admin' && (
+        {activeTab === 'gastos' && (
           <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
             <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>➕ Registrar Gasto</h2>
-            <GastoForm onSubmit={handleAddGasto} responsables={responsables} proveedores={proveedores} empresas={EMPRESAS} />
+            
+            <div style={{ backgroundColor: '#0f0f0f', padding: '1.5rem', borderRadius: '4px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>EMPRESA</label>
+                  <select value={formGasto.empresa} onChange={(e) => setFormGasto({...formGasto, empresa: e.target.value, responsable: '', proveedor: ''})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
+                    <option value="">Seleccionar</option>
+                    {EMPRESAS.map(e => <option key={e} value={e}>{e}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>TIPO</label>
+                  <select value={formGasto.tipo} onChange={(e) => setFormGasto({...formGasto, tipo: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
+                    <option value="RESPONSABLE">Responsable</option>
+                    <option value="PROVEEDOR">Proveedor</option>
+                  </select>
+                </div>
+              </div>
+
+              {formGasto.tipo === 'RESPONSABLE' ? (
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>RESPONSABLE</label>
+                  <select value={formGasto.responsable} onChange={(e) => setFormGasto({...formGasto, responsable: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
+                    <option value="">Seleccionar</option>
+                    {responsablesDelEmpresa.map(r => <option key={r.id} value={r.nombre}>{r.nombre}</option>)}
+                  </select>
+                </div>
+              ) : (
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>PROVEEDOR</label>
+                  <select value={formGasto.proveedor} onChange={(e) => setFormGasto({...formGasto, proveedor: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
+                    <option value="">Seleccionar</option>
+                    {proveedoresDelEmpresa.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+                  </select>
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>DETALLE</label>
+                  <input type="text" placeholder="Descripción" value={formGasto.detalle} onChange={(e) => setFormGasto({...formGasto, detalle: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>VALOR</label>
+                  <input type="number" placeholder="0.00" value={formGasto.valor} onChange={(e) => setFormGasto({...formGasto, valor: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
+                </div>
+              </div>
+
+              <button onClick={handleAddGasto} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+                💾 Guardar Gasto
+              </button>
+            </div>
           </div>
         )}
 
-        {activeTab === 'movimientos' && user.rol === 'admin' && (
+        {activeTab === 'movimientos' && (
           <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
             <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📋 Movimientos ({gastos.length})</h2>
             <div style={{ overflowX: 'auto' }}>
@@ -279,7 +361,7 @@ export default function App() {
                 <thead>
                   <tr style={{ backgroundColor: '#0f0f0f', borderBottom: '2px solid #C4A747' }}>
                     <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747' }}>Fecha</th>
-                    <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747' }}>Responsable/Proveedor</th>
+                    <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747' }}>De</th>
                     <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747' }}>Empresa</th>
                     <th style={{ padding: '1rem 0.75rem', textAlign: 'left', fontWeight: '600', color: '#C4A747' }}>Detalle</th>
                     <th style={{ padding: '1rem 0.75rem', textAlign: 'right', fontWeight: '600', color: '#C4A747' }}>Valor</th>
@@ -289,10 +371,10 @@ export default function App() {
                   {gastos.map(g => (
                     <tr key={g.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
                       <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}>{g.fecha}</td>
-                      <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}>{g.responsable || g.proveedor}</td>
-                      <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}>{g.empresa}</td>
+                      <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}>{g.tipo === 'RESPONSABLE' ? g.responsable : g.proveedor}</td>
+                      <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}>{g.empresa.split(' ')[0]}</td>
                       <td style={{ padding: '1rem 0.75rem', color: '#d0d0d0' }}>{g.detalle}</td>
-                      <td style={{ padding: '1rem 0.75rem', textAlign: 'right', fontWeight: 'bold', color: '#C4A747' }}>${parseFloat(g.valor).toLocaleString('es-CO')}</td>
+                      <td style={{ padding: '1rem 0.75rem', textAlign: 'right', fontWeight: 'bold', color: '#C4A747' }}>${g.valor.toLocaleString('es-CO')}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -301,104 +383,6 @@ export default function App() {
           </div>
         )}
       </main>
-    </div>
-  );
-}
-
-function ResponsableForm({ onSubmit, onCancel, empresas }) {
-  const [form, setForm] = useState({ nombre: '', empresa: '' });
-
-  return (
-    <div style={{ backgroundColor: '#0f0f0f', padding: '1.5rem', borderRadius: '4px', marginBottom: '1.5rem' }}>
-      <input type="text" placeholder="Nombre completo" value={form.nombre} onChange={(e) => setForm({...form, nombre: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
-      <select value={form.empresa} onChange={(e) => setForm({...form, empresa: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }}>
-        <option value="">Seleccionar empresa</option>
-        {empresas.map(e => <option key={e} value={e}>{e}</option>)}
-      </select>
-      <div style={{ display: 'flex', gap: '1rem' }}>
-        <button onClick={() => onSubmit(form)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar</button>
-        <button onClick={onCancel} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#2a2a2a', color: '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Cancelar</button>
-      </div>
-    </div>
-  );
-}
-
-function ProveedorForm({ onSubmit, onCancel, empresas }) {
-  const [form, setForm] = useState({ nombre: '', tipo: 'CONSULTORÍA', empresa: '' });
-
-  return (
-    <div style={{ backgroundColor: '#0f0f0f', padding: '1.5rem', borderRadius: '4px', marginBottom: '1.5rem' }}>
-      <input type="text" placeholder="Nombre/Razón Social" value={form.nombre} onChange={(e) => setForm({...form, nombre: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
-      <input type="text" placeholder="Tipo de servicio" value={form.tipo} onChange={(e) => setForm({...form, tipo: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
-      <select value={form.empresa} onChange={(e) => setForm({...form, empresa: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }}>
-        <option value="">Seleccionar empresa</option>
-        {empresas.map(e => <option key={e} value={e}>{e}</option>)}
-      </select>
-      <div style={{ display: 'flex', gap: '1rem' }}>
-        <button onClick={() => onSubmit(form)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar</button>
-        <button onClick={onCancel} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#2a2a2a', color: '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Cancelar</button>
-      </div>
-    </div>
-  );
-}
-
-function GastoForm({ onSubmit, responsables, proveedores, empresas }) {
-  const [form, setForm] = useState({ empresa: '', responsable: '', proveedor: '', detalle: '', valor: '', tipo: 'RESPONSABLE' });
-  const responsablesDelEmpresa = form.empresa ? responsables.filter(r => r.empresa === form.empresa) : [];
-
-  return (
-    <div style={{ backgroundColor: '#0f0f0f', padding: '2rem', borderRadius: '4px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
-        <div>
-          <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>EMPRESA</label>
-          <select value={form.empresa} onChange={(e) => setForm({...form, empresa: e.target.value, responsable: '', proveedor: ''})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
-            <option value="">Seleccionar</option>
-            {empresas.map(e => <option key={e} value={e}>{e}</option>)}
-          </select>
-        </div>
-
-        <div>
-          <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>TIPO</label>
-          <select value={form.tipo} onChange={(e) => setForm({...form, tipo: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
-            <option value="RESPONSABLE">Responsable</option>
-            <option value="PROVEEDOR">Proveedor</option>
-          </select>
-        </div>
-      </div>
-
-      {form.tipo === 'RESPONSABLE' ? (
-        <div style={{ marginBottom: '1rem' }}>
-          <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>RESPONSABLE</label>
-          <select value={form.responsable} onChange={(e) => setForm({...form, responsable: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
-            <option value="">Seleccionar</option>
-            {responsablesDelEmpresa.map(r => <option key={r.id} value={r.nombre}>{r.nombre}</option>)}
-          </select>
-        </div>
-      ) : (
-        <div style={{ marginBottom: '1rem' }}>
-          <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>PROVEEDOR</label>
-          <select value={form.proveedor} onChange={(e) => setForm({...form, proveedor: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
-            <option value="">Seleccionar</option>
-            {proveedores.filter(p => p.empresa === form.empresa).map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
-          </select>
-        </div>
-      )}
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
-        <div>
-          <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>DETALLE</label>
-          <input type="text" placeholder="Descripción" value={form.detalle} onChange={(e) => setForm({...form, detalle: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
-        </div>
-
-        <div>
-          <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#C4A747', display: 'block', marginBottom: '0.5rem' }}>VALOR</label>
-          <input type="number" placeholder="0.00" value={form.valor} onChange={(e) => setForm({...form, valor: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
-        </div>
-      </div>
-
-      <button onClick={() => onSubmit(form)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
-        💾 Guardar Gasto
-      </button>
     </div>
   );
 }
