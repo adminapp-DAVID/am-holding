@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 
 const empresas = ['AM SPORTS GROUP SAS', 'PRO INVESTMENTS GLOBAL SAS', 'PRONOVA CAPITAL SAS', 'FOR SEVEN MEDIA SAS', 'ARKO'];
+const cecos = ['CECO-001-GF', 'CECO-002-NM', 'CECO-003-GR', 'CECO-004-HR', 'CECO-005-AM', 'CECO-006-VI', 'CECO-007-PRS', 'CECO-008-TRS', 'CECO-009-RTE', 'CECO-010-SS'];
+const tiposPago = ['ADMINISTRATIVOS', 'REEMBOLSO', 'ANTICIPO', 'GIRO INTERNO', 'PAGOS GENERAL'];
 const users = [{ id: 1, nombre: 'Admin', email: 'admin@amholding.com', password: 'admin123', rol: 'admin' }];
 
 export default function App() {
@@ -8,6 +10,7 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [activeTab, setActiveTab] = useState('dashboard');
+  
   const [responsables, setResponsables] = useState(() => {
     const saved = localStorage.getItem('amResponsables');
     if (saved) return JSON.parse(saved);
@@ -38,111 +41,182 @@ export default function App() {
       { id: 24, nombre: 'Esteban Espindola', empresa: 'ARKO' }
     ];
   });
-  const [proveedores, setProveedores] = useState(() => {
-    const saved = localStorage.getItem('amProveedores');
-    return saved ? JSON.parse(saved) : [];
-  });
+  
+  const [proveedores, setProveedores] = useState(() => JSON.parse(localStorage.getItem('amProveedores') || '[]'));
+  const [gastos, setGastos] = useState(() => JSON.parse(localStorage.getItem('amGastos') || '[]'));
+  
   const [newResp, setNewResp] = useState({ nombre: '', empresa: '' });
   const [newProv, setNewProv] = useState({ nombre: '', tipo: '', empresa: '' });
+  const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], empresa: '', responsable: '', detalle: '', valor: '', ceco: '', tipoPago: '' });
+  
   const [filterEmpresa, setFilterEmpresa] = useState('');
+  const [searchGasto, setSearchGasto] = useState('');
+  const [filterMes, setFilterMes] = useState('');
 
-  useEffect(() => {
-    localStorage.setItem('amResponsables', JSON.stringify(responsables));
-  }, [responsables]);
-
-  useEffect(() => {
-    localStorage.setItem('amProveedores', JSON.stringify(proveedores));
-  }, [proveedores]);
+  useEffect(() => localStorage.setItem('amResponsables', JSON.stringify(responsables)), [responsables]);
+  useEffect(() => localStorage.setItem('amProveedores', JSON.stringify(proveedores)), [proveedores]);
+  useEffect(() => localStorage.setItem('amGastos', JSON.stringify(gastos)), [gastos]);
 
   const handleLogin = () => {
     const found = users.find(u => u.email === email && u.password === password);
-    if (found) {
-      setUser(found);
-      setEmail('');
-      setPassword('');
-    } else {
-      alert('Incorrecto');
-    }
+    if (found) { setUser(found); setEmail(''); setPassword(''); }
+    else alert('Incorrecto');
   };
 
   const handleAddResponsable = () => {
-    if (!newResp.nombre || !newResp.empresa) {
-      alert('Completa nombre y empresa');
-      return;
-    }
+    if (!newResp.nombre || !newResp.empresa) { alert('Completa campos'); return; }
     setResponsables([...responsables, { id: Date.now(), ...newResp }]);
     setNewResp({ nombre: '', empresa: '' });
   };
 
-  const handleDeleteResponsable = (id) => {
-    setResponsables(responsables.filter(r => r.id !== id));
-  };
+  const handleDeleteResponsable = (id) => setResponsables(responsables.filter(r => r.id !== id));
 
   const handleAddProveedor = () => {
-    if (!newProv.nombre || !newProv.empresa) {
-      alert('Completa nombre y empresa');
-      return;
-    }
+    if (!newProv.nombre || !newProv.empresa) { alert('Completa campos'); return; }
     setProveedores([...proveedores, { id: Date.now(), ...newProv }]);
     setNewProv({ nombre: '', tipo: '', empresa: '' });
   };
 
-  const handleDeleteProveedor = (id) => {
-    setProveedores(proveedores.filter(p => p.id !== id));
+  const handleDeleteProveedor = (id) => setProveedores(proveedores.filter(p => p.id !== id));
+
+  const handleAddGasto = () => {
+    if (!newGasto.empresa || !newGasto.responsable || !newGasto.detalle || !newGasto.valor || !newGasto.ceco || !newGasto.tipoPago) {
+      alert('Completa todos los campos');
+      return;
+    }
+    setGastos([...gastos, { id: Date.now(), ...newGasto, valor: parseFloat(newGasto.valor) }]);
+    setNewGasto({ fecha: new Date().toISOString().split('T')[0], empresa: '', responsable: '', detalle: '', valor: '', ceco: '', tipoPago: '' });
   };
 
-  const filteredResponsables = filterEmpresa ? responsables.filter(r => r.empresa === filterEmpresa) : responsables;
-  const filteredProveedores = filterEmpresa ? proveedores.filter(p => p.empresa === filterEmpresa) : proveedores;
+  const handleDeleteGasto = (id) => setGastos(gastos.filter(g => g.id !== id));
 
-  if (!user) {
-    return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#0f0f0f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ backgroundColor: '#1a1a1a', border: '2px solid #C4A747', borderRadius: '8px', padding: '3rem 2rem', textAlign: 'center', maxWidth: '400px' }}>
-          <h1 style={{ color: '#C4A747', fontSize: '2.5rem', margin: 0 }}>AM HOLDING</h1>
-          <p style={{ color: '#a0a0a0', margin: '1rem 0 2rem 0' }}>Control de Gastos</p>
-          <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '1rem', boxSizing: 'border-box', borderRadius: '4px' }} />
-          <input type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleLogin()} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '2rem', boxSizing: 'border-box', borderRadius: '4px' }} />
-          <button onClick={handleLogin} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Entrar</button>
-          <p style={{ color: '#7a7a7a', fontSize: '0.85rem', margin: '1.5rem 0 0 0' }}>admin@amholding.com / admin123</p>
-        </div>
+  const responsablesFiltered = filterEmpresa ? responsables.filter(r => r.empresa === filterEmpresa) : responsables;
+  const gastosFiltered = gastos.filter(g => {
+    const matchEmpresa = !filterEmpresa || g.empresa === filterEmpresa;
+    const matchMes = !filterMes || g.fecha?.startsWith(filterMes);
+    const matchSearch = !searchGasto || g.detalle?.toLowerCase().includes(searchGasto.toLowerCase()) || g.responsable?.toLowerCase().includes(searchGasto.toLowerCase());
+    return matchEmpresa && matchMes && matchSearch;
+  });
+
+  if (!user) return (
+    <div style={{ minHeight: '100vh', backgroundColor: '#0f0f0f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ backgroundColor: '#1a1a1a', border: '2px solid #C4A747', borderRadius: '8px', padding: '3rem 2rem', textAlign: 'center', maxWidth: '400px' }}>
+        <h1 style={{ color: '#C4A747', fontSize: '2.5rem', margin: 0 }}>AM HOLDING</h1>
+        <p style={{ color: '#a0a0a0', margin: '1rem 0 2rem 0' }}>Control de Gastos</p>
+        <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '1rem', boxSizing: 'border-box', borderRadius: '4px' }} />
+        <input type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleLogin()} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '2rem', boxSizing: 'border-box', borderRadius: '4px' }} />
+        <button onClick={handleLogin} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Entrar</button>
+        <p style={{ color: '#7a7a7a', fontSize: '0.85rem', margin: '1.5rem 0 0 0' }}>admin@amholding.com / admin123</p>
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0f0f0f', color: '#fff' }}>
       <header style={{ backgroundColor: '#1a1a1a', borderBottom: '2px solid #C4A747', padding: '1.5rem' }}>
         <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between' }}>
-          <div>
-            <h1 style={{ color: '#C4A747', margin: 0 }}>AM HOLDING</h1>
-            <p style={{ fontSize: '0.85rem', color: '#a0a0a0', margin: '0.5rem 0 0 0' }}>{user.nombre}</p>
-          </div>
+          <div><h1 style={{ color: '#C4A747', margin: 0 }}>AM HOLDING</h1><p style={{ fontSize: '0.85rem', color: '#a0a0a0', margin: '0.5rem 0 0 0' }}>{user.nombre}</p></div>
           <button onClick={() => setUser(null)} style={{ backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Salir</button>
         </div>
       </header>
 
-      <nav style={{ backgroundColor: '#1a1a1a', borderBottom: '1px solid #2a2a2a', padding: '1rem' }}>
-        <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', gap: '2rem' }}>
-          <button onClick={() => { setActiveTab('dashboard'); setFilterEmpresa(''); }} style={{ background: 'none', border: 'none', color: activeTab === 'dashboard' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', borderBottom: activeTab === 'dashboard' ? '2px solid #C4A747' : 'none', paddingBottom: '0.5rem' }}>📊 Dashboard</button>
-          <button onClick={() => setActiveTab('responsables')} style={{ background: 'none', border: 'none', color: activeTab === 'responsables' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', borderBottom: activeTab === 'responsables' ? '2px solid #C4A747' : 'none', paddingBottom: '0.5rem' }}>👥 Responsables</button>
-          <button onClick={() => setActiveTab('proveedores')} style={{ background: 'none', border: 'none', color: activeTab === 'proveedores' ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', borderBottom: activeTab === 'proveedores' ? '2px solid #C4A747' : 'none', paddingBottom: '0.5rem' }}>🏢 Proveedores</button>
+      <nav style={{ backgroundColor: '#1a1a1a', borderBottom: '1px solid #2a2a2a', padding: '1rem', overflowX: 'auto' }}>
+        <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', gap: '1rem', minWidth: 'fit-content' }}>
+          {['dashboard', 'gastos', 'responsables', 'proveedores'].map(tab => (
+            <button key={tab} onClick={() => { setActiveTab(tab); setFilterEmpresa(''); }} style={{ background: 'none', border: 'none', color: activeTab === tab ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', borderBottom: activeTab === tab ? '2px solid #C4A747' : 'none', paddingBottom: '0.5rem', whiteSpace: 'nowrap' }}>
+              {tab === 'dashboard' && '📊 Dashboard'}
+              {tab === 'gastos' && '💰 Gastos'}
+              {tab === 'responsables' && '👥 Responsables'}
+              {tab === 'proveedores' && '🏢 Proveedores'}
+            </button>
+          ))}
         </div>
       </nav>
 
       <main style={{ maxWidth: '1400px', margin: '2rem auto', padding: '0 1rem' }}>
+        
         {activeTab === 'dashboard' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}>
-              <p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>RESPONSABLES</p>
-              <p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{responsables.length}</p>
+            <div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>GASTOS</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{gastos.length}</p></div>
+            <div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>TOTAL</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>$ {(gastos.reduce((sum, g) => sum + (g.valor || 0), 0) / 1000000).toFixed(1)}M</p></div>
+            <div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>RESPONSABLES</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{responsables.length}</p></div>
+          </div>
+        )}
+
+        {activeTab === 'gastos' && (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
+              <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>➕ Nuevo Gasto</h2>
+                <input type="date" value={newGasto.fecha} onChange={(e) => setNewGasto({...newGasto, fecha: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
+                <select value={newGasto.empresa} onChange={(e) => setNewGasto({...newGasto, empresa: e.target.value, responsable: ''})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }}>
+                  <option value="">Empresa</option>
+                  {empresas.map(e => <option key={e} value={e}>{e}</option>)}
+                </select>
+                <select value={newGasto.responsable} onChange={(e) => setNewGasto({...newGasto, responsable: e.target.value})} disabled={!newGasto.empresa} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box', opacity: newGasto.empresa ? 1 : 0.5 }}>
+                  <option value="">Responsable</option>
+                  {responsablesFiltered.map(r => <option key={r.id} value={r.nombre}>{r.nombre}</option>)}
+                </select>
+                <input type="text" placeholder="Detalle del gasto" value={newGasto.detalle} onChange={(e) => setNewGasto({...newGasto, detalle: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
+                <input type="number" placeholder="Valor" value={newGasto.valor} onChange={(e) => setNewGasto({...newGasto, valor: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
+                <select value={newGasto.ceco} onChange={(e) => setNewGasto({...newGasto, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }}>
+                  <option value="">CECO</option>
+                  {cecos.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <select value={newGasto.tipoPago} onChange={(e) => setNewGasto({...newGasto, tipoPago: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }}>
+                  <option value="">Tipo de Pago</option>
+                  {tiposPago.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <button onClick={handleAddGasto} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar</button>
+              </div>
+
+              <div>
+                <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '1rem' }}>
+                  <h2 style={{ color: '#C4A747', margin: '0 0 1rem 0', fontSize: '1.1rem' }}>🔍 Filtros</h2>
+                  <select value={filterEmpresa} onChange={(e) => setFilterEmpresa(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }}>
+                    <option value="">Todas las empresas</option>
+                    {empresas.map(e => <option key={e} value={e}>{e}</option>)}
+                  </select>
+                  <input type="month" value={filterMes} onChange={(e) => setFilterMes(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
+                  <input type="text" placeholder="Buscar por detalle o responsable" value={searchGasto} onChange={(e) => setSearchGasto(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
+                </div>
+                <div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}>
+                  <p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>GASTOS FILTRADOS</p>
+                  <p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{gastosFiltered.length}</p>
+                </div>
+              </div>
             </div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}>
-              <p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>PROVEEDORES</p>
-              <p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{proveedores.length}</p>
-            </div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}>
-              <p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>EMPRESAS</p>
-              <p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{empresas.length}</p>
+
+            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', overflowX: 'auto' }}>
+              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>Registro de Gastos</h2>
+              <div style={{ minWidth: '100%', maxHeight: '600px', overflowY: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <thead style={{ position: 'sticky', top: 0, backgroundColor: '#0f0f0f' }}>
+                    <tr style={{ borderBottom: '2px solid #C4A747' }}>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Detalle</th>
+                      <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
+                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {gastosFiltered.map(g => (
+                      <tr key={g.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                        <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{g.fecha}</td>
+                        <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{g.empresa?.split(' ')[0]}</td>
+                        <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{g.responsable?.split(' ')[0]}</td>
+                        <td style={{ padding: '0.75rem', color: '#a0a0a0', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.detalle}</td>
+                        <td style={{ padding: '0.75rem', color: '#C4A747', textAlign: 'right', fontWeight: 'bold' }}>$ {(g.valor || 0).toLocaleString()}</td>
+                        <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.75rem' }}>{g.ceco}</td>
+                        <td style={{ padding: '0.75rem', textAlign: 'center' }}><button onClick={() => handleDeleteGasto(g.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b' }}>🗑️</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -159,18 +233,11 @@ export default function App() {
               <button onClick={handleAddResponsable} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar</button>
             </div>
             <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
-              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>Lista ({filteredResponsables.length})</h2>
-              <select value={filterEmpresa} onChange={(e) => setFilterEmpresa(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }}>
-                <option value="">Todas</option>
-                {empresas.map(e => <option key={e} value={e}>{e}</option>)}
-              </select>
+              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>Lista ({responsables.length})</h2>
               <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
-                {filteredResponsables.map(r => (
+                {responsables.map(r => (
                   <div key={r.id} style={{ backgroundColor: '#0f0f0f', padding: '0.75rem', borderRadius: '4px', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <p style={{ color: '#C4A747', margin: 0, fontSize: '0.9rem', fontWeight: 'bold' }}>{r.nombre.split(' ')[0]}</p>
-                      <p style={{ color: '#7a7a7a', fontSize: '0.75rem', margin: '0.25rem 0 0 0' }}>{r.empresa.split(' ')[0]}</p>
-                    </div>
+                    <div><p style={{ color: '#C4A747', margin: 0, fontSize: '0.9rem', fontWeight: 'bold' }}>{r.nombre.split(' ')[0]}</p><p style={{ color: '#7a7a7a', fontSize: '0.75rem', margin: '0.25rem 0 0 0' }}>{r.empresa.split(' ')[0]}</p></div>
                     <button onClick={() => handleDeleteResponsable(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem' }}>🗑️</button>
                   </div>
                 ))}
@@ -192,18 +259,11 @@ export default function App() {
               <button onClick={handleAddProveedor} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar</button>
             </div>
             <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
-              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>Lista ({filteredProveedores.length})</h2>
-              <select value={filterEmpresa} onChange={(e) => setFilterEmpresa(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }}>
-                <option value="">Todas</option>
-                {empresas.map(e => <option key={e} value={e}>{e}</option>)}
-              </select>
+              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>Lista ({proveedores.length})</h2>
               <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
-                {filteredProveedores.map(p => (
+                {proveedores.map(p => (
                   <div key={p.id} style={{ backgroundColor: '#0f0f0f', padding: '0.75rem', borderRadius: '4px', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <p style={{ color: '#C4A747', margin: 0, fontSize: '0.9rem', fontWeight: 'bold' }}>{p.nombre}</p>
-                      <p style={{ color: '#7a7a7a', fontSize: '0.75rem', margin: '0.25rem 0 0 0' }}>{p.tipo}</p>
-                    </div>
+                    <div><p style={{ color: '#C4A747', margin: 0, fontSize: '0.9rem', fontWeight: 'bold' }}>{p.nombre}</p><p style={{ color: '#7a7a7a', fontSize: '0.75rem', margin: '0.25rem 0 0 0' }}>{p.tipo}</p></div>
                     <button onClick={() => handleDeleteProveedor(p.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem' }}>🗑️</button>
                   </div>
                 ))}
