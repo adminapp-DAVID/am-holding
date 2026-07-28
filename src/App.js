@@ -3,7 +3,14 @@ import React, { useState, useEffect } from 'react';
 const empresas = ['AM SPORTS GROUP SAS', 'PRO INVESTMENTS GLOBAL SAS', 'PRONOVA CAPITAL SAS', 'FOR SEVEN MEDIA SAS', 'ARKO'];
 const cecos = ['CECO-001-GF', 'CECO-002-NM', 'CECO-003-GR', 'CECO-004-HR', 'CECO-005-AM', 'CECO-006-VI', 'CECO-007-PRS', 'CECO-008-TRS', 'CECO-009-RTE', 'CECO-010-SS'];
 const tiposPago = ['ADMINISTRATIVOS', 'REEMBOLSO', 'ANTICIPO', 'GIRO INTERNO', 'PAGOS GENERAL'];
-const users = [{ id: 1, nombre: 'Admin', email: 'admin@amholding.com', password: 'admin123', rol: 'admin' }];
+const modulosTodos = ['dashboard', 'gastos', 'responsables', 'proveedores', 'usuarios', 'roles'];
+
+const rolesDefault = [
+  { id: 1, nombre: 'Administrador', permisos: modulosTodos },
+  { id: 2, nombre: 'Responsable', permisos: ['dashboard', 'gastos'] },
+  { id: 3, nombre: 'Revisor', permisos: ['dashboard', 'gastos'] },
+  { id: 4, nombre: 'Contador', permisos: ['dashboard', 'gastos'] }
+];
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -44,10 +51,21 @@ export default function App() {
   
   const [proveedores, setProveedores] = useState(() => JSON.parse(localStorage.getItem('amProveedores') || '[]'));
   const [gastos, setGastos] = useState(() => JSON.parse(localStorage.getItem('amGastos') || '[]'));
+  const [usuarios, setUsuarios] = useState(() => {
+    const saved = localStorage.getItem('amUsuarios');
+    if (saved) return JSON.parse(saved);
+    return [{ id: 1, nombre: 'Admin', email: 'admin@amholding.com', password: 'admin123', rol: 'Administrador' }];
+  });
+  const [roles, setRoles] = useState(() => {
+    const saved = localStorage.getItem('amRoles');
+    return saved ? JSON.parse(saved) : rolesDefault;
+  });
   
   const [newResp, setNewResp] = useState({ nombre: '', empresa: '' });
   const [newProv, setNewProv] = useState({ nombre: '', tipo: '', empresa: '' });
   const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], empresa: '', responsable: '', detalle: '', valor: '', ceco: '', tipoPago: '' });
+  const [newUsuario, setNewUsuario] = useState({ nombre: '', email: '', password: '', rol: 'Responsable' });
+  const [newRol, setNewRol] = useState({ nombre: '', permisos: [] });
   
   const [filterEmpresa, setFilterEmpresa] = useState('');
   const [searchGasto, setSearchGasto] = useState('');
@@ -56,11 +74,61 @@ export default function App() {
   useEffect(() => localStorage.setItem('amResponsables', JSON.stringify(responsables)), [responsables]);
   useEffect(() => localStorage.setItem('amProveedores', JSON.stringify(proveedores)), [proveedores]);
   useEffect(() => localStorage.setItem('amGastos', JSON.stringify(gastos)), [gastos]);
+  useEffect(() => localStorage.setItem('amUsuarios', JSON.stringify(usuarios)), [usuarios]);
+  useEffect(() => localStorage.setItem('amRoles', JSON.stringify(roles)), [roles]);
 
   const handleLogin = () => {
-    const found = users.find(u => u.email === email && u.password === password);
-    if (found) { setUser(found); setEmail(''); setPassword(''); }
+    const found = usuarios.find(u => u.email === email && u.password === password);
+    if (found) { 
+      setUser(found); 
+      setEmail(''); 
+      setPassword(''); 
+      setActiveTab('dashboard');
+    }
     else alert('Incorrecto');
+  };
+
+  const rolActual = roles.find(r => r.nombre === user?.rol);
+  const permisosUsuario = rolActual?.permisos || [];
+  const tienePermiso = (modulo) => permisosUsuario.includes(modulo);
+
+  const handleAddUsuario = () => {
+    if (!newUsuario.nombre || !newUsuario.email || !newUsuario.password || !newUsuario.rol) {
+      alert('Completa todos los campos');
+      return;
+    }
+    if (usuarios.some(u => u.email === newUsuario.email)) {
+      alert('Email ya existe');
+      return;
+    }
+    setUsuarios([...usuarios, { id: Date.now(), ...newUsuario }]);
+    setNewUsuario({ nombre: '', email: '', password: '', rol: 'Responsable' });
+  };
+
+  const handleDeleteUsuario = (id) => {
+    if (id === user.id) { alert('No puedes eliminar tu propia cuenta'); return; }
+    setUsuarios(usuarios.filter(u => u.id !== id));
+  };
+
+  const handleAddRol = () => {
+    if (!newRol.nombre || newRol.permisos.length === 0) {
+      alert('Completa nombre y selecciona al menos un permiso');
+      return;
+    }
+    if (roles.some(r => r.nombre === newRol.nombre)) {
+      alert('El rol ya existe');
+      return;
+    }
+    setRoles([...roles, { id: Date.now(), ...newRol }]);
+    setNewRol({ nombre: '', permisos: [] });
+  };
+
+  const handleTogglePermiso = (modulo) => {
+    if (newRol.permisos.includes(modulo)) {
+      setNewRol({ ...newRol, permisos: newRol.permisos.filter(p => p !== modulo) });
+    } else {
+      setNewRol({ ...newRol, permisos: [...newRol.permisos, modulo] });
+    }
   };
 
   const handleAddResponsable = () => {
@@ -115,19 +183,21 @@ export default function App() {
     <div style={{ minHeight: '100vh', backgroundColor: '#0f0f0f', color: '#fff' }}>
       <header style={{ backgroundColor: '#1a1a1a', borderBottom: '2px solid #C4A747', padding: '1.5rem' }}>
         <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between' }}>
-          <div><h1 style={{ color: '#C4A747', margin: 0 }}>AM HOLDING</h1><p style={{ fontSize: '0.85rem', color: '#a0a0a0', margin: '0.5rem 0 0 0' }}>{user.nombre}</p></div>
+          <div><h1 style={{ color: '#C4A747', margin: 0 }}>AM HOLDING</h1><p style={{ fontSize: '0.85rem', color: '#a0a0a0', margin: '0.5rem 0 0 0' }}>{user.nombre} ({user.rol})</p></div>
           <button onClick={() => setUser(null)} style={{ backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Salir</button>
         </div>
       </header>
 
       <nav style={{ backgroundColor: '#1a1a1a', borderBottom: '1px solid #2a2a2a', padding: '1rem', overflowX: 'auto' }}>
         <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', gap: '1rem', minWidth: 'fit-content' }}>
-          {['dashboard', 'gastos', 'responsables', 'proveedores'].map(tab => (
+          {['dashboard', 'gastos', 'responsables', 'proveedores', 'usuarios', 'roles'].map(tab => tienePermiso(tab) && (
             <button key={tab} onClick={() => { setActiveTab(tab); setFilterEmpresa(''); }} style={{ background: 'none', border: 'none', color: activeTab === tab ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', borderBottom: activeTab === tab ? '2px solid #C4A747' : 'none', paddingBottom: '0.5rem', whiteSpace: 'nowrap' }}>
               {tab === 'dashboard' && '📊 Dashboard'}
               {tab === 'gastos' && '💰 Gastos'}
               {tab === 'responsables' && '👥 Responsables'}
               {tab === 'proveedores' && '🏢 Proveedores'}
+              {tab === 'usuarios' && '🔑 Usuarios'}
+              {tab === 'roles' && '⚙️ Roles'}
             </button>
           ))}
         </div>
@@ -139,7 +209,67 @@ export default function App() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
             <div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>GASTOS</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{gastos.length}</p></div>
             <div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>TOTAL</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>$ {(gastos.reduce((sum, g) => sum + (g.valor || 0), 0) / 1000000).toFixed(1)}M</p></div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>RESPONSABLES</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{responsables.length}</p></div>
+            <div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>USUARIOS</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{usuarios.length}</p></div>
+          </div>
+        )}
+
+        {activeTab === 'usuarios' && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>➕ Nuevo Usuario</h2>
+              <input type="text" placeholder="Nombre" value={newUsuario.nombre} onChange={(e) => setNewUsuario({...newUsuario, nombre: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
+              <input type="email" placeholder="Email" value={newUsuario.email} onChange={(e) => setNewUsuario({...newUsuario, email: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
+              <input type="password" placeholder="Contraseña" value={newUsuario.password} onChange={(e) => setNewUsuario({...newUsuario, password: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
+              <select value={newUsuario.rol} onChange={(e) => setNewUsuario({...newUsuario, rol: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }}>
+                {roles.map(r => <option key={r.nombre} value={r.nombre}>{r.nombre}</option>)}
+              </select>
+              <button onClick={handleAddUsuario} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar</button>
+            </div>
+            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>Lista ({usuarios.length})</h2>
+              <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
+                {usuarios.map(u => (
+                  <div key={u.id} style={{ backgroundColor: '#0f0f0f', padding: '1rem', borderRadius: '4px', marginBottom: '0.75rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                      <div>
+                        <p style={{ color: '#C4A747', margin: 0, fontWeight: 'bold' }}>{u.nombre}</p>
+                        <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '0.25rem 0 0 0' }}>{u.email}</p>
+                        <p style={{ color: '#C4A747', fontSize: '0.75rem', margin: '0.5rem 0 0 0', backgroundColor: '#1a1a1a', padding: '0.25rem 0.5rem', borderRadius: '2px', display: 'inline-block' }}>{u.rol}</p>
+                      </div>
+                      {u.id !== user.id && <button onClick={() => handleDeleteUsuario(u.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b' }}>🗑️</button>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'roles' && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>➕ Nuevo Rol</h2>
+              <input type="text" placeholder="Nombre del rol" value={newRol.nombre} onChange={(e) => setNewRol({...newRol, nombre: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
+              <p style={{ color: '#a0a0a0', fontSize: '0.9rem', margin: '0 0 1rem 0' }}>Permisos:</p>
+              {modulosTodos.map(mod => (
+                <label key={mod} style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={newRol.permisos.includes(mod)} onChange={() => handleTogglePermiso(mod)} style={{ marginRight: '0.75rem', cursor: 'pointer', width: '16px', height: '16px' }} />
+                  <span style={{ color: '#a0a0a0', textTransform: 'capitalize' }}>{mod}</span>
+                </label>
+              ))}
+              <button onClick={handleAddRol} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>Guardar</button>
+            </div>
+            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>Roles ({roles.length})</h2>
+              <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
+                {roles.map(r => (
+                  <div key={r.nombre} style={{ backgroundColor: '#0f0f0f', padding: '1rem', borderRadius: '4px', marginBottom: '0.75rem' }}>
+                    <p style={{ color: '#C4A747', margin: 0, fontWeight: 'bold' }}>{r.nombre}</p>
+                    <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>Permisos: {r.permisos.join(', ')}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
