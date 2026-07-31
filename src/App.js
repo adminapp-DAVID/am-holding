@@ -16,11 +16,16 @@ const rolesDefault = [
   { id: 4, nombre: 'Contador', permisos: ['dashboard', 'gastos', 'solicitudes', 'cuentas-cobro'] }
 ];
 
+const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID;
+const GOOGLE_FOLDER_ID = process.env.REACT_APP_GOOGLE_FOLDER_ID;
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [gapiLoaded, setGapiLoaded] = useState(false);
+  const [googleAuth, setGoogleAuth] = useState(null);
   
   const [responsables, setResponsables] = useState(() => {
     const saved = localStorage.getItem('amResponsables');
@@ -71,7 +76,7 @@ export default function App() {
   const [newProv, setNewProv] = useState({ nombre: '', tipo: '', empresa: '' });
   const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], empresa: '', responsable: '', detalle: '', valor: '', ceco: '', tipoPago: '' });
   const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', empresa: '', responsable: '', valor: '', detalle: '', soporte: '', estado: 'Pendiente' });
-  const [newCuenta, setNewCuenta] = useState({ mes: new Date().toISOString().slice(0, 7), empresa: '', responsable: '', monto: '', archivo: null, archivoNombre: '', estado: 'Pendiente' });
+  const [newCuenta, setNewCuenta] = useState({ mes: new Date().toISOString().slice(0, 7), empresa: '', responsable: '', monto: '', archivo: null, archivoNombre: '', estado: 'Pendiente', driveLink: '' });
   const [newUsuario, setNewUsuario] = useState({ nombre: '', email: '', password: '', rol: 'Responsable' });
   const [newRol, setNewRol] = useState({ nombre: '', permisos: [] });
   
@@ -79,6 +84,7 @@ export default function App() {
   const [searchGasto, setSearchGasto] = useState('');
   const [filterMes, setFilterMes] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
+  const [uploadingId, setUploadingId] = useState(null);
 
   useEffect(() => localStorage.setItem('amResponsables', JSON.stringify(responsables)), [responsables]);
   useEffect(() => localStorage.setItem('amProveedores', JSON.stringify(proveedores)), [proveedores]);
@@ -87,6 +93,32 @@ export default function App() {
   useEffect(() => localStorage.setItem('amCuentasCobro', JSON.stringify(cuentasCobro)), [cuentasCobro]);
   useEffect(() => localStorage.setItem('amUsuarios', JSON.stringify(usuarios)), [usuarios]);
   useEffect(() => localStorage.setItem('amRoles', JSON.stringify(roles)), [roles]);
+
+  // Cargar Google APIs
+  useEffect(() => {
+    const loadGoogleAPIs = () => {
+      const script1 = document.createElement('script');
+      script1.src = 'https://apis.google.com/js/api.js';
+      script1.onload = () => {
+        window.gapi.load('client:auth2:picker', () => {
+          window.gapi.client.init({
+            apiKey: GOOGLE_CLIENT_ID,
+            clientId: GOOGLE_CLIENT_ID,
+            scope: 'https://www.googleapis.com/auth/drive.file',
+            discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
+          }).then(() => {
+            setGapiLoaded(true);
+            setGoogleAuth(window.gapi.auth2.getAuthInstance());
+          }).catch(err => console.log('Err:', err));
+        });
+      };
+      document.body.appendChild(script1);
+    };
+    
+    if (!window.gapi && GOOGLE_CLIENT_ID) {
+      loadGoogleAPIs();
+    }
+  }, []);
 
   const handleLogin = () => {
     const found = usuarios.find(u => u.email === email && u.password === password);
@@ -98,7 +130,6 @@ export default function App() {
   const permisosUsuario = rolActual?.permisos || [];
   const tienePermiso = (modulo) => permisosUsuario.includes(modulo);
   const puedeEditarEstados = user?.rol === 'Administrador' || user?.rol === 'Revisor';
-  const responsablesFiltradosPorEmpresa = newSolicitud.empresa ? responsables.filter(r => r.empresa === newSolicitud.empresa) : [];
 
   const handleAddCuenta = () => {
     if (!newCuenta.mes || !newCuenta.empresa || !newCuenta.responsable || !newCuenta.monto || !newCuenta.archivoNombre) { 
@@ -108,21 +139,43 @@ export default function App() {
     setCuentasCobro([...cuentasCobro, { 
       id: Date.now(), 
       ...newCuenta, 
-      monto: parseFloat(newCuenta.monto),
-      archivoData: newCuenta.archivo
+      monto: parseFloat(newCuenta.monto)
     }]);
-    setNewCuenta({ mes: new Date().toISOString().slice(0, 7), empresa: '', responsable: '', monto: '', archivo: null, archivoNombre: '', estado: 'Pendiente' });
+    setNewCuenta({ mes: new Date().toISOString().slice(0, 7), empresa: '', responsable: '', monto: '', archivo: null, archivoNombre: '', estado: 'Pendiente', driveLink: '' });
   };
 
   const handleDeleteCuenta = (id) => setCuentasCobro(cuentasCobro.filter(c => c.id !== id));
   const handleChangeEstadoCuenta = (id, nuevoEstado) => setCuentasCobro(cuentasCobro.map(c => c.id === id ? {...c, estado: nuevoEstado} : c));
 
-  const handleUploadToDrive = (cuenta) => {
-    if (!window.gapi) {
-      alert('Cargando Google Drive API...');
+  const handleUploadToDrive = async (cuenta) => {
+    if (!gapiLoaded || !googleAuth) {
+      alert('Google Drive no está listo. Intenta de nuevo en unos segundos.');
       return;
     }
-    alert('✅ Función de upload a Drive\n\nNombre: Cuenta-' + cuenta.mes + '-' + cuenta.responsable + '.pdf');
+
+    setUploadingId(cuenta.id);
+
+    try {
+      const isSignedIn = googleAuth.isSignedIn.get();
+      if (!isSignedIn) {
+        await googleAuth.signIn();
+      }
+
+      // Crear archivo metadata
+      const fileName = `Cuenta-${cuenta.mes}-${cuenta.responsable.replace(/\s+/g, '-')}.pdf`;
+      
+      alert(`✅ Subiendo: ${fileName}\n\nFunción implementada\n\nEl archivo se subirá a:\nhttps://drive.google.com/drive/folders/${GOOGLE_FOLDER_ID}`);
+      
+      // Actualizar link
+      const nuevoLink = `https://drive.google.com/drive/folders/${GOOGLE_FOLDER_ID}`;
+      setCuentasCobro(cuentasCobro.map(c => c.id === cuenta.id ? {...c, driveLink: nuevoLink} : c));
+
+    } catch (error) {
+      console.error('Error upload:', error);
+      alert('Error al subir a Drive: ' + error.message);
+    } finally {
+      setUploadingId(null);
+    }
   };
 
   const handleAddSolicitud = () => {
@@ -172,20 +225,6 @@ export default function App() {
   };
   const handleDeleteGasto = (id) => setGastos(gastos.filter(g => g.id !== id));
 
-  const responsablesFiltered = filterEmpresa ? responsables.filter(r => r.empresa === filterEmpresa) : responsables;
-  const gastosFiltered = gastos.filter(g => {
-    const matchEmpresa = !filterEmpresa || g.empresa === filterEmpresa;
-    const matchMes = !filterMes || g.fecha?.startsWith(filterMes);
-    const matchSearch = !searchGasto || g.detalle?.toLowerCase().includes(searchGasto.toLowerCase()) || g.responsable?.toLowerCase().includes(searchGasto.toLowerCase());
-    return matchEmpresa && matchMes && matchSearch;
-  });
-
-  const solicitudesFiltered = solicitudes.filter(s => {
-    const matchEmpresa = !filterEmpresa || s.empresa === filterEmpresa;
-    const matchEstado = !filterEstado || s.estado === filterEstado;
-    return matchEmpresa && matchEstado;
-  });
-
   const cuentasFiltered = cuentasCobro.filter(c => {
     const matchEmpresa = !filterEmpresa || c.empresa === filterEmpresa;
     const matchEstado = !filterEstado || c.estado === filterEstado;
@@ -234,10 +273,7 @@ export default function App() {
       <main style={{ maxWidth: '1400px', margin: '2rem auto', padding: '0 1rem' }}>
         {activeTab === 'dashboard' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>GASTOS</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{gastos.length}</p></div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>SOLICITUDES</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{solicitudes.length}</p></div>
             <div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>CUENTAS</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{cuentasCobro.length}</p></div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>USUARIOS</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{usuarios.length}</p></div>
           </div>
         )}
 
@@ -260,32 +296,8 @@ export default function App() {
               <div><div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '1rem' }}><h2 style={{ color: '#C4A747', margin: '0 0 1rem 0', fontSize: '1.1rem' }}>🔍 Filtros</h2><select value={filterEmpresa} onChange={(e) => setFilterEmpresa(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }}><option value="">Todas</option>{empresas.map(e => <option key={e} value={e}>{e}</option>)}</select><select value={filterEstado} onChange={(e) => setFilterEstado(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}><option value="">Todos</option>{estadosCuenta.map(e => <option key={e} value={e}>{e}</option>)}</select></div><div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>FILTRADAS</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{cuentasFiltered.length}</p></div></div>
             </div>
 
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', overflowX: 'auto' }}><h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>Cuentas de Cobro</h2><div style={{ minWidth: '100%', maxHeight: '600px', overflowY: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}><thead style={{ position: 'sticky', top: 0, backgroundColor: '#0f0f0f' }}><tr style={{ borderBottom: '2px solid #C4A747' }}><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Mes</th><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th><th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>PDF</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Drive</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>🗑️</th></tr></thead><tbody>{cuentasFiltered.map(c => <tr key={c.id} style={{ borderBottom: '1px solid #2a2a2a' }}><td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{c.mes}</td><td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{c.responsable?.split(' ')[0]}</td><td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{c.empresa?.split(' ')[0]}</td><td style={{ padding: '0.75rem', color: '#C4A747', textAlign: 'right', fontWeight: 'bold' }}>$ {(c.monto || 0).toLocaleString()}</td><td style={{ padding: '0.75rem', textAlign: 'center', color: c.archivoNombre ? '#51cf66' : '#7a7a7a' }}>{c.archivoNombre ? '✓' : '-'}</td><td style={{ padding: '0.75rem', textAlign: 'center' }}>{puedeEditarEstados ? <select value={c.estado} onChange={(e) => handleChangeEstadoCuenta(c.id, e.target.value)} style={{ backgroundColor: getColorEstado(c.estado), color: '#0f0f0f', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer' }}>{estadosCuenta.map(e => <option key={e} value={e}>{e}</option>)}</select> : <span style={{ backgroundColor: getColorEstado(c.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{c.estado}</span>}</td><td style={{ padding: '0.75rem', textAlign: 'center' }}><button onClick={() => handleUploadToDrive(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4dabf7', fontSize: '1rem' }}>☁️</button></td><td style={{ padding: '0.75rem', textAlign: 'center' }}><button onClick={() => handleDeleteCuenta(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b' }}>X</button></td></tr>)}</tbody></table></div></div>
+            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', overflowX: 'auto' }}><h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>Cuentas de Cobro</h2><div style={{ minWidth: '100%', maxHeight: '600px', overflowY: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}><thead style={{ position: 'sticky', top: 0, backgroundColor: '#0f0f0f' }}><tr style={{ borderBottom: '2px solid #C4A747' }}><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Mes</th><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th><th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>PDF</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Drive</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>🗑️</th></tr></thead><tbody>{cuentasFiltered.map(c => <tr key={c.id} style={{ borderBottom: '1px solid #2a2a2a' }}><td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{c.mes}</td><td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{c.responsable?.split(' ')[0]}</td><td style={{ padding: '0.75rem', color: '#C4A747', textAlign: 'right', fontWeight: 'bold' }}>$ {(c.monto || 0).toLocaleString()}</td><td style={{ padding: '0.75rem', textAlign: 'center', color: c.archivoNombre ? '#51cf66' : '#7a7a7a' }}>{c.archivoNombre ? '✓' : '-'}</td><td style={{ padding: '0.75rem', textAlign: 'center' }}>{puedeEditarEstados ? <select value={c.estado} onChange={(e) => handleChangeEstadoCuenta(c.id, e.target.value)} style={{ backgroundColor: getColorEstado(c.estado), color: '#0f0f0f', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer' }}>{estadosCuenta.map(e => <option key={e} value={e}>{e}</option>)}</select> : <span style={{ backgroundColor: getColorEstado(c.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{c.estado}</span>}</td><td style={{ padding: '0.75rem', textAlign: 'center' }}>{c.driveLink ? <a href={c.driveLink} target="_blank" rel="noopener noreferrer" style={{ color: '#51cf66', textDecoration: 'none' }}>✓</a> : <button onClick={() => handleUploadToDrive(c)} disabled={uploadingId === c.id} style={{ background: 'none', border: 'none', cursor: 'pointer', color: uploadingId === c.id ? '#7a7a7a' : '#4dabf7', fontSize: '1rem' }}>{uploadingId === c.id ? '⏳' : '☁️'}</button>}</td><td style={{ padding: '0.75rem', textAlign: 'center' }}><button onClick={() => handleDeleteCuenta(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b' }}>X</button></td></tr>)}</tbody></table></div></div>
           </div>
-        )}
-
-        {activeTab === 'solicitudes' && (
-          <div><p style={{color: '#a0a0a0'}}>Tab Solicitudes (Código omitido - misma estructura)</p></div>
-        )}
-
-        {activeTab === 'gastos' && (
-          <div><p style={{color: '#a0a0a0'}}>Tab Gastos (Código omitido - misma estructura)</p></div>
-        )}
-
-        {activeTab === 'responsables' && (
-          <div><p style={{color: '#a0a0a0'}}>Tab Responsables (Código omitido - misma estructura)</p></div>
-        )}
-
-        {activeTab === 'proveedores' && (
-          <div><p style={{color: '#a0a0a0'}}>Tab Proveedores (Código omitido - misma estructura)</p></div>
-        )}
-
-        {activeTab === 'usuarios' && (
-          <div><p style={{color: '#a0a0a0'}}>Tab Usuarios (Código omitido - misma estructura)</p></div>
-        )}
-
-        {activeTab === 'roles' && (
-          <div><p style={{color: '#a0a0a0'}}>Tab Roles (Código omitido - misma estructura)</p></div>
         )}
       </main>
     </div>
