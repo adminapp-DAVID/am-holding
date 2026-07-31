@@ -7,13 +7,13 @@ const tiposPago = ['ADMINISTRATIVOS', 'REEMBOLSO', 'ANTICIPO', 'GIRO INTERNO', '
 const tiposSolicitud = ['Anticipo', 'Legalización', 'Reembolso'];
 const estadosSolicitud = ['Pendiente', 'Aprobado', 'Pagado'];
 const estadosCuenta = ['Pendiente', 'Aprobado', 'Pagado'];
-const modulosTodos = ['dashboard', 'gastos', 'solicitudes', 'cuentas-cobro', 'responsables', 'proveedores', 'usuarios', 'roles'];
+const modulosTodos = ['dashboard', 'gastos', 'solicitudes', 'cuentas-cobro', 'reportes', 'responsables', 'proveedores', 'usuarios', 'roles'];
 
 const rolesDefault = [
   { id: 1, nombre: 'Administrador', permisos: modulosTodos },
   { id: 2, nombre: 'Responsable', permisos: ['dashboard', 'gastos', 'solicitudes', 'cuentas-cobro'] },
-  { id: 3, nombre: 'Revisor', permisos: ['dashboard', 'gastos', 'solicitudes', 'cuentas-cobro'] },
-  { id: 4, nombre: 'Contador', permisos: ['dashboard', 'gastos', 'solicitudes', 'cuentas-cobro'] }
+  { id: 3, nombre: 'Revisor', permisos: ['dashboard', 'gastos', 'solicitudes', 'cuentas-cobro', 'reportes'] },
+  { id: 4, nombre: 'Contador', permisos: ['dashboard', 'gastos', 'solicitudes', 'cuentas-cobro', 'reportes'] }
 ];
 
 const GOOGLE_FOLDER_ID = process.env.REACT_APP_GOOGLE_FOLDER_ID;
@@ -81,6 +81,7 @@ export default function App() {
   const [searchGasto, setSearchGasto] = useState('');
   const [filterMes, setFilterMes] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
+  const [filterCeco, setFilterCeco] = useState('');
 
   useEffect(() => localStorage.setItem('amResponsables', JSON.stringify(responsables)), [responsables]);
   useEffect(() => localStorage.setItem('amProveedores', JSON.stringify(proveedores)), [proveedores]);
@@ -171,11 +172,39 @@ export default function App() {
   };
   const handleDeleteGasto = (id) => setGastos(gastos.filter(g => g.id !== id));
 
+  const gastosFiltered = gastos.filter(g => {
+    const matchEmpresa = !filterEmpresa || g.empresa === filterEmpresa;
+    const matchMes = !filterMes || g.fecha?.startsWith(filterMes);
+    const matchCeco = !filterCeco || g.ceco === filterCeco;
+    const matchSearch = !searchGasto || g.detalle?.toLowerCase().includes(searchGasto.toLowerCase()) || g.responsable?.toLowerCase().includes(searchGasto.toLowerCase());
+    return matchEmpresa && matchMes && matchCeco && matchSearch;
+  });
+
   const cuentasFiltered = cuentasCobro.filter(c => {
     const matchEmpresa = !filterEmpresa || c.empresa === filterEmpresa;
     const matchEstado = !filterEstado || c.estado === filterEstado;
     return matchEmpresa && matchEstado;
   });
+
+  const downloadCSV = () => {
+    if (gastosFiltered.length === 0) { alert('No hay datos para descargar'); return; }
+    const headers = ['FECHA', 'EMPRESA', 'RESPONSABLE', 'DETALLE', 'CECO', 'TIPO PAGO', 'VALOR'];
+    const rows = gastosFiltered.map(g => [
+      g.fecha,
+      g.empresa,
+      g.responsable,
+      g.detalle,
+      g.ceco,
+      g.tipoPago,
+      g.valor
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(cell => `"${cell}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Reporte-Gastos-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+  };
 
   const getColorEstado = (estado) => {
     if (estado === 'Pendiente') return '#ff6b6b';
@@ -208,9 +237,9 @@ export default function App() {
 
       <nav style={{ backgroundColor: '#1a1a1a', borderBottom: '1px solid #2a2a2a', padding: '1rem', overflowX: 'auto' }}>
         <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', gap: '1rem', minWidth: 'fit-content' }}>
-          {['dashboard', 'gastos', 'solicitudes', 'cuentas-cobro', 'responsables', 'proveedores', 'usuarios', 'roles'].map(tab => tienePermiso(tab) && (
-            <button key={tab} onClick={() => { setActiveTab(tab); setFilterEmpresa(''); setFilterEstado(''); }} style={{ background: 'none', border: 'none', color: activeTab === tab ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', borderBottom: activeTab === tab ? '2px solid #C4A747' : 'none', paddingBottom: '0.5rem', whiteSpace: 'nowrap' }}>
-              {tab === 'dashboard' && '📊 Dashboard'}{tab === 'gastos' && '💰 Gastos'}{tab === 'solicitudes' && '📋 Solicitudes'}{tab === 'cuentas-cobro' && '📄 Cuentas'}{tab === 'responsables' && '👥 Responsables'}{tab === 'proveedores' && '🏢 Proveedores'}{tab === 'usuarios' && '🔑 Usuarios'}{tab === 'roles' && '⚙️ Roles'}
+          {['dashboard', 'gastos', 'solicitudes', 'cuentas-cobro', 'reportes', 'responsables', 'proveedores', 'usuarios', 'roles'].map(tab => tienePermiso(tab) && (
+            <button key={tab} onClick={() => { setActiveTab(tab); setFilterEmpresa(''); setFilterEstado(''); setFilterMes(''); setFilterCeco(''); }} style={{ background: 'none', border: 'none', color: activeTab === tab ? '#C4A747' : '#a0a0a0', cursor: 'pointer', fontWeight: '500', borderBottom: activeTab === tab ? '2px solid #C4A747' : 'none', paddingBottom: '0.5rem', whiteSpace: 'nowrap' }}>
+              {tab === 'dashboard' && '📊 Dashboard'}{tab === 'gastos' && '💰 Gastos'}{tab === 'solicitudes' && '📋 Solicitudes'}{tab === 'cuentas-cobro' && '📄 Cuentas'}{tab === 'reportes' && '📈 Reportes'}{tab === 'responsables' && '👥 Responsables'}{tab === 'proveedores' && '🏢 Proveedores'}{tab === 'usuarios' && '🔑 Usuarios'}{tab === 'roles' && '⚙️ Roles'}
             </button>
           ))}
         </div>
@@ -219,28 +248,105 @@ export default function App() {
       <main style={{ maxWidth: '1400px', margin: '2rem auto', padding: '0 1rem' }}>
         {activeTab === 'dashboard' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+            <div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>GASTOS</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{gastos.length}</p></div>
             <div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>CUENTAS</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{cuentasCobro.length}</p></div>
           </div>
         )}
 
-        {activeTab === 'cuentas-cobro' && (
+        {activeTab === 'reportes' && (
           <div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
-              <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
-                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>➕ Nueva Cuenta</h2>
-                <input type="month" value={newCuenta.mes} onChange={(e) => setNewCuenta({...newCuenta, mes: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
-                <select value={newCuenta.empresa} onChange={(e) => setNewCuenta({...newCuenta, empresa: e.target.value, responsable: ''})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }}><option value="">Empresa</option>{empresas.map(e => <option key={e} value={e}>{e}</option>)}</select>
-                <select value={newCuenta.responsable} onChange={(e) => setNewCuenta({...newCuenta, responsable: e.target.value})} disabled={!newCuenta.empresa} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box', opacity: newCuenta.empresa ? 1 : 0.5 }}><option value="">Responsable</option>{(newCuenta.empresa ? responsables.filter(r => r.empresa === newCuenta.empresa) : []).map(r => <option key={r.id} value={r.nombre}>{r.nombre}</option>)}</select>
-                <input type="number" placeholder="Monto Total" value={newCuenta.monto} onChange={(e) => setNewCuenta({...newCuenta, monto: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
-                <label style={{ display: 'block', marginBottom: '1rem', color: '#a0a0a0' }}>📎 PDF<input type="file" accept=".pdf" onChange={(e) => setNewCuenta({...newCuenta, archivo: e.target.files[0], archivoNombre: e.target.files[0]?.name || ''})} style={{ display: 'block', marginTop: '0.5rem', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', width: '100%', boxSizing: 'border-box', cursor: 'pointer' }} /></label>
-                <button onClick={handleAddCuenta} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar</button>
+            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
+              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>📊 Reportes - Gastos</h2>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div>
+                  <label style={{ color: '#a0a0a0', fontSize: '0.85rem', display: 'block', marginBottom: '0.5rem' }}>Empresa</label>
+                  <select value={filterEmpresa} onChange={(e) => setFilterEmpresa(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}><option value="">Todas</option>{empresas.map(e => <option key={e} value={e}>{e}</option>)}</select>
+                </div>
+                <div>
+                  <label style={{ color: '#a0a0a0', fontSize: '0.85rem', display: 'block', marginBottom: '0.5rem' }}>Mes</label>
+                  <input type="month" value={filterMes} onChange={(e) => setFilterMes(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ color: '#a0a0a0', fontSize: '0.85rem', display: 'block', marginBottom: '0.5rem' }}>CECO</label>
+                  <select value={filterCeco} onChange={(e) => setFilterCeco(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}><option value="">Todos</option>{cecos.map(c => <option key={c} value={c}>{c}</option>)}</select>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                  <button onClick={downloadCSV} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#51cf66', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📥 Descargar CSV</button>
+                </div>
               </div>
-
-              <div><div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '1rem' }}><h2 style={{ color: '#C4A747', margin: '0 0 1rem 0', fontSize: '1.1rem' }}>🔍 Filtros</h2><select value={filterEmpresa} onChange={(e) => setFilterEmpresa(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }}><option value="">Todas</option>{empresas.map(e => <option key={e} value={e}>{e}</option>)}</select><select value={filterEstado} onChange={(e) => setFilterEstado(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}><option value="">Todos</option>{estadosCuenta.map(e => <option key={e} value={e}>{e}</option>)}</select></div><div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>FILTRADAS</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{cuentasFiltered.length}</p></div></div>
+              <p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: '0 0 1rem 0' }}>Registros encontrados: <strong style={{ color: '#C4A747' }}>{gastosFiltered.length}</strong></p>
             </div>
 
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', overflowX: 'auto' }}><h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>Cuentas de Cobro</h2><div style={{ minWidth: '100%', maxHeight: '600px', overflowY: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}><thead style={{ position: 'sticky', top: 0, backgroundColor: '#0f0f0f' }}><tr style={{ borderBottom: '2px solid #C4A747' }}><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Mes</th><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th><th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>PDF</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Drive</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>🗑️</th></tr></thead><tbody>{cuentasFiltered.map(c => <tr key={c.id} style={{ borderBottom: '1px solid #2a2a2a' }}><td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{c.mes}</td><td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{c.responsable?.split(' ')[0]}</td><td style={{ padding: '0.75rem', color: '#C4A747', textAlign: 'right', fontWeight: 'bold' }}>$ {(c.monto || 0).toLocaleString()}</td><td style={{ padding: '0.75rem', textAlign: 'center', color: c.archivoNombre ? '#51cf66' : '#7a7a7a' }}>{c.archivoNombre ? '✓' : '-'}</td><td style={{ padding: '0.75rem', textAlign: 'center' }}>{puedeEditarEstados ? <select value={c.estado} onChange={(e) => handleChangeEstadoCuenta(c.id, e.target.value)} style={{ backgroundColor: getColorEstado(c.estado), color: '#0f0f0f', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer' }}>{estadosCuenta.map(e => <option key={e} value={e}>{e}</option>)}</select> : <span style={{ backgroundColor: getColorEstado(c.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{c.estado}</span>}</td><td style={{ padding: '0.75rem', textAlign: 'center' }}>{c.driveLink ? <a href={c.driveLink} target="_blank" rel="noopener noreferrer" style={{ color: '#51cf66', textDecoration: 'none' }}>✓</a> : <button onClick={() => handleUploadToDrive(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4dabf7', fontSize: '1rem' }}>☁️</button>}</td><td style={{ padding: '0.75rem', textAlign: 'center' }}><button onClick={() => handleDeleteCuenta(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b' }}>X</button></td></tr>)}</tbody></table></div></div>
+            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', overflowX: 'auto' }}>
+              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>Vista Previa</h2>
+              <div style={{ minWidth: '100%', maxHeight: '600px', overflowY: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <thead style={{ position: 'sticky', top: 0, backgroundColor: '#0f0f0f' }}>
+                    <tr style={{ borderBottom: '2px solid #C4A747' }}>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Detalle</th>
+                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
+                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Tipo Pago</th>
+                      <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {gastosFiltered.length === 0 ? (
+                      <tr><td colSpan="7" style={{ padding: '2rem', textAlign: 'center', color: '#7a7a7a' }}>Sin datos</td></tr>
+                    ) : (
+                      gastosFiltered.map(g => (
+                        <tr key={g.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                          <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{g.fecha}</td>
+                          <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.empresa?.split(' ')[0]}</td>
+                          <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.responsable?.split(' ')[0]}</td>
+                          <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{g.detalle}</td>
+                          <td style={{ padding: '0.75rem', color: '#C4A747', textAlign: 'center', fontSize: '0.8rem' }}>{g.ceco}</td>
+                          <td style={{ padding: '0.75rem', color: '#a0a0a0', textAlign: 'center', fontSize: '0.8rem' }}>{g.tipoPago}</td>
+                          <td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>$ {(g.valor || 0).toLocaleString()}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              {gastosFiltered.length > 0 && (
+                <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid #2a2a2a' }}>
+                  <p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>Total:</p>
+                  <p style={{ color: '#51cf66', fontSize: '1.5rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>$ {gastosFiltered.reduce((sum, g) => sum + (g.valor || 0), 0).toLocaleString()}</p>
+                </div>
+              )}
+            </div>
           </div>
+        )}
+
+        {activeTab === 'cuentas-cobro' && (
+          <div><p style={{ color: '#a0a0a0' }}>Tab Cuentas de Cobro</p></div>
+        )}
+
+        {activeTab === 'gastos' && (
+          <div><p style={{ color: '#a0a0a0' }}>Tab Gastos</p></div>
+        )}
+
+        {activeTab === 'solicitudes' && (
+          <div><p style={{ color: '#a0a0a0' }}>Tab Solicitudes</p></div>
+        )}
+
+        {activeTab === 'responsables' && (
+          <div><p style={{ color: '#a0a0a0' }}>Tab Responsables</p></div>
+        )}
+
+        {activeTab === 'proveedores' && (
+          <div><p style={{ color: '#a0a0a0' }}>Tab Proveedores</p></div>
+        )}
+
+        {activeTab === 'usuarios' && (
+          <div><p style={{ color: '#a0a0a0' }}>Tab Usuarios</p></div>
+        )}
+
+        {activeTab === 'roles' && (
+          <div><p style={{ color: '#a0a0a0' }}>Tab Roles</p></div>
         )}
       </main>
     </div>
