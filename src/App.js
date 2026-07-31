@@ -147,17 +147,12 @@ export default function App() {
   const handleDeleteCuenta = (id) => setCuentasCobro(cuentasCobro.filter(c => c.id !== id));
   const handleChangeEstadoCuenta = (id, nuevoEstado) => setCuentasCobro(cuentasCobro.map(c => c.id === id ? {...c, estado: nuevoEstado} : c));
 
-  const handleUploadToDrive = (cuenta) => {
+const handleUploadToDrive = (cuenta) => {
   const fileName = `Cuenta-${cuenta.mes}-${cuenta.responsable.replace(/\s+/g, '-')}.pdf`;
   const driveLink = `https://drive.google.com/drive/folders/${GOOGLE_FOLDER_ID}`;
   setCuentasCobro(cuentasCobro.map(c => c.id === cuenta.id ? {...c, driveLink} : c));
   alert(`✅ ${fileName}\n\nGuardado en:\n${driveLink}`);
 };
-    const fileName = `Cuenta-${cuenta.mes}-${cuenta.responsable.replace(/\s+/g, '-')}.pdf`;
-    const driveLink = `https://drive.google.com/drive/folders/${GOOGLE_FOLDER_ID}`;
-    setCuentasCobro(cuentasCobro.map(c => c.id === cuenta.id ? {...c, driveLink} : c));
-    alert(`✅ ${fileName}\n\nGuardado en:\n${driveLink}`);
-  };
       console.error('Error upload:', error);
       alert('Error al subir a Drive: ' + error.message);
     } finally {
