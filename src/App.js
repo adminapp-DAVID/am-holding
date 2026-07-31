@@ -150,18 +150,10 @@ export default function App() {
   const handleUploadToDrive = (cuenta) => {
   const fileName = `Cuenta-${cuenta.mes}-${cuenta.responsable.replace(/\s+/g, '-')}.pdf`;
   const driveLink = `https://drive.google.com/drive/folders/${GOOGLE_FOLDER_ID}`;
-  
   setCuentasCobro(cuentasCobro.map(c => c.id === cuenta.id ? {...c, driveLink} : c));
   alert(`✅ ${fileName}\n\nGuardado en:\n${driveLink}`);
 };
-
-    setUploadingId(cuenta.id);
-
-    try {
-      const isSignedIn = googleAuth.isSignedIn.get();
-      if (!isSignedIn) {
-        await googleAuth.signIn();
-      }
+    
 
       // Crear archivo metadata
       const fileName = `Cuenta-${cuenta.mes}-${cuenta.responsable.replace(/\s+/g, '-')}.pdf`;
