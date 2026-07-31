@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+/* eslint-disable no-unused-vars */
 
 const empresas = ['AM SPORTS GROUP SAS', 'PRO INVESTMENTS GLOBAL SAS', 'PRONOVA CAPITAL SAS', 'FOR SEVEN MEDIA SAS', 'ARKO'];
 const cecos = ['CECO-001-GF', 'CECO-002-NM', 'CECO-003-GR', 'CECO-004-HR', 'CECO-005-AM', 'CECO-006-VI', 'CECO-007-PRS', 'CECO-008-TRS', 'CECO-009-RTE', 'CECO-010-SS'];
