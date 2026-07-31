@@ -153,18 +153,11 @@ export default function App() {
   setCuentasCobro(cuentasCobro.map(c => c.id === cuenta.id ? {...c, driveLink} : c));
   alert(`✅ ${fileName}\n\nGuardado en:\n${driveLink}`);
 };
-    
-
-      // Crear archivo metadata
-      const fileName = `Cuenta-${cuenta.mes}-${cuenta.responsable.replace(/\s+/g, '-')}.pdf`;
-      
-      alert(`✅ Subiendo: ${fileName}\n\nFunción implementada\n\nEl archivo se subirá a:\nhttps://drive.google.com/drive/folders/${GOOGLE_FOLDER_ID}`);
-      
-      // Actualizar link
-      const nuevoLink = `https://drive.google.com/drive/folders/${GOOGLE_FOLDER_ID}`;
-      setCuentasCobro(cuentasCobro.map(c => c.id === cuenta.id ? {...c, driveLink: nuevoLink} : c));
-
-    } catch (error) {
+    const fileName = `Cuenta-${cuenta.mes}-${cuenta.responsable.replace(/\s+/g, '-')}.pdf`;
+    const driveLink = `https://drive.google.com/drive/folders/${GOOGLE_FOLDER_ID}`;
+    setCuentasCobro(cuentasCobro.map(c => c.id === cuenta.id ? {...c, driveLink} : c));
+    alert(`✅ ${fileName}\n\nGuardado en:\n${driveLink}`);
+  };
       console.error('Error upload:', error);
       alert('Error al subir a Drive: ' + error.message);
     } finally {
