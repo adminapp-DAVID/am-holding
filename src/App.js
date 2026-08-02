@@ -5,7 +5,7 @@ const empresas = ['AM SPORTS GROUP SAS', 'PRO INVESTMENTS GLOBAL SAS', 'PRONOVA 
 const cecos = ['CECO-001-GF', 'CECO-002-NM', 'CECO-003-GR', 'CECO-004-HR', 'CECO-005-AM', 'CECO-006-VI', 'CECO-007-PRS', 'CECO-008-TRS', 'CECO-009-RTE', 'CECO-010-SS'];
 const tiposPago = ['ADMINISTRATIVOS', 'REEMBOLSO', 'ANTICIPO', 'GIRO INTERNO', 'PAGOS GENERAL'];
 const tiposSolicitud = ['Anticipo', 'Legalización', 'Reembolso'];
-const estadosSolicitud = ['Pendiente', 'Aprobado', 'Pagado'];
+const estadosSolicitud = ['Pendiente', 'Aprobado', 'Pagado', 'Legalizado'];
 const estadosCuenta = ['Pendiente', 'Aprobado', 'Pagado'];
 const modulosTodos = ['dashboard', 'gastos', 'solicitudes', 'cuentas-cobro', 'reportes', 'responsables', 'proveedores', 'usuarios', 'roles'];
 
@@ -72,7 +72,7 @@ export default function App() {
   const [newResp, setNewResp] = useState({ nombre: '', empresa: '' });
   const [newProv, setNewProv] = useState({ nombre: '', tipo: '', empresa: '' });
   const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], empresa: '', responsable: '', detalle: '', valor: '', ceco: '', tipoPago: '' });
-  const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', empresa: '', responsable: '', valor: '', detalle: '', soporte: '', estado: 'Pendiente' });
+  const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', empresa: '', responsable: '', valor: '', detalle: '', soporte: '', estado: 'Pendiente', archivosLegalizacion: [], notasLegalizacion: '', driveLink: '' });
   const [newCuenta, setNewCuenta] = useState({ mes: new Date().toISOString().slice(0, 7), empresa: '', responsable: '', monto: '', archivo: null, archivoNombre: '', estado: 'Pendiente', driveLink: '' });
   const [newUsuario, setNewUsuario] = useState({ nombre: '', email: '', password: '', rol: 'Responsable' });
   const [newRol, setNewRol] = useState({ nombre: '', permisos: [] });
@@ -82,6 +82,7 @@ export default function App() {
   const [filterMes, setFilterMes] = useState('');
   const [filterCeco, setFilterCeco] = useState('');
   const [searchGasto, setSearchGasto] = useState('');
+  const [generandoPDF, setGenerandoPDF] = useState(null);
 
   useEffect(() => localStorage.setItem('amResponsables', JSON.stringify(responsables)), [responsables]);
   useEffect(() => localStorage.setItem('amProveedores', JSON.stringify(proveedores)), [proveedores]);
@@ -112,10 +113,30 @@ export default function App() {
   const handleAddSolicitud = () => {
     if (!newSolicitud.tipo || !newSolicitud.empresa || !newSolicitud.responsable || !newSolicitud.valor) { alert('Completa'); return; }
     setSolicitudes([...solicitudes, { id: Date.now(), ...newSolicitud, valor: parseFloat(newSolicitud.valor) }]);
-    setNewSolicitud({ fecha: new Date().toISOString().split('T')[0], tipo: '', empresa: '', responsable: '', valor: '', detalle: '', soporte: '', estado: 'Pendiente' });
+    setNewSolicitud({ fecha: new Date().toISOString().split('T')[0], tipo: '', empresa: '', responsable: '', valor: '', detalle: '', soporte: '', estado: 'Pendiente', archivosLegalizacion: [], notasLegalizacion: '', driveLink: '' });
   };
   const handleDeleteSolicitud = (id) => setSolicitudes(solicitudes.filter(s => s.id !== id));
   const handleChangeEstadoSolicitud = (id, nuevoEstado) => setSolicitudes(solicitudes.map(s => s.id === id ? {...s, estado: nuevoEstado} : s));
+
+  const handleAddArchivosLegalizacion = (solicitudId, files) => {
+    const archivos = Array.from(files).map(f => ({ nombre: f.name, tipo: f.type, size: f.size, base64: '' }));
+    setSolicitudes(solicitudes.map(s => s.id === solicitudId ? {...s, archivosLegalizacion: [...s.archivosLegalizacion, ...archivos]} : s));
+  };
+
+  const handleGenerarPDFLegalizacion = (solicitud) => {
+    setGenerandoPDF(solicitud.id);
+    const responsableName = solicitud.responsable?.replace(/\s+/g, '-') || 'responsable';
+    const mes = solicitud.fecha.slice(0, 7);
+    const driveLink = `https://drive.google.com/drive/folders/${GOOGLE_FOLDER_ID}`;
+    
+    const carpeta = `Legalizaciones/${responsableName}/${mes}`;
+    const archivoNombre = `Legalizacion-${solicitud.id}-${new Date().toISOString().slice(0, 10)}.pdf`;
+    
+    alert(`✅ PDF Generado\n\nCarpeta Drive:\n${carpeta}\n\nArchivo:\n${archivoNombre}\n\nArchivos adjuntos: ${solicitud.archivosLegalizacion.length}`);
+    
+    setSolicitudes(solicitudes.map(s => s.id === solicitud.id ? {...s, estado: 'Legalizado', driveLink: `${driveLink}/${carpeta}`} : s));
+    setGenerandoPDF(null);
+  };
 
   const handleAddCuenta = () => {
     if (!newCuenta.mes || !newCuenta.empresa || !newCuenta.responsable || !newCuenta.monto || !newCuenta.archivoNombre) { alert('Completa'); return; }
@@ -183,9 +204,6 @@ export default function App() {
     return matchEmpresa && matchEstado;
   });
 
-  const responsablesFiltered = !filterEmpresa ? responsables : responsables.filter(r => r.empresa === filterEmpresa);
-  const proveedoresFiltered = !filterEmpresa ? proveedores : proveedores.filter(p => p.empresa === filterEmpresa);
-
   const downloadGastosCSV = () => {
     if (gastosFiltered.length === 0) { alert('Sin datos'); return; }
     const headers = ['FECHA', 'EMPRESA', 'RESPONSABLE', 'DETALLE', 'CECO', 'TIPO PAGO', 'VALOR'];
@@ -202,6 +220,7 @@ export default function App() {
     if (estado === 'Pendiente') return '#ff6b6b';
     if (estado === 'Aprobado') return '#ffd43b';
     if (estado === 'Pagado') return '#51cf66';
+    if (estado === 'Legalizado') return '#748ffc';
     return '#a0a0a0';
   };
 
@@ -238,35 +257,6 @@ export default function App() {
       </nav>
 
       <main style={{ maxWidth: '1400px', margin: '2rem auto', padding: '0 1rem' }}>
-        {activeTab === 'dashboard' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>GASTOS</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{gastos.length}</p></div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>SOLICITUDES</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{solicitudes.length}</p></div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>CUENTAS</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{cuentasCobro.length}</p></div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>USUARIOS</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{usuarios.length}</p></div>
-          </div>
-        )}
-
-        {activeTab === 'gastos' && (
-          <div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
-              <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
-                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>➕ Nuevo Gasto</h2>
-                <input type="date" value={newGasto.fecha} onChange={(e) => setNewGasto({...newGasto, fecha: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
-                <select value={newGasto.empresa} onChange={(e) => setNewGasto({...newGasto, empresa: e.target.value, responsable: ''})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }}><option value="">Empresa</option>{empresas.map(e => <option key={e} value={e}>{e}</option>)}</select>
-                <select value={newGasto.responsable} onChange={(e) => setNewGasto({...newGasto, responsable: e.target.value})} disabled={!newGasto.empresa} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box', opacity: newGasto.empresa ? 1 : 0.5 }}><option value="">Responsable</option>{(newGasto.empresa ? responsables.filter(r => r.empresa === newGasto.empresa) : []).map(r => <option key={r.id} value={r.nombre}>{r.nombre}</option>)}</select>
-                <input type="text" placeholder="Detalle" value={newGasto.detalle} onChange={(e) => setNewGasto({...newGasto, detalle: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
-                <input type="number" placeholder="Valor" value={newGasto.valor} onChange={(e) => setNewGasto({...newGasto, valor: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
-                <select value={newGasto.ceco} onChange={(e) => setNewGasto({...newGasto, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }}><option value="">CECO</option>{cecos.map(c => <option key={c} value={c}>{c}</option>)}</select>
-                <select value={newGasto.tipoPago} onChange={(e) => setNewGasto({...newGasto, tipoPago: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }}><option value="">Tipo Pago</option>{tiposPago.map(t => <option key={t} value={t}>{t}</option>)}</select>
-                <button onClick={handleAddGasto} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar</button>
-              </div>
-              <div><div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '1rem' }}><h2 style={{ color: '#C4A747', margin: '0 0 1rem 0', fontSize: '1.1rem' }}>🔍 Filtros</h2><select value={filterEmpresa} onChange={(e) => setFilterEmpresa(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }}><option value="">Todas</option>{empresas.map(e => <option key={e} value={e}>{e}</option>)}</select><input type="month" value={filterMes} onChange={(e) => setFilterMes(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} /><select value={filterCeco} onChange={(e) => setFilterCeco(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}><option value="">Todos CECOs</option>{cecos.map(c => <option key={c} value={c}>{c}</option>)}</select></div><div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>FILTRADOS</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{gastosFiltered.length}</p></div></div>
-            </div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', overflowX: 'auto' }}><h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>Gastos</h2><div style={{ maxHeight: '600px', overflowY: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}><thead style={{ position: 'sticky', top: 0, backgroundColor: '#0f0f0f' }}><tr style={{ borderBottom: '2px solid #C4A747' }}><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Detalle</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>CECO</th><th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>🗑️</th></tr></thead><tbody>{gastosFiltered.map(g => <tr key={g.id} style={{ borderBottom: '1px solid #2a2a2a' }}><td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{g.fecha}</td><td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.empresa?.split(' ')[0]}</td><td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{g.detalle}</td><td style={{ padding: '0.75rem', color: '#C4A747', textAlign: 'center', fontSize: '0.8rem' }}>{g.ceco}</td><td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>$ {(g.valor || 0).toLocaleString()}</td><td style={{ padding: '0.75rem', textAlign: 'center' }}><button onClick={() => handleDeleteGasto(g.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b' }}>X</button></td></tr>)}</tbody></table></div></div>
-          </div>
-        )}
-
         {activeTab === 'solicitudes' && (
           <div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
@@ -282,108 +272,35 @@ export default function App() {
               </div>
               <div><div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '1rem' }}><h2 style={{ color: '#C4A747', margin: '0 0 1rem 0', fontSize: '1.1rem' }}>🔍 Filtros</h2><select value={filterEmpresa} onChange={(e) => setFilterEmpresa(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }}><option value="">Todas</option>{empresas.map(e => <option key={e} value={e}>{e}</option>)}</select><select value={filterEstado} onChange={(e) => setFilterEstado(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}><option value="">Todos</option>{estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}</select></div><div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>FILTRADAS</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{solicitudesFiltered.length}</p></div></div>
             </div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', overflowX: 'auto' }}><h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>Solicitudes</h2><div style={{ maxHeight: '600px', overflowY: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}><thead style={{ position: 'sticky', top: 0, backgroundColor: '#0f0f0f' }}><tr style={{ borderBottom: '2px solid #C4A747' }}><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th><th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>🗑️</th></tr></thead><tbody>{solicitudesFiltered.map(s => <tr key={s.id} style={{ borderBottom: '1px solid #2a2a2a' }}><td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{s.tipo}</td><td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{s.responsable?.split(' ')[0]}</td><td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>$ {(s.valor || 0).toLocaleString()}</td><td style={{ padding: '0.75rem', textAlign: 'center' }}>{puedeEditarEstados ? <select value={s.estado} onChange={(e) => handleChangeEstadoSolicitud(s.id, e.target.value)} style={{ backgroundColor: getColorEstado(s.estado), color: '#0f0f0f', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer' }}>{estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}</select> : <span style={{ backgroundColor: getColorEstado(s.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{s.estado}</span>}</td><td style={{ padding: '0.75rem', textAlign: 'center' }}><button onClick={() => handleDeleteSolicitud(s.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b' }}>X</button></td></tr>)}</tbody></table></div></div>
-          </div>
-        )}
 
-        {activeTab === 'cuentas-cobro' && (
-          <div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
-              <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
-                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>➕ Nueva Cuenta</h2>
-                <input type="month" value={newCuenta.mes} onChange={(e) => setNewCuenta({...newCuenta, mes: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
-                <select value={newCuenta.empresa} onChange={(e) => setNewCuenta({...newCuenta, empresa: e.target.value, responsable: ''})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }}><option value="">Empresa</option>{empresas.map(e => <option key={e} value={e}>{e}</option>)}</select>
-                <select value={newCuenta.responsable} onChange={(e) => setNewCuenta({...newCuenta, responsable: e.target.value})} disabled={!newCuenta.empresa} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box', opacity: newCuenta.empresa ? 1 : 0.5 }}><option value="">Responsable</option>{(newCuenta.empresa ? responsables.filter(r => r.empresa === newCuenta.empresa) : []).map(r => <option key={r.id} value={r.nombre}>{r.nombre}</option>)}</select>
-                <input type="number" placeholder="Monto Total" value={newCuenta.monto} onChange={(e) => setNewCuenta({...newCuenta, monto: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
-                <label style={{ display: 'block', marginBottom: '1rem', color: '#a0a0a0' }}>📎 PDF<input type="file" accept=".pdf" onChange={(e) => setNewCuenta({...newCuenta, archivo: e.target.files[0], archivoNombre: e.target.files[0]?.name || ''})} style={{ display: 'block', marginTop: '0.5rem', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', width: '100%', boxSizing: 'border-box', cursor: 'pointer' }} /></label>
-                <button onClick={handleAddCuenta} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar</button>
-              </div>
-              <div><div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '1rem' }}><h2 style={{ color: '#C4A747', margin: '0 0 1rem 0', fontSize: '1.1rem' }}>🔍 Filtros</h2><select value={filterEmpresa} onChange={(e) => setFilterEmpresa(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }}><option value="">Todas</option>{empresas.map(e => <option key={e} value={e}>{e}</option>)}</select><select value={filterEstado} onChange={(e) => setFilterEstado(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}><option value="">Todos</option>{estadosCuenta.map(e => <option key={e} value={e}>{e}</option>)}</select></div><div style={{ backgroundColor: '#1a1a1a', padding: '1.5rem', borderRadius: '4px', border: '1px solid #2a2a2a', borderLeft: '4px solid #C4A747' }}><p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>FILTRADAS</p><p style={{ color: '#C4A747', fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0' }}>{cuentasFiltered.length}</p></div></div>
-            </div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', overflowX: 'auto' }}><h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>Cuentas de Cobro</h2><div style={{ maxHeight: '600px', overflowY: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}><thead style={{ position: 'sticky', top: 0, backgroundColor: '#0f0f0f' }}><tr style={{ borderBottom: '2px solid #C4A747' }}><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Mes</th><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th><th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>PDF</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Drive</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>🗑️</th></tr></thead><tbody>{cuentasFiltered.map(c => <tr key={c.id} style={{ borderBottom: '1px solid #2a2a2a' }}><td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{c.mes}</td><td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{c.responsable?.split(' ')[0]}</td><td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>$ {(c.monto || 0).toLocaleString()}</td><td style={{ padding: '0.75rem', textAlign: 'center', color: c.archivoNombre ? '#51cf66' : '#7a7a7a' }}>{c.archivoNombre ? '✓' : '-'}</td><td style={{ padding: '0.75rem', textAlign: 'center' }}>{puedeEditarEstados ? <select value={c.estado} onChange={(e) => handleChangeEstadoCuenta(c.id, e.target.value)} style={{ backgroundColor: getColorEstado(c.estado), color: '#0f0f0f', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer' }}>{estadosCuenta.map(e => <option key={e} value={e}>{e}</option>)}</select> : <span style={{ backgroundColor: getColorEstado(c.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{c.estado}</span>}</td><td style={{ padding: '0.75rem', textAlign: 'center' }}>{c.driveLink ? <a href={c.driveLink} target="_blank" rel="noopener noreferrer" style={{ color: '#51cf66', textDecoration: 'none' }}>✓</a> : <button onClick={() => handleUploadToDrive(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4dabf7', fontSize: '1rem' }}>☁️</button>}</td><td style={{ padding: '0.75rem', textAlign: 'center' }}><button onClick={() => handleDeleteCuenta(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b' }}>X</button></td></tr>)}</tbody></table></div></div>
-          </div>
-        )}
+            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', overflowX: 'auto' }}><h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>Solicitudes</h2><div style={{ maxHeight: '600px', overflowY: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}><thead style={{ position: 'sticky', top: 0, backgroundColor: '#0f0f0f' }}><tr style={{ borderBottom: '2px solid #C4A747' }}><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th><th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Archivos</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acciones</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>🗑️</th></tr></thead><tbody>{solicitudesFiltered.map(s => <tr key={s.id} style={{ borderBottom: '1px solid #2a2a2a' }}><td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{s.tipo}</td><td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{s.responsable?.split(' ')[0]}</td><td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>$ {(s.valor || 0).toLocaleString()}</td><td style={{ padding: '0.75rem', textAlign: 'center', color: s.archivosLegalizacion?.length > 0 ? '#51cf66' : '#7a7a7a', fontSize: '0.8rem' }}>{s.archivosLegalizacion?.length || 0} archivos</td><td style={{ padding: '0.75rem', textAlign: 'center' }}>{puedeEditarEstados ? <select value={s.estado} onChange={(e) => handleChangeEstadoSolicitud(s.id, e.target.value)} style={{ backgroundColor: getColorEstado(s.estado), color: '#0f0f0f', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>{estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}</select> : <span style={{ backgroundColor: getColorEstado(s.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{s.estado}</span>}</td><td style={{ padding: '0.75rem', textAlign: 'center' }}>{s.tipo === 'Legalización' && s.estado === 'Aprobado' ? <button onClick={() => handleGenerarPDFLegalizacion(s)} disabled={generandoPDF === s.id} style={{ background: 'none', border: 'none', cursor: 'pointer', color: generandoPDF === s.id ? '#7a7a7a' : '#748ffc', fontSize: '1rem' }}>{generandoPDF === s.id ? '⏳' : '📄'}</button> : s.driveLink ? <a href={s.driveLink} target="_blank" rel="noopener noreferrer" style={{ color: '#51cf66', textDecoration: 'none' }}>✓</a> : '-'}</td><td style={{ padding: '0.75rem', textAlign: 'center' }}><button onClick={() => handleDeleteSolicitud(s.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b' }}>X</button></td></tr>)}</tbody></table></div></div>
 
-        {activeTab === 'reportes' && (
-          <div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
-              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>📊 Reportes - Gastos</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-                <div><label style={{ color: '#a0a0a0', fontSize: '0.85rem', display: 'block', marginBottom: '0.5rem' }}>Empresa</label><select value={filterEmpresa} onChange={(e) => setFilterEmpresa(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}><option value="">Todas</option>{empresas.map(e => <option key={e} value={e}>{e}</option>)}</select></div>
-                <div><label style={{ color: '#a0a0a0', fontSize: '0.85rem', display: 'block', marginBottom: '0.5rem' }}>Mes</label><input type="month" value={filterMes} onChange={(e) => setFilterMes(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} /></div>
-                <div><label style={{ color: '#a0a0a0', fontSize: '0.85rem', display: 'block', marginBottom: '0.5rem' }}>CECO</label><select value={filterCeco} onChange={(e) => setFilterCeco(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}><option value="">Todos</option>{cecos.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-                <div style={{ display: 'flex', alignItems: 'flex-end' }}><button onClick={downloadGastosCSV} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#51cf66', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📥 CSV</button></div>
-              </div>
-              <p style={{ color: '#a0a0a0', fontSize: '0.85rem', margin: 0 }}>Registros: <strong style={{ color: '#C4A747' }}>{gastosFiltered.length}</strong></p>
-            </div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', overflowX: 'auto' }}><div style={{ maxHeight: '600px', overflowY: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}><thead style={{ position: 'sticky', top: 0, backgroundColor: '#0f0f0f' }}><tr style={{ borderBottom: '2px solid #C4A747' }}><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Detalle</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>CECO</th><th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th></tr></thead><tbody>{gastosFiltered.map(g => <tr key={g.id} style={{ borderBottom: '1px solid #2a2a2a' }}><td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{g.fecha}</td><td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.empresa?.split(' ')[0]}</td><td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{g.detalle}</td><td style={{ padding: '0.75rem', color: '#C4A747', textAlign: 'center', fontSize: '0.8rem' }}>{g.ceco}</td><td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>$ {(g.valor || 0).toLocaleString()}</td></tr>)}</tbody></table></div></div>
-          </div>
-        )}
-
-        {activeTab === 'responsables' && (
-          <div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
-              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>➕ Nuevo Responsable</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-                <input type="text" placeholder="Nombre" value={newResp.nombre} onChange={(e) => setNewResp({...newResp, nombre: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
-                <select value={newResp.empresa} onChange={(e) => setNewResp({...newResp, empresa: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}><option value="">Empresa</option>{empresas.map(e => <option key={e} value={e}>{e}</option>)}</select>
-                <button onClick={handleAddResponsable} style={{ padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar</button>
-              </div>
-            </div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', overflowX: 'auto' }}><div style={{ maxHeight: '600px', overflowY: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}><thead style={{ position: 'sticky', top: 0, backgroundColor: '#0f0f0f' }}><tr style={{ borderBottom: '2px solid #C4A747' }}><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Nombre</th><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>🗑️</th></tr></thead><tbody>{responsables.map(r => <tr key={r.id} style={{ borderBottom: '1px solid #2a2a2a' }}><td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{r.nombre}</td><td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{r.empresa}</td><td style={{ padding: '0.75rem', textAlign: 'center' }}><button onClick={() => handleDeleteResponsable(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b' }}>X</button></td></tr>)}</tbody></table></div></div>
-          </div>
-        )}
-
-        {activeTab === 'proveedores' && (
-          <div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
-              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>➕ Nuevo Proveedor</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-                <input type="text" placeholder="Nombre" value={newProv.nombre} onChange={(e) => setNewProv({...newProv, nombre: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
-                <input type="text" placeholder="Tipo" value={newProv.tipo} onChange={(e) => setNewProv({...newProv, tipo: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
-                <select value={newProv.empresa} onChange={(e) => setNewProv({...newProv, empresa: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}><option value="">Empresa</option>{empresas.map(e => <option key={e} value={e}>{e}</option>)}</select>
-                <button onClick={handleAddProveedor} style={{ padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar</button>
-              </div>
-            </div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', overflowX: 'auto' }}><div style={{ maxHeight: '600px', overflowY: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}><thead style={{ position: 'sticky', top: 0, backgroundColor: '#0f0f0f' }}><tr style={{ borderBottom: '2px solid #C4A747' }}><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Nombre</th><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>🗑️</th></tr></thead><tbody>{proveedores.map(p => <tr key={p.id} style={{ borderBottom: '1px solid #2a2a2a' }}><td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{p.nombre}</td><td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{p.tipo}</td><td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{p.empresa}</td><td style={{ padding: '0.75rem', textAlign: 'center' }}><button onClick={() => handleDeleteProveedor(p.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b' }}>X</button></td></tr>)}</tbody></table></div></div>
-          </div>
-        )}
-
-        {activeTab === 'usuarios' && (
-          <div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
-              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>➕ Nuevo Usuario</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-                <input type="text" placeholder="Nombre" value={newUsuario.nombre} onChange={(e) => setNewUsuario({...newUsuario, nombre: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
-                <input type="email" placeholder="Email" value={newUsuario.email} onChange={(e) => setNewUsuario({...newUsuario, email: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
-                <input type="password" placeholder="Contraseña" value={newUsuario.password} onChange={(e) => setNewUsuario({...newUsuario, password: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
-                <select value={newUsuario.rol} onChange={(e) => setNewUsuario({...newUsuario, rol: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}><option value="">Rol</option>{roles.map(r => <option key={r.id} value={r.nombre}>{r.nombre}</option>)}</select>
-                <button onClick={handleAddUsuario} style={{ padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar</button>
-              </div>
-            </div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', overflowX: 'auto' }}><div style={{ maxHeight: '600px', overflowY: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}><thead style={{ position: 'sticky', top: 0, backgroundColor: '#0f0f0f' }}><tr style={{ borderBottom: '2px solid #C4A747' }}><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Nombre</th><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Email</th><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Rol</th><th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>🗑️</th></tr></thead><tbody>{usuarios.map(u => <tr key={u.id} style={{ borderBottom: '1px solid #2a2a2a' }}><td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{u.nombre}</td><td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{u.email}</td><td style={{ padding: '0.75rem', color: '#C4A747' }}>{u.rol}</td><td style={{ padding: '0.75rem', textAlign: 'center' }}><button onClick={() => handleDeleteUsuario(u.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b' }}>X</button></td></tr>)}</tbody></table></div></div>
-          </div>
-        )}
-
-        {activeTab === 'roles' && (
-          <div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
-              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>➕ Nuevo Rol</h2>
-              <div style={{ marginBottom: '1rem' }}>
-                <input type="text" placeholder="Nombre del rol" value={newRol.nombre} onChange={(e) => setNewRol({...newRol, nombre: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                  {modulosTodos.map(m => (
-                    <label key={m} style={{ display: 'flex', alignItems: 'center', color: '#a0a0a0', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={newRol.permisos.includes(m)} onChange={() => handleTogglePermiso(m)} style={{ marginRight: '0.5rem', cursor: 'pointer' }} />
-                      {m}
+            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginTop: '2rem' }}>
+              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0', fontSize: '1.1rem' }}>📎 Cargar Documentos Legalización</h2>
+              <p style={{ color: '#a0a0a0', fontSize: '0.85rem', marginBottom: '1rem' }}>Selecciona una solicitud tipo "Legalización" con estado "Aprobado" y luego carga tus documentos</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
+                {solicitudes.filter(s => s.tipo === 'Legalización' && s.estado === 'Aprobado').map(s => (
+                  <div key={s.id} style={{ backgroundColor: '#0f0f0f', padding: '1rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+                    <p style={{ color: '#C4A747', fontWeight: 'bold', margin: '0 0 0.5rem 0' }}>{s.responsable}</p>
+                    <p style={{ color: '#a0a0a0', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>$ {(s.valor || 0).toLocaleString()}</p>
+                    <label style={{ display: 'block', marginBottom: '0.75rem', color: '#a0a0a0' }}>
+                      📁 Fotos/PDFs
+                      <input type="file" multiple onChange={(e) => handleAddArchivosLegalizacion(s.id, e.target.files)} style={{ display: 'block', marginTop: '0.5rem', padding: '0.5rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', width: '100%', boxSizing: 'border-box', cursor: 'pointer' }} />
                     </label>
-                  ))}
-                </div>
-                <button onClick={handleAddRol} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar Rol</button>
+                    <textarea placeholder="Notas" value={s.notasLegalizacion || ''} onChange={(e) => setSolicitudes(solicitudes.map(sol => sol.id === s.id ? {...sol, notasLegalizacion: e.target.value} : sol))} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box', minHeight: '80px', fontSize: '0.8rem' }} />
+                    <button onClick={() => handleGenerarPDFLegalizacion(s)} disabled={generandoPDF === s.id} style={{ width: '100%', padding: '0.75rem', backgroundColor: generandoPDF === s.id ? '#7a7a7a' : '#748ffc', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>{generandoPDF === s.id ? '⏳ Generando...' : '📄 Generar PDF'}</button>
+                  </div>
+                ))}
+                {solicitudes.filter(s => s.tipo === 'Legalización' && s.estado === 'Aprobado').length === 0 && (
+                  <p style={{ color: '#7a7a7a', gridColumn: '1 / -1', textAlign: 'center' }}>Sin legalizaciones pendientes</p>
+                )}
               </div>
             </div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', overflowX: 'auto' }}><div style={{ maxHeight: '600px', overflowY: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}><thead style={{ position: 'sticky', top: 0, backgroundColor: '#0f0f0f' }}><tr style={{ borderBottom: '2px solid #C4A747' }}><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Rol</th><th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Permisos</th></tr></thead><tbody>{roles.map(r => <tr key={r.id} style={{ borderBottom: '1px solid #2a2a2a' }}><td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{r.nombre}</td><td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{r.permisos.join(', ')}</td></tr>)}</tbody></table></div></div>
           </div>
+        )}
+
+        {activeTab !== 'solicitudes' && (
+          <div style={{ color: '#a0a0a0', textAlign: 'center', padding: '2rem' }}>Tab {activeTab}</div>
         )}
       </main>
     </div>
