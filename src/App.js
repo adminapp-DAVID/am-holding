@@ -25,7 +25,7 @@ const usuariosAdmin = [
   { id: 998, nombre: 'Contadora', email: 'contadora@amholding.com', password: 'pass123', rol: 'Contadora' }
 ];
 
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzOjq1h8--VF8G8tABZakIM45gY73-vitLrS4zij52qvBMb7Ts1dTt8sz5i_m7ewlg/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzC5cb8iM93MDOr6fHtgENp0aFoZFi5wY10kh0TVA5noOSEU07kNXLsbSgxa71iTkbK/exec';
 
 export default function App() {
   const [user, setUser] = useState(null);
