@@ -24,6 +24,8 @@ const usuariosAdmin = [
   { id: 999, nombre: 'Admin', email: 'admin@amholding.com', password: 'admin123', rol: 'Administrador' }
 ];
 
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzOjq1h8--VF8G8tABZakIM45gY73-vitLrS4zij52qvBMb7Ts1dTt8sz5i_m7ewlg/exec';
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState('');
@@ -445,6 +447,23 @@ export default function App() {
     setSolicitudes(solicitudes.map(s => s.id === id ? {...s, estado: nuevoEstado} : s));
   };
 
+  const handleExportarSheets = async () => {
+    try {
+      const response = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        body: JSON.stringify(solicitudes)
+      });
+      const result = await response.json();
+      if (result.success) {
+        alert(`✅ ${result.rows} solicitudes exportadas a Google Sheets`);
+      } else {
+        alert('Error: ' + result.error);
+      }
+    } catch (error) {
+      alert('Error al exportar: ' + error.message);
+    }
+  };
+
   const solicitudesUsuario = user?.rol === 'Responsable' ? solicitudes.filter(s => s.responsableId === user.id) : solicitudes;
 
   const getColorEstado = (estado) => {
@@ -581,7 +600,14 @@ export default function App() {
         )}
 
         <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
-          <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>📋 {user.rol === 'Responsable' ? 'Mis Solicitudes' : 'Todas las Solicitudes'}</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <h2 style={{ color: '#C4A747', margin: 0 }}>📋 {user.rol === 'Responsable' ? 'Mis Solicitudes' : 'Todas las Solicitudes'}</h2>
+            {user.rol === 'Administrador' && (
+              <button onClick={handleExportarSheets} style={{ backgroundColor: '#51cf66', color: '#0f0f0f', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>
+                📊 Exportar a Sheets
+              </button>
+            )}
+          </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
               <thead style={{ backgroundColor: '#0f0f0f' }}>
