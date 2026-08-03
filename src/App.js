@@ -191,7 +191,7 @@ export default function App() {
       const titulo = solicitud.tipo === 'Legalización' ? 'LEGALIZACIÓN DE ANTICIPO' : 'REPORTE DE REEMBOLSO';
       pdf.text(titulo, pageWidth / 2, yPosition, { align: 'center' });
 
-      yPosition += 12;
+      yPosition += 10;
       pdf.setLineWidth(0.5);
       pdf.line(15, yPosition, pageWidth - 15, yPosition);
       yPosition += 10;
@@ -206,6 +206,14 @@ export default function App() {
         ['Concepto:', solicitud.detalle || 'N/A']
       ];
 
+      if (solicitud.tipo !== 'Anticipo') {
+        detalles.push(
+          ['Nombre Consignatario:', solicitud.consignado?.nombre || 'N/A'],
+          ['NIT Consignatario:', solicitud.consignado?.nit || 'N/A'],
+          ['Cédula Consignatario:', solicitud.consignado?.cedula || 'N/A']
+        );
+      }
+
       detalles.forEach(([label, valor]) => {
         pdf.setFont(undefined, 'bold');
         pdf.setFontSize(9);
@@ -214,35 +222,6 @@ export default function App() {
         pdf.text(String(valor), 50, yPosition);
         yPosition += 6;
       });
-
-      if (solicitud.tipo !== 'Anticipo' && solicitud.consignado?.nombre) {
-        yPosition += 3;
-        pdf.setFont(undefined, 'bold');
-        pdf.setFontSize(10);
-        pdf.text('CONSIGNATARIO', 15, yPosition);
-        yPosition += 1;
-        pdf.line(15, yPosition, pageWidth - 15, yPosition);
-        yPosition += 6;
-
-        pdf.setFontSize(9);
-        pdf.setFont(undefined, 'bold');
-        pdf.text('Nombre:', 15, yPosition);
-        pdf.setFont(undefined, 'normal');
-        pdf.text(solicitud.consignado?.nombre || 'N/A', 50, yPosition);
-        yPosition += 6;
-
-        pdf.setFont(undefined, 'bold');
-        pdf.text('NIT:', 15, yPosition);
-        pdf.setFont(undefined, 'normal');
-        pdf.text(solicitud.consignado?.nit || 'N/A', 50, yPosition);
-        yPosition += 6;
-
-        pdf.setFont(undefined, 'bold');
-        pdf.text('Cédula:', 15, yPosition);
-        pdf.setFont(undefined, 'normal');
-        pdf.text(solicitud.consignado?.cedula || 'N/A', 50, yPosition);
-        yPosition += 8;
-      }
 
       if (solicitud.documentos && solicitud.documentos.length > 0) {
         pdf.setLineWidth(0.5);
@@ -295,6 +274,30 @@ export default function App() {
         pdf.setTextColor(81, 207, 102);
         pdf.text('TOTAL', 15 + (colAncho * 2), yPosition);
         pdf.text(`$ ${totalValor.toLocaleString()}`, 17 + (colAncho * 3), yPosition);
+        
+        yPosition += 12;
+
+        const archivosConSoporte = solicitud.documentos.filter(doc => doc.archivoNombre);
+        if (archivosConSoporte.length > 0) {
+          pdf.setLineWidth(0.5);
+          pdf.line(15, yPosition, pageWidth - 15, yPosition);
+          yPosition += 8;
+
+          pdf.setFont(undefined, 'bold');
+          pdf.setFontSize(10);
+          pdf.setTextColor(60, 60, 60);
+          pdf.text('ARCHIVOS ADJUNTOS', 15, yPosition);
+          yPosition += 8;
+
+          pdf.setFontSize(8);
+          pdf.setFont(undefined, 'normal');
+          pdf.setTextColor(100, 100, 100);
+
+          archivosConSoporte.forEach((doc, idx) => {
+            pdf.text(`${idx + 1}. ${doc.proveedor} - ${doc.archivoNombre}`, 20, yPosition);
+            yPosition += 5;
+          });
+        }
       } else {
         yPosition += 10;
         pdf.setFontSize(9);
