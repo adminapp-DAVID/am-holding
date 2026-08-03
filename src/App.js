@@ -1,6 +1,7 @@
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect } from 'react';
 import jsPDF from 'jspdf';
+import JSZip from 'jszip';
 
 const empresas = ['AM SPORTS GROUP SAS', 'PRO INVESTMENTS GLOBAL SAS', 'PRONOVA CAPITAL SAS', 'FOR SEVEN MEDIA SAS', 'ARKO'];
 const tiposSolicitud = ['Anticipo', 'Legalización', 'Reembolso'];
@@ -178,7 +179,163 @@ export default function App() {
     alert(`✅ ${archivos.length} archivo(s) descargados`);
   };
 
-  const handleGenerarPDF = async (solicitud) => {
+  const generarPDFContent = (solicitud) => {
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    let yPosition = 15;
+
+    pdf.setFontSize(18);
+    pdf.setTextColor(50, 50, 50);
+    const titulo = solicitud.tipo === 'Legalización' ? 'LEGALIZACIÓN DE ANTICIPO' : 'REPORTE DE REEMBOLSO';
+    pdf.text(titulo, pageWidth / 2, yPosition, { align: 'center' });
+
+    yPosition += 12;
+    pdf.setLineWidth(0.5);
+    pdf.line(15, yPosition, pageWidth - 15, yPosition);
+    yPosition += 10;
+
+    pdf.setFontSize(10);
+    pdf.setTextColor(60, 60, 60);
+
+    const detalles = [
+      ['Fecha:', solicitud.fecha],
+      ['Responsable:', solicitud.responsableNombre],
+      ['Empresa:', solicitud.empresa],
+      ['Concepto:', solicitud.detalle || 'N/A']
+    ];
+
+    if (solicitud.tipo !== 'Anticipo') {
+      detalles.push(
+        ['Nombre Consignatario:', solicitud.consignado?.nombre || 'N/A'],
+        ['NIT Consignatario:', solicitud.consignado?.nit || 'N/A'],
+        ['Cédula Consignatario:', solicitud.consignado?.cedula || 'N/A']
+      );
+    }
+
+    detalles.forEach(([label, valor]) => {
+      pdf.setFont(undefined, 'bold');
+      pdf.setFontSize(9);
+      pdf.text(label, 15, yPosition);
+      pdf.setFont(undefined, 'normal');
+      pdf.text(String(valor), 50, yPosition);
+      yPosition += 6;
+    });
+
+    if (solicitud.documentos && solicitud.documentos.length > 0) {
+      pdf.setLineWidth(0.5);
+      pdf.line(15, yPosition, pageWidth - 15, yPosition);
+      yPosition += 8;
+
+      pdf.setFont(undefined, 'bold');
+      pdf.setFontSize(10);
+      pdf.text('DOCUMENTOS', 15, yPosition);
+      yPosition += 8;
+
+      const colAncho = (pageWidth - 30) / 4;
+      pdf.setFontSize(8);
+      pdf.setFont(undefined, 'bold');
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFillColor(70, 70, 70);
+
+      pdf.rect(15, yPosition - 4, colAncho, 5, 'F');
+      pdf.text('Proveedor', 17, yPosition);
+      pdf.rect(15 + colAncho, yPosition - 4, colAncho, 5, 'F');
+      pdf.text('NIT', 17 + colAncho, yPosition);
+      pdf.rect(15 + (colAncho * 2), yPosition - 4, colAncho, 5, 'F');
+      pdf.text('Descripción', 17 + (colAncho * 2), yPosition);
+      pdf.rect(15 + (colAncho * 3), yPosition - 4, colAncho, 5, 'F');
+      pdf.text('Valor', 17 + (colAncho * 3), yPosition);
+
+      yPosition += 6;
+      pdf.setTextColor(60, 60, 60);
+      pdf.setFont(undefined, 'normal');
+
+      let totalValor = 0;
+      solicitud.documentos.forEach(doc => {
+        const valor = parseFloat(doc.valor) || 0;
+        totalValor += valor;
+
+        pdf.text(doc.proveedor?.slice(0, 15) || '-', 17, yPosition);
+        pdf.text(doc.nit?.slice(0, 10) || '-', 17 + colAncho, yPosition);
+        pdf.text(doc.descripcion?.slice(0, 15) || '-', 17 + (colAncho * 2), yPosition);
+        pdf.text(`$ ${valor.toLocaleString()}`, 17 + (colAncho * 3), yPosition);
+        yPosition += 5;
+      });
+
+      yPosition += 1;
+      pdf.setLineWidth(0.5);
+      pdf.line(15, yPosition, pageWidth - 15, yPosition);
+      yPosition += 4;
+
+      pdf.setFont(undefined, 'bold');
+      pdf.setFontSize(9);
+      pdf.setTextColor(81, 207, 102);
+      pdf.text('TOTAL', 15 + (colAncho * 2), yPosition);
+      pdf.text(`$ ${totalValor.toLocaleString()}`, 17 + (colAncho * 3), yPosition);
+      
+      yPosition += 12;
+
+      const archivosConSoporte = solicitud.documentos.filter(doc => doc.archivoNombre);
+      if (archivosConSoporte.length > 0) {
+        pdf.setLineWidth(0.5);
+        pdf.line(15, yPosition, pageWidth - 15, yPosition);
+        yPosition += 8;
+
+        pdf.setFont(undefined, 'bold');
+        pdf.setFontSize(10);
+        pdf.setTextColor(60, 60, 60);
+        pdf.text('ARCHIVOS ADJUNTOS', 15, yPosition);
+        yPosition += 8;
+
+        pdf.setFontSize(8);
+        pdf.setFont(undefined, 'normal');
+        pdf.setTextColor(100, 100, 100);
+
+        archivosConSoporte.forEach((doc, idx) => {
+          pdf.text(`${idx + 1}. ${doc.proveedor} - ${doc.archivoNombre}`, 20, yPosition);
+          yPosition += 5;
+        });
+      }
+    } else {
+      yPosition += 10;
+      pdf.setFontSize(9);
+      pdf.setTextColor(60, 60, 60);
+      pdf.text(`TOTAL SOLICITADO: $ ${(solicitud.valor || 0).toLocaleString()}`, 15, yPosition);
+    }
+
+    return pdf.output('arraybuffer');
+  };
+
+  const handleDescargarZIP = async (solicitud) => {
+    try {
+      const zip = new JSZip();
+      
+      const pdfContent = generarPDFContent(solicitud);
+      const nombrePDF = `${solicitud.tipo}-${solicitud.id}.pdf`;
+      zip.file(nombrePDF, pdfContent);
+
+      const archivosConSoporte = solicitud.documentos.filter(doc => doc.archivo && doc.archivoNombre);
+      for (let archivo of archivosConSoporte) {
+        const base64Data = archivo.archivo.split(',')[1];
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        zip.file(archivo.archivoNombre, bytes);
+      }
+
+      const zipContent = await zip.generateAsync({ type: 'blob' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(zipContent);
+      link.download = `${solicitud.tipo}-${solicitud.id}-${new Date().toISOString().slice(0, 10)}.zip`;
+      link.click();
+
+      alert(`✅ ZIP descargado: ${archivosConSoporte.length} archivo(s) + PDF\n\nCarpeta recomendada en Drive:\n/Finanzas Operativas AM Holding/${solicitud.empresa}/${solicitud.tipo === 'Legalización' ? 'Legalizaciones' : 'Reembolsos'}/${solicitud.responsableNombre.replace(/\s+/g, '-')}/${solicitud.fecha.slice(0, 7)}`);
+    } catch (error) {
+      alert('Error al crear ZIP: ' + error.message);
+    }
+  };
     setGenerandoPDF(solicitud.id);
 
     try {
@@ -500,9 +657,14 @@ export default function App() {
                             {generandoPDF === s.id ? '⏳' : '📄'}
                           </button>
                           {user.rol === 'Administrador' && (
-                            <button onClick={() => handleDescargarArchivos(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem' }} title="Descargar Archivos">
-                              ⬇️
-                            </button>
+                            <>
+                              <button onClick={() => handleDescargarZIP(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem', marginRight: '0.5rem' }} title="Descargar ZIP con archivos">
+                                📦
+                              </button>
+                              <button onClick={() => handleDescargarArchivos(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem' }} title="Descargar archivos">
+                                ⬇️
+                              </button>
+                            </>
                           )}
                         </>
                       )}
