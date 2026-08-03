@@ -41,7 +41,7 @@ export default function App() {
     detalle: '',
     archivos: [],
     consignado: { nit: '', nombre: '', cedula: '' },
-    documentos: [] // Tabla de documentos
+    documentos: []
   });
 
   useEffect(() => localStorage.setItem('amSolicitudes', JSON.stringify(solicitudes)), [solicitudes]);
@@ -80,7 +80,7 @@ export default function App() {
     }
 
     if ((newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso') && !newSolicitud.consignado?.nombre) {
-      alert('Ingresa datos del consignatario');
+      alert('Ingresa nombre del consignatario');
       return;
     }
 
@@ -114,23 +114,12 @@ export default function App() {
   };
 
   const handleAddArchivos = (files) => {
-    const nuevosArchivos = Array.from(files).map(f => {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          resolve({
-            nombre: f.name,
-            tipo: f.type,
-            size: f.size
-          });
-        };
-        reader.readAsDataURL(f);
-      });
-    });
-
-    Promise.all(nuevosArchivos).then(archivos => {
-      setNewSolicitud({...newSolicitud, archivos: [...newSolicitud.archivos, ...archivos]});
-    });
+    const nuevosArchivos = Array.from(files).map(f => ({
+      nombre: f.name,
+      tipo: f.type,
+      size: f.size
+    }));
+    setNewSolicitud({...newSolicitud, archivos: [...newSolicitud.archivos, ...nuevosArchivos]});
   };
 
   const handleAddDocumento = () => {
@@ -182,69 +171,32 @@ export default function App() {
       pdf.setFontSize(10);
       pdf.setTextColor(60, 60, 60);
 
-      // Datos principales
       const detalles = [
         ['Fecha:', solicitud.fecha],
         ['Responsable:', solicitud.responsableNombre],
         ['Empresa:', solicitud.empresa],
-        ['Concepto:', solicitud.detalle || 'N/A'],
-        ['', '']
+        ['Concepto:', solicitud.detalle || 'N/A']
       ];
 
       detalles.forEach(([label, valor]) => {
-        if (label === '') {
-          yPosition += 2;
-        } else {
-          pdf.setFont(undefined, 'bold');
-          pdf.setFontSize(9);
-          pdf.text(label, 15, yPosition);
-          pdf.setFont(undefined, 'normal');
-          pdf.text(String(valor), 50, yPosition);
-          yPosition += 6;
-        }
+        pdf.setFont(undefined, 'bold');
+        pdf.setFontSize(9);
+        pdf.text(label, 15, yPosition);
+        pdf.setFont(undefined, 'normal');
+        pdf.text(String(valor), 50, yPosition);
+        yPosition += 6;
       });
 
-      // Sección Consignatario
-      yPosition += 3;
-      pdf.setFont(undefined, 'bold');
-      pdf.setFontSize(10);
-      pdf.text('CONSIGNATARIO', 15, yPosition);
-      yPosition += 1;
+      yPosition += 5;
+      pdf.setLineWidth(0.5);
       pdf.line(15, yPosition, pageWidth - 15, yPosition);
-      yPosition += 6;
-
-      pdf.setFontSize(9);
-      pdf.setFont(undefined, 'bold');
-      pdf.text('Nombre:', 15, yPosition);
-      pdf.setFont(undefined, 'normal');
-      pdf.text(solicitud.consignado?.nombre || 'N/A', 50, yPosition);
-      yPosition += 6;
-
-      pdf.setFont(undefined, 'bold');
-      pdf.text('NIT:', 15, yPosition);
-      pdf.setFont(undefined, 'normal');
-      pdf.text(solicitud.consignado?.nit || 'N/A', 50, yPosition);
-      yPosition += 6;
-
-      pdf.setFont(undefined, 'bold');
-      pdf.text('Cédula:', 15, yPosition);
-      pdf.setFont(undefined, 'normal');
-      pdf.text(solicitud.consignado?.cedula || 'N/A', 50, yPosition);
-      yPosition += 6;
-
-      pdf.setFont(undefined, 'bold');
-      pdf.text('Valor Total:', 15, yPosition);
-      pdf.setFont(undefined, 'normal');
-      pdf.text(`$ ${(solicitud.valor || 0).toLocaleString()}`, 50, yPosition);
       yPosition += 8;
 
-      // Tabla de documentos y consignatario
       pdf.setFont(undefined, 'bold');
       pdf.setFontSize(10);
       pdf.text('DOCUMENTOS Y CONSIGNATARIO', 15, yPosition);
       yPosition += 8;
 
-      // Headers tabla
       const colAncho = (pageWidth - 30) / 5;
       pdf.setFontSize(7);
       pdf.setFont(undefined, 'bold');
@@ -262,7 +214,6 @@ export default function App() {
       pdf.setFont(undefined, 'normal');
       pdf.setFontSize(7);
 
-      // Fila Consignatario
       pdf.setFillColor(10, 74, 10);
       pdf.rect(15, yPosition - 4, colAncho, 5, 'F');
       pdf.setTextColor(81, 207, 102);
@@ -276,7 +227,6 @@ export default function App() {
       pdf.text(`$ ${(solicitud.valor || 0).toLocaleString()}`, 17 + (colAncho * 4), yPosition);
       yPosition += 5;
 
-      // Filas Documentos
       solicitud.documentos.forEach(doc => {
         pdf.setFillColor(26, 26, 26);
         pdf.rect(15, yPosition - 4, colAncho, 5, 'F');
@@ -292,14 +242,11 @@ export default function App() {
         yPosition += 5;
       });
 
-      // Total
       yPosition += 1;
       pdf.setLineWidth(0.5);
       pdf.line(15, yPosition, pageWidth - 15, yPosition);
       yPosition += 4;
 
-      let totalDocumentos = solicitud.documentos.reduce((sum, doc) => sum + (parseFloat(doc.valor) || 0), 0);
-      
       pdf.setFont(undefined, 'bold');
       pdf.setFontSize(9);
       pdf.setTextColor(81, 207, 102);
@@ -315,7 +262,7 @@ export default function App() {
       const driveLink = `https://drive.google.com/drive/folders/${GOOGLE_FOLDER_ID}`;
       const carpeta = `Finanzas Operativas AM Holding/${solicitud.empresa}/${carpetaTipo}/${responsableName}/${mes}`;
 
-      alert(`✅ PDF Generado: ${nombrePDF}\n\nCarpeta Drive recomendada:\n${carpeta}\n\nDocumentos: ${solicitud.documentos.length}\nTotal: $ ${totalValor.toLocaleString()}`);
+      alert(`✅ PDF: ${nombrePDF}\n\n📁 Carpeta:\n${carpeta}\n\n📄 Documentos: ${solicitud.documentos.length}\n💰 Total: $ ${(solicitud.valor || 0).toLocaleString()}`);
 
       setSolicitudes(solicitudes.map(s => s.id === solicitud.id ? {...s, estado: 'Legalizado', driveLink: `${driveLink}/${carpeta}`} : s));
     } catch (error) {
@@ -362,7 +309,7 @@ export default function App() {
         <input type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleLogin()} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '2rem', boxSizing: 'border-box', borderRadius: '4px' }} />
         <button onClick={handleLogin} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '2rem' }}>Entrar</button>
 
-        <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '1rem 0 0.5rem 0' }}>DEMO RESPONSABLE:</p>
+        <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '1rem 0 0.5rem 0' }}>RESPONSABLE:</p>
         <p style={{ color: '#a0a0a0', fontSize: '0.75rem', margin: '0 0 1rem 0' }}>cristian@amholding.com / pass123</p>
         <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>ADMIN:</p>
         <p style={{ color: '#a0a0a0', fontSize: '0.75rem', margin: 0 }}>admin@amholding.com / admin123</p>
@@ -381,98 +328,87 @@ export default function App() {
 
       <main style={{ maxWidth: '1400px', margin: '2rem auto', padding: '0 1rem' }}>
         {user.rol === 'Responsable' && (
-          <div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
-              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nueva Solicitud</h2>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                <input type="date" value={newSolicitud.fecha} onChange={(e) => setNewSolicitud({...newSolicitud, fecha: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
-                <select value={newSolicitud.tipo} onChange={(e) => setNewSolicitud({...newSolicitud, tipo: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
-                  <option value="">Tipo de Solicitud</option>
-                  <option value="Anticipo">Anticipo</option>
-                  <option value="Legalización">Legalización de Anticipo</option>
-                  <option value="Reembolso">Reembolso</option>
-                </select>
-                <input type="number" placeholder="Valor Total" value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
-              </div>
-
-              <input type="text" placeholder="Concepto" value={newSolicitud.detalle} onChange={(e) => setNewSolicitud({...newSolicitud, detalle: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
-
-                  <label style={{ display: 'block', marginBottom: '1rem', color: '#a0a0a0' }}>
-                    📁 Fotos/PDFs (Referencia)
-                    <input type="file" multiple accept="image/*,.pdf" onChange={(e) => handleAddArchivos(e.target.files)} style={{ display: 'block', marginTop: '0.5rem', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px dashed #2a2a2a', borderRadius: '4px', color: '#fff', width: '100%', boxSizing: 'border-box', cursor: 'pointer' }} />
-                  </label>
-
-                  {newSolicitud.archivos.length > 0 && (
-                    <div style={{ marginBottom: '1rem', maxHeight: '120px', overflowY: 'auto', backgroundColor: '#0f0f0f', padding: '0.75rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
-                      <p style={{ color: '#a0a0a0', fontSize: '0.8rem', margin: '0 0 0.5rem 0' }}>✅ {newSolicitud.archivos.length} archivos</p>
-                      {newSolicitud.archivos.map((arch, idx) => (
-                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem', backgroundColor: '#1a1a1a', borderRadius: '3px', marginBottom: '0.3rem', fontSize: '0.75rem', color: '#a0a0a0' }}>
-                          <span>{arch.nombre}</span>
-                          <button onClick={() => handleDeleteArchivo(idx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b' }}>✕</button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <div style={{ marginBottom: '1rem', backgroundColor: '#0f0f0f', padding: '1rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                      <h3 style={{ color: '#C4A747', margin: 0, fontSize: '1rem' }}>Documentos y Consignatario</h3>
-                      <button onClick={handleAddDocumento} style={{ padding: '0.5rem 1rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>+ Agregar Doc</button>
-                    </div>
-
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', fontSize: '0.75rem', borderCollapse: 'collapse' }}>
-                        <thead>
-                          <tr style={{ backgroundColor: '#1a1a1a', borderBottom: '2px solid #C4A747' }}>
-                            <th style={{ padding: '0.5rem', textAlign: 'left', color: '#C4A747' }}>Tipo</th>
-                            <th style={{ padding: '0.5rem', textAlign: 'left', color: '#C4A747' }}>Nombre/Proveedor</th>
-                            <th style={{ padding: '0.5rem', textAlign: 'left', color: '#C4A747' }}>NIT</th>
-                            <th style={{ padding: '0.5rem', textAlign: 'left', color: '#C4A747' }}>Cédula</th>
-                            <th style={{ padding: '0.5rem', textAlign: 'left', color: '#C4A747' }}>Descripción</th>
-                            <th style={{ padding: '0.5rem', textAlign: 'right', color: '#C4A747' }}>Valor</th>
-                            <th style={{ padding: '0.5rem', textAlign: 'center', color: '#C4A747' }}>Acción</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {/* Fila Consignatario */}
-                          <tr style={{ backgroundColor: '#0a4a0a', borderBottom: '1px solid #2a2a2a' }}>
-                            <td style={{ padding: '0.4rem', color: '#51cf66', fontWeight: 'bold' }}>CONSIGNATARIO</td>
-                            <td style={{ padding: '0.4rem' }}><input type="text" value={newSolicitud.consignado?.nombre || ''} onChange={(e) => setNewSolicitud({...newSolicitud, consignado: {...newSolicitud.consignado, nombre: e.target.value}})} placeholder="Nombre" style={{ width: '100%', padding: '0.3rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '2px', color: '#fff', boxSizing: 'border-box', fontSize: '0.7rem' }} /></td>
-                            <td style={{ padding: '0.4rem' }}><input type="text" value={newSolicitud.consignado?.nit || ''} onChange={(e) => setNewSolicitud({...newSolicitud, consignado: {...newSolicitud.consignado, nit: e.target.value}})} placeholder="NIT" style={{ width: '100%', padding: '0.3rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '2px', color: '#fff', boxSizing: 'border-box', fontSize: '0.7rem' }} /></td>
-                            <td style={{ padding: '0.4rem' }}><input type="text" value={newSolicitud.consignado?.cedula || ''} onChange={(e) => setNewSolicitud({...newSolicitud, consignado: {...newSolicitud.consignado, cedula: e.target.value}})} placeholder="Cédula" style={{ width: '100%', padding: '0.3rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '2px', color: '#fff', boxSizing: 'border-box', fontSize: '0.7rem' }} /></td>
-                            <td style={{ padding: '0.4rem' }}><input type="text" placeholder="Concepto" value={newSolicitud.detalle} onChange={(e) => setNewSolicitud({...newSolicitud, detalle: e.target.value})} style={{ width: '100%', padding: '0.3rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '2px', color: '#fff', boxSizing: 'border-box', fontSize: '0.7rem' }} /></td>
-                            <td style={{ padding: '0.4rem', textAlign: 'right' }}><input type="number" placeholder="Total" value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} style={{ width: '100%', padding: '0.3rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '2px', color: '#fff', boxSizing: 'border-box', fontSize: '0.7rem' }} /></td>
-                            <td style={{ padding: '0.4rem', textAlign: 'center' }}>-</td>
-                          </tr>
-
-                          {/* Filas Documentos */}
-                          {newSolicitud.documentos.length === 0 ? (
-                            <tr>
-                              <td colSpan="7" style={{ padding: '1rem', textAlign: 'center', color: '#7a7a7a', fontSize: '0.85rem' }}>Sin documentos. Haz click en "+ Agregar Doc"</td>
-                            </tr>
-                          ) : (
-                            newSolicitud.documentos.map(doc => (
-                              <tr key={doc.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                                <td style={{ padding: '0.4rem', color: '#C4A747', fontWeight: 'bold' }}>DOCUMENTO</td>
-                                <td style={{ padding: '0.4rem' }}><input type="text" value={doc.proveedor} onChange={(e) => handleUpdateDocumento(doc.id, 'proveedor', e.target.value)} placeholder="Proveedor" style={{ width: '100%', padding: '0.3rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '2px', color: '#fff', boxSizing: 'border-box', fontSize: '0.7rem' }} /></td>
-                                <td style={{ padding: '0.4rem' }}><input type="text" value={doc.nit} onChange={(e) => handleUpdateDocumento(doc.id, 'nit', e.target.value)} placeholder="NIT" style={{ width: '100%', padding: '0.3rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '2px', color: '#fff', boxSizing: 'border-box', fontSize: '0.7rem' }} /></td>
-                                <td style={{ padding: '0.4rem' }}>-</td>
-                                <td style={{ padding: '0.4rem' }}><input type="text" value={doc.descripcion} onChange={(e) => handleUpdateDocumento(doc.id, 'descripcion', e.target.value)} placeholder="Descripción" style={{ width: '100%', padding: '0.3rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '2px', color: '#fff', boxSizing: 'border-box', fontSize: '0.7rem' }} /></td>
-                                <td style={{ padding: '0.4rem' }}><input type="number" value={doc.valor} onChange={(e) => handleUpdateDocumento(doc.id, 'valor', e.target.value)} placeholder="Valor" style={{ width: '100%', padding: '0.3rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '2px', color: '#fff', boxSizing: 'border-box', fontSize: '0.7rem' }} /></td>
-                                <td style={{ padding: '0.4rem', textAlign: 'center' }}><button onClick={() => handleDeleteDocumento(doc.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b' }}>✕</button></td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              <button onClick={handleAddSolicitud} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar Solicitud</button>
+          <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
+            <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nueva Solicitud</h2>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+              <input type="date" value={newSolicitud.fecha} onChange={(e) => setNewSolicitud({...newSolicitud, fecha: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
+              <select value={newSolicitud.tipo} onChange={(e) => setNewSolicitud({...newSolicitud, tipo: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
+                <option value="">Tipo</option>
+                <option value="Anticipo">Anticipo</option>
+                <option value="Legalización">Legalización</option>
+                <option value="Reembolso">Reembolso</option>
+              </select>
+              <input type="number" placeholder="Valor Total" value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
             </div>
+
+            <input type="text" placeholder="Concepto" value={newSolicitud.detalle} onChange={(e) => setNewSolicitud({...newSolicitud, detalle: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
+
+            {(newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso') && (
+              <>
+                <label style={{ display: 'block', marginBottom: '1rem', color: '#a0a0a0' }}>
+                  📁 Fotos/PDFs (Referencia)
+                  <input type="file" multiple accept="image/*,.pdf" onChange={(e) => handleAddArchivos(e.target.files)} style={{ display: 'block', marginTop: '0.5rem', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px dashed #2a2a2a', borderRadius: '4px', color: '#fff', width: '100%', boxSizing: 'border-box', cursor: 'pointer' }} />
+                </label>
+
+                {newSolicitud.archivos.length > 0 && (
+                  <div style={{ marginBottom: '1rem', maxHeight: '100px', overflowY: 'auto', backgroundColor: '#0f0f0f', padding: '0.75rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+                    <p style={{ color: '#a0a0a0', fontSize: '0.8rem', margin: '0 0 0.5rem 0' }}>✅ {newSolicitud.archivos.length} archivos</p>
+                    {newSolicitud.archivos.map((arch, idx) => (
+                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.3rem', backgroundColor: '#1a1a1a', borderRadius: '3px', marginBottom: '0.2rem', fontSize: '0.7rem', color: '#a0a0a0' }}>
+                        <span>{arch.nombre}</span>
+                        <button onClick={() => handleDeleteArchivo(idx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b' }}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ marginBottom: '1rem', backgroundColor: '#0f0f0f', padding: '1rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <h3 style={{ color: '#C4A747', margin: 0, fontSize: '1rem' }}>Documentos y Consignatario</h3>
+                    <button onClick={handleAddDocumento} style={{ padding: '0.5rem 1rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>+ Agregar</button>
+                  </div>
+
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', fontSize: '0.75rem', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ backgroundColor: '#1a1a1a', borderBottom: '2px solid #C4A747' }}>
+                          <th style={{ padding: '0.5rem', textAlign: 'left', color: '#C4A747' }}>Tipo</th>
+                          <th style={{ padding: '0.5rem', textAlign: 'left', color: '#C4A747' }}>Nombre/Proveedor</th>
+                          <th style={{ padding: '0.5rem', textAlign: 'left', color: '#C4A747' }}>NIT</th>
+                          <th style={{ padding: '0.5rem', textAlign: 'left', color: '#C4A747' }}>Descripción</th>
+                          <th style={{ padding: '0.5rem', textAlign: 'right', color: '#C4A747' }}>Valor</th>
+                          <th style={{ padding: '0.5rem', textAlign: 'center', color: '#C4A747' }}>Acción</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr style={{ backgroundColor: '#0a4a0a', borderBottom: '1px solid #2a2a2a' }}>
+                          <td style={{ padding: '0.4rem', color: '#51cf66', fontWeight: 'bold' }}>CONSIG.</td>
+                          <td style={{ padding: '0.4rem' }}><input type="text" value={newSolicitud.consignado?.nombre || ''} onChange={(e) => setNewSolicitud({...newSolicitud, consignado: {...newSolicitud.consignado, nombre: e.target.value}})} placeholder="Nombre" style={{ width: '100%', padding: '0.3rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '2px', color: '#fff', boxSizing: 'border-box', fontSize: '0.7rem' }} /></td>
+                          <td style={{ padding: '0.4rem' }}><input type="text" value={newSolicitud.consignado?.nit || ''} onChange={(e) => setNewSolicitud({...newSolicitud, consignado: {...newSolicitud.consignado, nit: e.target.value}})} placeholder="NIT" style={{ width: '100%', padding: '0.3rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '2px', color: '#fff', boxSizing: 'border-box', fontSize: '0.7rem' }} /></td>
+                          <td style={{ padding: '0.4rem' }}><input type="text" placeholder="Concepto" value={newSolicitud.detalle} onChange={(e) => setNewSolicitud({...newSolicitud, detalle: e.target.value})} style={{ width: '100%', padding: '0.3rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '2px', color: '#fff', boxSizing: 'border-box', fontSize: '0.7rem' }} /></td>
+                          <td style={{ padding: '0.4rem', textAlign: 'right' }}><input type="number" placeholder="Total" value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} style={{ width: '100%', padding: '0.3rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '2px', color: '#fff', boxSizing: 'border-box', fontSize: '0.7rem' }} /></td>
+                          <td style={{ padding: '0.4rem', textAlign: 'center' }}>-</td>
+                        </tr>
+
+                        {newSolicitud.documentos.map(doc => (
+                          <tr key={doc.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                            <td style={{ padding: '0.4rem', color: '#C4A747', fontWeight: 'bold' }}>DOC</td>
+                            <td style={{ padding: '0.4rem' }}><input type="text" value={doc.proveedor} onChange={(e) => handleUpdateDocumento(doc.id, 'proveedor', e.target.value)} placeholder="Proveedor" style={{ width: '100%', padding: '0.3rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '2px', color: '#fff', boxSizing: 'border-box', fontSize: '0.7rem' }} /></td>
+                            <td style={{ padding: '0.4rem' }}><input type="text" value={doc.nit} onChange={(e) => handleUpdateDocumento(doc.id, 'nit', e.target.value)} placeholder="NIT" style={{ width: '100%', padding: '0.3rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '2px', color: '#fff', boxSizing: 'border-box', fontSize: '0.7rem' }} /></td>
+                            <td style={{ padding: '0.4rem' }}><input type="text" value={doc.descripcion} onChange={(e) => handleUpdateDocumento(doc.id, 'descripcion', e.target.value)} placeholder="Descripción" style={{ width: '100%', padding: '0.3rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '2px', color: '#fff', boxSizing: 'border-box', fontSize: '0.7rem' }} /></td>
+                            <td style={{ padding: '0.4rem' }}><input type="number" value={doc.valor} onChange={(e) => handleUpdateDocumento(doc.id, 'valor', e.target.value)} placeholder="Valor" style={{ width: '100%', padding: '0.3rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '2px', color: '#fff', boxSizing: 'border-box', fontSize: '0.7rem' }} /></td>
+                            <td style={{ padding: '0.4rem', textAlign: 'center' }}><button onClick={() => handleDeleteDocumento(doc.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b' }}>✕</button></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <button onClick={handleAddSolicitud} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar Solicitud</button>
           </div>
         )}
 
