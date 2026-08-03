@@ -21,7 +21,8 @@ const responsablesData = [
 ];
 
 const usuariosAdmin = [
-  { id: 999, nombre: 'Admin', email: 'admin@amholding.com', password: 'admin123', rol: 'Administrador' }
+  { id: 999, nombre: 'Admin', email: 'admin@amholding.com', password: 'admin123', rol: 'Administrador' },
+  { id: 998, nombre: 'Contadora', email: 'contadora@amholding.com', password: 'pass123', rol: 'Contadora' }
 ];
 
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzOjq1h8--VF8G8tABZakIM45gY73-vitLrS4zij52qvBMb7Ts1dTt8sz5i_m7ewlg/exec';
@@ -464,7 +465,11 @@ export default function App() {
     }
   };
 
-  const solicitudesUsuario = user?.rol === 'Responsable' ? solicitudes.filter(s => s.responsableId === user.id) : solicitudes;
+  const solicitudesUsuario = user?.rol === 'Responsable' 
+    ? solicitudes.filter(s => s.responsableId === user.id)
+    : user?.rol === 'Contadora'
+    ? solicitudes.filter(s => ['Aprobado', 'Pagado', 'Legalizado'].includes(s.estado))
+    : solicitudes;
 
   const getColorEstado = (estado) => {
     if (estado === 'Pendiente') return '#ff6b6b';
@@ -482,7 +487,7 @@ export default function App() {
 
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
           <button onClick={() => setLoginMode('responsable')} style={{ flex: 1, padding: '0.75rem', backgroundColor: loginMode === 'responsable' ? '#C4A747' : '#2a2a2a', color: loginMode === 'responsable' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Responsable</button>
-          <button onClick={() => setLoginMode('admin')} style={{ flex: 1, padding: '0.75rem', backgroundColor: loginMode === 'admin' ? '#C4A747' : '#2a2a2a', color: loginMode === 'admin' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Administrador</button>
+          <button onClick={() => setLoginMode('admin')} style={{ flex: 1, padding: '0.75rem', backgroundColor: loginMode === 'admin' ? '#C4A747' : '#2a2a2a', color: loginMode === 'admin' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Admin/Contadora</button>
         </div>
 
         <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '1rem', boxSizing: 'border-box', borderRadius: '4px' }} />
@@ -492,7 +497,9 @@ export default function App() {
         <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '1rem 0 0.5rem 0' }}>RESPONSABLE:</p>
         <p style={{ color: '#a0a0a0', fontSize: '0.75rem', margin: '0 0 1rem 0' }}>cristian@amholding.com / pass123</p>
         <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>ADMIN:</p>
-        <p style={{ color: '#a0a0a0', fontSize: '0.75rem', margin: 0 }}>admin@amholding.com / admin123</p>
+        <p style={{ color: '#a0a0a0', fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>admin@amholding.com / admin123</p>
+        <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>CONTADORA:</p>
+        <p style={{ color: '#a0a0a0', fontSize: '0.75rem', margin: 0 }}>contadora@amholding.com / pass123</p>
       </div>
     </div>
   );
@@ -601,7 +608,9 @@ export default function App() {
 
         <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-            <h2 style={{ color: '#C4A747', margin: 0 }}>📋 {user.rol === 'Responsable' ? 'Mis Solicitudes' : 'Todas las Solicitudes'}</h2>
+            <h2 style={{ color: '#C4A747', margin: 0 }}>
+              📋 {user.rol === 'Responsable' ? 'Mis Solicitudes' : user.rol === 'Contadora' ? 'Solicitudes Auditadas' : 'Todas las Solicitudes'}
+            </h2>
             {user.rol === 'Administrador' && (
               <button onClick={handleExportarSheets} style={{ backgroundColor: '#51cf66', color: '#0f0f0f', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>
                 📊 Exportar a Sheets
@@ -613,7 +622,7 @@ export default function App() {
               <thead style={{ backgroundColor: '#0f0f0f' }}>
                 <tr style={{ borderBottom: '2px solid #C4A747' }}>
                   <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                  {user.rol === 'Administrador' && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th>}
+                  {(user.rol === 'Administrador' || user.rol === 'Contadora') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th>}
                   <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
                   <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
                   <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Docs</th>
@@ -625,7 +634,7 @@ export default function App() {
                 {solicitudesUsuario.map(s => (
                   <tr key={s.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
                     <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{s.fecha}</td>
-                    {user.rol === 'Administrador' && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{s.responsableNombre}</td>}
+                    {(user.rol === 'Administrador' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{s.responsableNombre}</td>}
                     <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
                     <td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>$ {(s.tipo === 'Anticipo' ? s.valor : s.totalCalculado || 0).toLocaleString()}</td>
                     <td style={{ padding: '0.75rem', textAlign: 'center', color: s.documentos?.length > 0 ? '#51cf66' : '#7a7a7a' }}>{s.documentos?.length || 0}</td>
@@ -641,10 +650,12 @@ export default function App() {
                     <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                       {(s.tipo === 'Legalización' || s.tipo === 'Reembolso') && s.documentos?.length > 0 && (
                         <>
-                          <button onClick={() => handleGenerarPDF(s)} disabled={generandoPDF === s.id} style={{ background: 'none', border: 'none', cursor: 'pointer', color: generandoPDF === s.id ? '#7a7a7a' : '#748ffc', fontSize: '1rem', marginRight: '0.5rem' }} title="PDF">
-                            {generandoPDF === s.id ? '⏳' : '📄'}
-                          </button>
                           {user.rol === 'Administrador' && (
+                            <button onClick={() => handleGenerarPDF(s)} disabled={generandoPDF === s.id} style={{ background: 'none', border: 'none', cursor: 'pointer', color: generandoPDF === s.id ? '#7a7a7a' : '#748ffc', fontSize: '1rem', marginRight: '0.5rem' }} title="PDF">
+                              {generandoPDF === s.id ? '⏳' : '📄'}
+                            </button>
+                          )}
+                          {(user.rol === 'Administrador' || user.rol === 'Contadora') && (
                             <>
                               <button onClick={() => handleDescargarZIP(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem', marginRight: '0.5rem' }} title="ZIP">
                                 📦
