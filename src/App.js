@@ -68,9 +68,14 @@ export default function App() {
   };
 
   const handleAddSolicitud = () => {
-    if (!newSolicitud.tipo || !newSolicitud.valor) { 
-      alert('Completa tipo y valor'); 
+    if (!newSolicitud.tipo) { 
+      alert('Selecciona un tipo'); 
       return; 
+    }
+
+    if (newSolicitud.tipo === 'Anticipo' && !newSolicitud.valor) {
+      alert('Ingresa valor solicitado');
+      return;
     }
     
     if ((newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso') && newSolicitud.documentos.length === 0) {
@@ -373,7 +378,9 @@ export default function App() {
                 <option value="Legalización">Legalización</option>
                 <option value="Reembolso">Reembolso</option>
               </select>
-              <input type="number" placeholder="Valor" value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
+              {newSolicitud.tipo === 'Anticipo' && (
+                <input type="number" placeholder="Valor Solicitado" value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
+              )}
             </div>
 
             <input type="text" placeholder="Concepto" value={newSolicitud.detalle} onChange={(e) => setNewSolicitud({...newSolicitud, detalle: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
