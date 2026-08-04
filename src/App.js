@@ -26,6 +26,7 @@ const usuariosAdmin = [
 ];
 
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzC5cb8iM93MDOr6fHtgENp0aFoZFi5wY10kh0TVA5noOSEU07kNXLsbSgxa71iTkbK/exec';
+const DRIVE_UPLOAD_URL = 'https://script.google.com/macros/s/AKfycbxxz_jICfJ7LvXNNG4PHLtugVtYhYzRdIYpthlYI5WTIno7ZjIKJZHCdbPC9jUN3BUpRg/exec';
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -105,6 +106,12 @@ export default function App() {
     };
 
     setSolicitudes([...solicitudes, nuevaSolicitud]);
+    
+    // Subir archivos a Drive si es Legalización o Reembolso
+    if ((newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso') && newSolicitud.documentos.length > 0) {
+      handleUploadArchivesToDrive(nuevaSolicitud);
+    }
+    
     setNewSolicitud({
       fecha: new Date().toISOString().split('T')[0],
       tipo: '',
@@ -448,7 +455,44 @@ export default function App() {
     setSolicitudes(solicitudes.map(s => s.id === id ? {...s, estado: nuevoEstado} : s));
   };
 
-  const handleExportarSheets = async () => {
+  const handleUploadArchivesToDrive = async (solicitud) => {
+    try {
+      // Preparar archivos para enviar
+      const archivos = solicitud.documentos
+        .filter(doc => doc.archivo && doc.archivoNombre)
+        .map(doc => ({
+          nombre: doc.archivoNombre,
+          data: doc.archivo.split(',')[1], // Base64 sin "data:..."
+          mimeType: doc.archivo.split(';')[0].split(':')[1] || 'application/octet-stream'
+        }));
+
+      if (archivos.length === 0) return;
+
+      const payLoad = {
+        empresa: solicitud.empresa,
+        tipo: solicitud.tipo,
+        responsableNombre: solicitud.responsableNombre,
+        fecha: solicitud.fecha,
+        archivos: archivos
+      };
+
+      const response = await fetch(DRIVE_UPLOAD_URL, {
+        method: 'POST',
+        body: JSON.stringify(payLoad)
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        alert(`✅ ${result.filesCount} archivo(s) guardado(s) en Drive\n📁 Carpeta: ${result.folderLink}`);
+      } else {
+        console.warn('Advertencia Drive:', result.error);
+        alert('⚠️ Solicitud guardada pero archivos NO se subieron a Drive\nError: ' + result.error);
+      }
+    } catch (error) {
+      console.warn('Error upload Drive:', error);
+      alert('⚠️ Solicitud guardada pero archivos NO se subieron a Drive\nError: ' + error.message);
+    }
+  };
     try {
       const response = await fetch(APPS_SCRIPT_URL, {
         method: 'POST',
