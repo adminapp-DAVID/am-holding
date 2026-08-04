@@ -68,7 +68,7 @@ export default function App() {
     }
   };
 
-  const handleAddSolicitud = () => {
+  const handleAddSolicitud = async () => {
     if (!newSolicitud.tipo) { 
       alert('Selecciona un tipo'); 
       return; 
@@ -109,7 +109,7 @@ export default function App() {
     
     // Subir archivos a Drive si es Legalización o Reembolso
     if ((newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso') && newSolicitud.documentos.length > 0) {
-      handleUploadArchivesToDrive(nuevaSolicitud);
+      await handleUploadArchivesToDrive(nuevaSolicitud);
     }
     
     setNewSolicitud({
