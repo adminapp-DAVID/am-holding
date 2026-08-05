@@ -33,6 +33,7 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginMode, setLoginMode] = useState('responsable');
+  const [currentView, setCurrentView] = useState('dashboard');
   const [solicitudes, setSolicitudes] = useState(() => JSON.parse(localStorage.getItem('amSolicitudes') || '[]'));
   const [generandoPDF, setGenerandoPDF] = useState(null);
   const [newSolicitud, setNewSolicitud] = useState({
@@ -511,6 +512,35 @@ export default function App() {
     ? solicitudes.filter(s => ['Aprobado', 'Pagado', 'Legalizado'].includes(s.estado))
     : solicitudes;
 
+  // Dashboard estadísticas
+  const statsEstado = {
+    Pendiente: solicitudesUsuario.filter(s => s.estado === 'Pendiente').length,
+    Aprobado: solicitudesUsuario.filter(s => s.estado === 'Aprobado').length,
+    Pagado: solicitudesUsuario.filter(s => s.estado === 'Pagado').length,
+    Legalizado: solicitudesUsuario.filter(s => s.estado === 'Legalizado').length
+  };
+
+  const totalSolicitudes = solicitudesUsuario.length;
+  const totalMonto = solicitudesUsuario.reduce((sum, s) => sum + (s.tipo === 'Anticipo' ? s.valor : s.totalCalculado || 0), 0);
+
+  const statsPorEmpresa = empresas.map(emp => ({
+    empresa: emp,
+    cantidad: solicitudesUsuario.filter(s => s.empresa === emp).length,
+    monto: solicitudesUsuario.filter(s => s.empresa === emp).reduce((sum, s) => sum + (s.tipo === 'Anticipo' ? s.valor : s.totalCalculado || 0), 0)
+  })).filter(s => s.cantidad > 0);
+
+  const topResponsables = responsablesData
+    .map(resp => ({
+      nombre: resp.nombre,
+      cantidad: solicitudesUsuario.filter(s => s.responsableId === resp.id).length,
+      monto: solicitudesUsuario.filter(s => s.responsableId === resp.id).reduce((sum, s) => sum + (s.tipo === 'Anticipo' ? s.valor : s.totalCalculado || 0), 0)
+    }))
+    .filter(s => s.cantidad > 0)
+    .sort((a, b) => b.cantidad - a.cantidad)
+    .slice(0, 5);
+
+  const ultimasSolicitudes = solicitudesUsuario.sort((a, b) => new Date(b.fecha) - new Date(a.fecha)).slice(0, 5);
+
   const getColorEstado = (estado) => {
     if (estado === 'Pendiente') return '#ff6b6b';
     if (estado === 'Aprobado') return '#ffd43b';
@@ -553,8 +583,147 @@ export default function App() {
         </div>
       </header>
 
+      <nav style={{ backgroundColor: '#0f0f0f', borderBottom: '1px solid #2a2a2a', padding: '1rem 0', stickyTop: 0 }}>
+        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 1rem', display: 'flex', gap: '1rem' }}>
+          <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'dashboard' ? '#C4A747' : '#2a2a2a', color: currentView === 'dashboard' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📊 Dashboard</button>
+          <button onClick={() => setCurrentView('solicitudes')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'solicitudes' ? '#C4A747' : '#2a2a2a', color: currentView === 'solicitudes' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📋 Solicitudes</button>
+        </div>
+      </nav>
+
       <main style={{ maxWidth: '1400px', margin: '2rem auto', padding: '0 1rem' }}>
-        {user.rol === 'Responsable' && (
+        {currentView === 'dashboard' && (
+          <>
+            {/* DASHBOARD */}
+            <div style={{ marginBottom: '2rem' }}>
+              <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📊 Dashboard</h2>
+              
+              {/* Cards Resumen */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
+                  <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Total Solicitudes</p>
+                  <h3 style={{ color: '#C4A747', margin: 0, fontSize: '2.5rem' }}>{totalSolicitudes}</h3>
+                </div>
+                <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
+                  <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Monto Total</p>
+                  <h3 style={{ color: '#51cf66', margin: 0, fontSize: '2.5rem' }}>$ {totalMonto.toLocaleString()}</h3>
+                </div>
+                <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
+                  <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Pendiente</p>
+                  <h3 style={{ color: '#ff6b6b', margin: 0, fontSize: '2.5rem' }}>{statsEstado.Pendiente}</h3>
+                </div>
+                <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
+                  <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Aprobado</p>
+                  <h3 style={{ color: '#ffd43b', margin: 0, fontSize: '2.5rem' }}>{statsEstado.Aprobado}</h3>
+                </div>
+                <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
+                  <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Pagado</p>
+                  <h3 style={{ color: '#51cf66', margin: 0, fontSize: '2.5rem' }}>{statsEstado.Pagado}</h3>
+                </div>
+                <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
+                  <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Legalizado</p>
+                  <h3 style={{ color: '#748ffc', margin: 0, fontSize: '2.5rem' }}>{statsEstado.Legalizado}</h3>
+                </div>
+              </div>
+
+              {/* Por Empresa */}
+              {statsPorEmpresa.length > 0 && (
+                <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem', marginBottom: '2rem' }}>
+                  <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>Por Empresa</h3>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '2px solid #C4A747' }}>
+                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
+                          <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Solicitudes</th>
+                          <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {statsPorEmpresa.map((emp, idx) => (
+                          <tr key={idx} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                            <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{emp.empresa}</td>
+                            <td style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>{emp.cantidad}</td>
+                            <td style={{ textAlign: 'right', padding: '0.75rem', color: '#51cf66', fontWeight: 'bold' }}>$ {emp.monto.toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Top Responsables */}
+              {topResponsables.length > 0 && (
+                <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem', marginBottom: '2rem' }}>
+                  <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>👥 Top Responsables</h3>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '2px solid #C4A747' }}>
+                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th>
+                          <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Solicitudes</th>
+                          <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {topResponsables.map((resp, idx) => (
+                          <tr key={idx} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                            <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{resp.nombre}</td>
+                            <td style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>{resp.cantidad}</td>
+                            <td style={{ textAlign: 'right', padding: '0.75rem', color: '#51cf66', fontWeight: 'bold' }}>$ {resp.monto.toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Últimas Solicitudes */}
+              {ultimasSolicitudes.length > 0 && (
+                <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
+                  <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>📋 Últimas Solicitudes</h3>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '2px solid #C4A747' }}>
+                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
+                          {(user.rol === 'Administrador' || user.rol === 'Contadora') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th>}
+                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
+                          <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th>
+                          <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ultimasSolicitudes.map(s => (
+                          <tr key={s.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                            <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{s.fecha}</td>
+                            {(user.rol === 'Administrador' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{s.responsableNombre}</td>}
+                            <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
+                            <td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>$ {(s.tipo === 'Anticipo' ? s.valor : s.totalCalculado || 0).toLocaleString()}</td>
+                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                              <span style={{ backgroundColor: getColorEstado(s.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{s.estado}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {totalSolicitudes === 0 && (
+                <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '2rem', textAlign: 'center' }}>
+                  <p style={{ color: '#a0a0a0', fontSize: '1.1rem' }}>Sin solicitudes aún</p>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {currentView === 'solicitudes' && (
+          <>
+            {user.rol === 'Responsable' && (
           <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
             <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nueva Solicitud</h2>
             
@@ -644,7 +813,7 @@ export default function App() {
 
             <button onClick={handleAddSolicitud} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar Solicitud</button>
           </div>
-        )}
+            )}
 
         <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -712,6 +881,8 @@ export default function App() {
             </table>
           </div>
         </div>
+          )}
+        </>
       </main>
     </div>
   );
