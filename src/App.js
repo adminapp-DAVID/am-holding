@@ -651,11 +651,6 @@ export default function App() {
             <h2 style={{ color: '#C4A747', margin: 0 }}>
               📋 {user.rol === 'Responsable' ? 'Mis Solicitudes' : user.rol === 'Contadora' ? 'Solicitudes Auditadas' : 'Todas las Solicitudes'}
             </h2>
-            {user.rol === 'Administrador' && (
-              <button onClick={handleExportarSheets} style={{ backgroundColor: '#51cf66', color: '#0f0f0f', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>
-                📊 Exportar a Sheets
-              </button>
-            )}
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
