@@ -39,6 +39,8 @@ const App = () => {
   const [generandoPDF, setGenerandoPDF] = useState(null);
   const [editingResponsable, setEditingResponsable] = useState(null);
   const [newResponsable, setNewResponsable] = useState({ nombre: '', email: '', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' });
+  const [cuentasDeCobro, setCuentasDeCobro] = useState(() => JSON.parse(localStorage.getItem('amCuentasDeCobro') || '[]'));
+  const [newCuentaCobro, setNewCuentaCobro] = useState({ fecha: new Date().toISOString().split('T')[0], numero: '', responsable: '', empresa: '', monto: '', concepto: '', driveLink: '', estado: 'Pendiente' });
 
   // URLs
   const DRIVE_UPLOAD_URL = 'https://script.google.com/macros/s/AKfycbxxz_jICfJ7LvXNNG4PHLtugVtYhYzRdIYpthlYI5WTIno7ZjIKJZHCdbPC9jUN3BUpRg/exec';
@@ -415,6 +417,53 @@ const App = () => {
     }
   };
 
+  // CUENTAS DE COBRO CRUD
+  const handleAddCuentaCobro = () => {
+    if (!newCuentaCobro.numero || !newCuentaCobro.responsable || !newCuentaCobro.monto) {
+      alert('Número, responsable y monto son obligatorios');
+      return;
+    }
+
+    const nuevaCuenta = {
+      id: Date.now(),
+      ...newCuentaCobro,
+      responsableNombre: responsables.find(r => r.nombre === newCuentaCobro.responsable)?.nombre || newCuentaCobro.responsable
+    };
+
+    setCuentasDeCobro([...cuentasDeCobro, nuevaCuenta]);
+    localStorage.setItem('amCuentasDeCobro', JSON.stringify([...cuentasDeCobro, nuevaCuenta]));
+    
+    setNewCuentaCobro({ 
+      fecha: new Date().toISOString().split('T')[0], 
+      numero: '', 
+      responsable: '', 
+      empresa: '', 
+      monto: '', 
+      concepto: '', 
+      driveLink: '', 
+      estado: 'Pendiente' 
+    });
+    alert('✅ Cuenta de cobro agregada');
+  };
+
+  const handleUpdateCuentaCobro = (id, campo, valor) => {
+    const updated = cuentasDeCobro.map(c => c.id === id ? {...c, [campo]: valor} : c);
+    setCuentasDeCobro(updated);
+    localStorage.setItem('amCuentasDeCobro', JSON.stringify(updated));
+  };
+
+  const handleDeleteCuentaCobro = (id) => {
+    if (window.confirm('¿Eliminar cuenta de cobro?')) {
+      const updated = cuentasDeCobro.filter(c => c.id !== id);
+      setCuentasDeCobro(updated);
+      localStorage.setItem('amCuentasDeCobro', JSON.stringify(updated));
+    }
+  };
+
+  const cuentasCobroUsuario = user?.rol === 'Responsable' 
+    ? cuentasDeCobro.filter(c => c.responsableNombre === user.nombre)
+    : cuentasDeCobro;
+
   // Color estado
   const getColorEstado = (estado) => {
     const colors = { Pendiente: '#ff6b6b', Aprobado: '#ffd43b', Pagado: '#51cf66', Legalizado: '#748ffc' };
@@ -463,6 +512,7 @@ const App = () => {
         <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 1rem', display: 'flex', gap: '1rem' }}>
           <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'dashboard' ? '#C4A747' : '#2a2a2a', color: currentView === 'dashboard' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📊 Dashboard</button>
           <button onClick={() => setCurrentView('solicitudes')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'solicitudes' ? '#C4A747' : '#2a2a2a', color: currentView === 'solicitudes' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📋 Solicitudes</button>
+          <button onClick={() => setCurrentView('cuentasCobro')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'cuentasCobro' ? '#C4A747' : '#2a2a2a', color: currentView === 'cuentasCobro' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💳 Cuentas de Cobro</button>
           {(user.rol === 'Administrador') && (
             <button onClick={() => setCurrentView('responsables')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'responsables' ? '#C4A747' : '#2a2a2a', color: currentView === 'responsables' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>👥 Responsables</button>
           )}
@@ -788,6 +838,92 @@ const App = () => {
                     })}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {currentView === 'cuentasCobro' && (
+          <div>
+            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
+              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nueva Cuenta de Cobro</h2>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                <input type="date" value={newCuentaCobro.fecha} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, fecha: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
+                <input type="text" placeholder="Número de Cuenta" value={newCuentaCobro.numero} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, numero: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
+                <select value={newCuentaCobro.responsable} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, responsable: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
+                  <option value="">Responsable</option>
+                  {responsables.map(r => <option key={r.id} value={r.nombre}>{r.nombre}</option>)}
+                </select>
+                <select value={newCuentaCobro.empresa} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, empresa: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
+                  <option value="">Empresa</option>
+                  {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                </select>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <input type="number" placeholder="Monto" value={newCuentaCobro.monto} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, monto: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
+                <input type="text" placeholder="Concepto" value={newCuentaCobro.concepto} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, concepto: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
+              </div>
+
+              <input type="url" placeholder="Link Carpeta Drive (Ej: https://drive.google.com/...)" value={newCuentaCobro.driveLink} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, driveLink: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
+
+              <button onClick={handleAddCuentaCobro} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Crear Cuenta de Cobro</button>
+            </div>
+
+            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>💳 Cuentas de Cobro ({cuentasCobroUsuario.length})</h2>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <thead style={{ backgroundColor: '#0f0f0f' }}>
+                    <tr style={{ borderBottom: '2px solid #C4A747' }}>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Número</th>
+                      {user.rol === 'Administrador' && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th>}
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
+                      <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th>
+                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
+                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cuentasCobroUsuario.map(c => (
+                      <tr key={c.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                        <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{c.fecha}</td>
+                        <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{c.numero}</td>
+                        {user.rol === 'Administrador' && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{c.responsableNombre}</td>}
+                        <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{c.empresa}</td>
+                        <td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>$ {parseFloat(c.monto).toLocaleString()}</td>
+                        <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                          {user.rol === 'Administrador' ? (
+                            <select value={c.estado} onChange={(e) => handleUpdateCuentaCobro(c.id, 'estado', e.target.value)} style={{ backgroundColor: getColorEstado(c.estado), color: '#0f0f0f', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
+                              {estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}
+                            </select>
+                          ) : (
+                            <span style={{ backgroundColor: getColorEstado(c.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{c.estado}</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                          {c.driveLink && (
+                            <a href={c.driveLink} target="_blank" rel="noopener noreferrer" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#748ffc', fontSize: '1rem', marginRight: '0.5rem', textDecoration: 'none' }} title="Abrir Drive">
+                              ☁️
+                            </a>
+                          )}
+                          {user.rol === 'Administrador' && (
+                            <button onClick={() => handleDeleteCuentaCobro(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem' }} title="Eliminar">
+                              🗑️
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {cuentasCobroUsuario.length === 0 && (
+                  <div style={{ padding: '2rem', textAlign: 'center', color: '#a0a0a0' }}>
+                    Sin cuentas de cobro registradas
+                  </div>
+                )}
               </div>
             </div>
           </div>
