@@ -11,8 +11,11 @@ const App = () => {
   const [loginMode, setLoginMode] = useState('responsable');
   const [currentView, setCurrentView] = useState('dashboard');
   const [solicitudes, setSolicitudes] = useState(() => JSON.parse(localStorage.getItem('amSolicitudes') || '[]'));
+  const [responsables, setResponsables] = useState(() => JSON.parse(localStorage.getItem('amResponsables') || JSON.stringify(responsablesData)));
   const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', detalle: '', empresa: 'AM SPORTS GROUP SAS', consignado: { nit: '', nombre: '', cedula: '' }, documentos: [] });
   const [generandoPDF, setGenerandoPDF] = useState(null);
+  const [editingResponsable, setEditingResponsable] = useState(null);
+  const [newResponsable, setNewResponsable] = useState({ nombre: '', email: '', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' });
 
   // URLs
   const DRIVE_UPLOAD_URL = 'https://script.google.com/macros/s/AKfycbxxz_jICfJ7LvXNNG4PHLtugVtYhYzRdIYpthlYI5WTIno7ZjIKJZHCdbPC9jUN3BUpRg/exec';
@@ -43,7 +46,7 @@ const App = () => {
   // Funciones Login
   const handleLogin = () => {
     if (loginMode === 'responsable') {
-      const found = responsablesData.find(u => u.email === email && u.password === password);
+      const found = responsables.find(u => u.email === email && u.password === password);
       if (found) {
         setUser({ ...found, rol: 'Responsable' });
         setEmail('');
@@ -171,6 +174,8 @@ const App = () => {
       await handleUploadArchivesToDrive(nuevaSolicitud);
     }
 
+    localStorage.setItem('amSolicitudes', JSON.stringify([...solicitudes, nuevaSolicitud]));
+
     setNewSolicitud({
       fecha: new Date().toISOString().split('T')[0],
       tipo: '',
@@ -185,7 +190,9 @@ const App = () => {
 
   // Cambiar estado
   const handleChangeEstado = (id, nuevoEstado) => {
-    setSolicitudes(solicitudes.map(s => s.id === id ? {...s, estado: nuevoEstado} : s));
+    const updated = solicitudes.map(s => s.id === id ? {...s, estado: nuevoEstado} : s);
+    setSolicitudes(updated);
+    localStorage.setItem('amSolicitudes', JSON.stringify(updated));
   };
 
   // Filtrar solicitudes por rol
@@ -212,7 +219,7 @@ const App = () => {
     monto: solicitudesUsuario.filter(s => s.empresa === emp).reduce((sum, s) => sum + (s.tipo === 'Anticipo' ? parseFloat(s.valor) || 0 : s.totalCalculado || 0), 0)
   })).filter(s => s.cantidad > 0);
 
-  const topResponsables = responsablesData
+  const topResponsables = responsables
     .map(resp => ({
       nombre: resp.nombre,
       cantidad: solicitudesUsuario.filter(s => s.responsableId === resp.id).length,
@@ -365,7 +372,46 @@ const App = () => {
   // Eliminar solicitud
   const handleDeleteSolicitud = (id) => {
     if (window.confirm('¿Eliminar solicitud?')) {
-      setSolicitudes(solicitudes.filter(s => s.id !== id));
+      const updated = solicitudes.filter(s => s.id !== id);
+      setSolicitudes(updated);
+      localStorage.setItem('amSolicitudes', JSON.stringify(updated));
+    }
+  };
+
+  // RESPONSABLES CRUD
+  const handleAddResponsable = () => {
+    if (!newResponsable.nombre || !newResponsable.email) {
+      alert('Nombre y email son obligatorios');
+      return;
+    }
+    
+    const existe = responsables.some(r => r.email === newResponsable.email);
+    if (existe) {
+      alert('Email ya existe');
+      return;
+    }
+
+    const responsableNuevo = {
+      id: Math.max(...responsables.map(r => r.id || 0), 0) + 1,
+      ...newResponsable
+    };
+
+    setResponsables([...responsables, responsableNuevo]);
+    localStorage.setItem('amResponsables', JSON.stringify([...responsables, responsableNuevo]));
+    setNewResponsable({ nombre: '', email: '', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' });
+    alert('✅ Responsable agregado');
+  };
+
+  const handleUpdateResponsable = (id, datos) => {
+    setResponsables(responsables.map(r => r.id === id ? {...r, ...datos} : r));
+    localStorage.setItem('amResponsables', JSON.stringify(responsables.map(r => r.id === id ? {...r, ...datos} : r)));
+    setEditingResponsable(null);
+  };
+
+  const handleDeleteResponsable = (id) => {
+    if (window.confirm('¿Eliminar responsable? (Las solicitudes se mantendrán)')) {
+      setResponsables(responsables.filter(r => r.id !== id));
+      localStorage.setItem('amResponsables', JSON.stringify(responsables.filter(r => r.id !== id)));
     }
   };
 
@@ -417,6 +463,9 @@ const App = () => {
         <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 1rem', display: 'flex', gap: '1rem' }}>
           <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'dashboard' ? '#C4A747' : '#2a2a2a', color: currentView === 'dashboard' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📊 Dashboard</button>
           <button onClick={() => setCurrentView('solicitudes')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'solicitudes' ? '#C4A747' : '#2a2a2a', color: currentView === 'solicitudes' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📋 Solicitudes</button>
+          {(user.rol === 'Administrador') && (
+            <button onClick={() => setCurrentView('responsables')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'responsables' ? '#C4A747' : '#2a2a2a', color: currentView === 'responsables' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>👥 Responsables</button>
+          )}
         </div>
       </nav>
 
@@ -661,8 +710,91 @@ const App = () => {
             </div>
           </div>
         )}
+
+        {currentView === 'responsables' && (
+          <div>
+            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
+              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nuevo Responsable</h2>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                <input type="text" placeholder="Nombre Completo" value={newResponsable.nombre} onChange={(e) => setNewResponsable({...newResponsable, nombre: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
+                <input type="email" placeholder="Email" value={newResponsable.email} onChange={(e) => setNewResponsable({...newResponsable, email: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
+                <input type="password" placeholder="Contraseña" value={newResponsable.password} onChange={(e) => setNewResponsable({...newResponsable, password: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
+                <select value={newResponsable.empresa} onChange={(e) => setNewResponsable({...newResponsable, empresa: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
+                  {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                </select>
+              </div>
+
+              <button onClick={handleAddResponsable} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Agregar Responsable</button>
+            </div>
+
+            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>👥 Responsables ({responsables.length})</h2>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <thead style={{ backgroundColor: '#0f0f0f' }}>
+                    <tr style={{ borderBottom: '2px solid #C4A747' }}>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Nombre</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Email</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
+                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Solicitudes</th>
+                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {responsables.map(r => {
+                      const solicitudesResponsable = solicitudes.filter(s => s.responsableId === r.id).length;
+                      return (
+                        <tr key={r.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                          <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>
+                            {editingResponsable === r.id ? (
+                              <input type="text" value={r.nombre} onChange={(e) => handleUpdateResponsable(r.id, {nombre: e.target.value})} style={{ padding: '0.5rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', color: '#fff', borderRadius: '3px', boxSizing: 'border-box' }} />
+                            ) : (
+                              r.nombre
+                            )}
+                          </td>
+                          <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>
+                            {editingResponsable === r.id ? (
+                              <input type="email" value={r.email} onChange={(e) => handleUpdateResponsable(r.id, {email: e.target.value})} style={{ padding: '0.5rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', color: '#fff', borderRadius: '3px', boxSizing: 'border-box' }} />
+                            ) : (
+                              r.email
+                            )}
+                          </td>
+                          <td style={{ padding: '0.75rem', color: '#C4A747' }}>
+                            {editingResponsable === r.id ? (
+                              <select value={r.empresa} onChange={(e) => handleUpdateResponsable(r.id, {empresa: e.target.value})} style={{ padding: '0.5rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', color: '#fff', borderRadius: '3px' }}>
+                                {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                              </select>
+                            ) : (
+                              r.empresa
+                            )}
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center', color: '#51cf66', fontWeight: 'bold' }}>{solicitudesResponsable}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            {editingResponsable === r.id ? (
+                              <>
+                                <button onClick={() => setEditingResponsable(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem', marginRight: '0.5rem' }}>✓</button>
+                                <button onClick={() => { setEditingResponsable(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem' }}>✕</button>
+                              </>
+                            ) : (
+                              <>
+                                <button onClick={() => setEditingResponsable(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#748ffc', fontSize: '1rem', marginRight: '0.5rem' }}>✏️</button>
+                                <button onClick={() => handleDeleteResponsable(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem' }}>🗑️</button>
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
 };
+
 export default App;
