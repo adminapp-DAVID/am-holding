@@ -4,23 +4,7 @@ import jsPDF from 'jspdf';
 import JSZip from 'jszip';
 
 const App = () => {
-  // Estados
-  const [user, setUser] = useState(null);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loginMode, setLoginMode] = useState('responsable');
-  const [currentView, setCurrentView] = useState('dashboard');
-  const [solicitudes, setSolicitudes] = useState(() => JSON.parse(localStorage.getItem('amSolicitudes') || '[]'));
-  const [responsables, setResponsables] = useState(() => JSON.parse(localStorage.getItem('amResponsables') || JSON.stringify(responsablesData)));
-  const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', detalle: '', empresa: 'AM SPORTS GROUP SAS', consignado: { nit: '', nombre: '', cedula: '' }, documentos: [] });
-  const [generandoPDF, setGenerandoPDF] = useState(null);
-  const [editingResponsable, setEditingResponsable] = useState(null);
-  const [newResponsable, setNewResponsable] = useState({ nombre: '', email: '', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' });
-
-  // URLs
-  const DRIVE_UPLOAD_URL = 'https://script.google.com/macros/s/AKfycbxxz_jICfJ7LvXNNG4PHLtugVtYhYzRdIYpthlYI5WTIno7ZjIKJZHCdbPC9jUN3BUpRg/exec';
-
-  // Data
+  // Data - DEBE ir primero
   const responsablesData = [
     { id: 1, nombre: 'Cristian Alejandro Giraldo Carvajal', email: 'cristian@amholding.com', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' },
     { id: 2, nombre: 'David Dario Andrade Hernández', email: 'david@amholding.com', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' },
@@ -42,6 +26,22 @@ const App = () => {
   const empresas = ['AM SPORTS GROUP SAS', 'PRO INVESTMENTS GLOBAL SAS', 'PRONOVA CAPITAL SAS', 'FOR SEVEN MEDIA SAS', 'ARKO'];
   const estadosSolicitud = ['Pendiente', 'Aprobado', 'Pagado', 'Legalizado'];
   const tiposSolicitud = ['Anticipo', 'Legalización', 'Reembolso'];
+
+  // Estados
+  const [user, setUser] = useState(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginMode, setLoginMode] = useState('responsable');
+  const [currentView, setCurrentView] = useState('dashboard');
+  const [solicitudes, setSolicitudes] = useState(() => JSON.parse(localStorage.getItem('amSolicitudes') || '[]'));
+  const [responsables, setResponsables] = useState(() => JSON.parse(localStorage.getItem('amResponsables') || JSON.stringify(responsablesData)));
+  const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', detalle: '', empresa: 'AM SPORTS GROUP SAS', consignado: { nit: '', nombre: '', cedula: '' }, documentos: [] });
+  const [generandoPDF, setGenerandoPDF] = useState(null);
+  const [editingResponsable, setEditingResponsable] = useState(null);
+  const [newResponsable, setNewResponsable] = useState({ nombre: '', email: '', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' });
+
+  // URLs
+  const DRIVE_UPLOAD_URL = 'https://script.google.com/macros/s/AKfycbxxz_jICfJ7LvXNNG4PHLtugVtYhYzRdIYpthlYI5WTIno7ZjIKJZHCdbPC9jUN3BUpRg/exec';
 
   // Funciones Login
   const handleLogin = () => {
