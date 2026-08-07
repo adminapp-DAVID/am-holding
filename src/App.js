@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import JSZip from 'jszip';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 const App = () => {
   // Data - DEBE ir primero
@@ -68,6 +69,8 @@ const App = () => {
   const [verSoportes, setVerSoportes] = useState(null);
   const [mostrarImportar, setMostrarImportar] = useState(false);
   const [archivoImportacion, setArchivoImportacion] = useState(null);
+  const [filtroFechaInicio, setFiltroFechaInicio] = useState('2026-01-01');
+  const [filtroFechaFin, setFiltroFechaFin] = useState(new Date().toISOString().split('T')[0]);
 
   // URLs
   const DRIVE_UPLOAD_URL = 'https://script.google.com/macros/s/AKfycby-voRnepppydRFrkEc4CO4dCV7Ymhac-bU63FPZrtVui71vxc2j0dC3TQphu8XhmEW5Q/exec';
@@ -699,6 +702,56 @@ const App = () => {
       .reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0)
   })).filter(g => g.valor > 0);
 
+  // FUNCIONES PARA DASHBOARD AVANZADO
+  const gastosFiltradomat = (user?.rol === 'Responsable' ? gastosUsuario : gastos).filter(g => 
+    g.fecha >= filtroFechaInicio && g.fecha <= filtroFechaFin
+  );
+  
+  const ingresosFiltradomat = (user?.rol === 'Responsable' ? ingresosUsuario : ingresos).filter(i => 
+    i.fecha >= filtroFechaInicio && i.fecha <= filtroFechaFin
+  );
+
+  // Datos por mes
+  const datosPorMes = (() => {
+    const meses = {};
+    gastosFiltradomat.forEach(g => {
+      const mes = g.fecha.substring(0, 7);
+      if (!meses[mes]) meses[mes] = { mes, gastos: 0, ingresos: 0 };
+      meses[mes].gastos += parseFloat(g.valor) || 0;
+    });
+    ingresosFiltradomat.forEach(i => {
+      const mes = i.fecha.substring(0, 7);
+      if (!meses[mes]) meses[mes] = { mes, gastos: 0, ingresos: 0 };
+      meses[mes].ingresos += parseFloat(i.valor) || 0;
+    });
+    return Object.values(meses).sort((a, b) => a.mes.localeCompare(b.mes));
+  })();
+
+  // Top CECOs
+  const topCecos = cecos.map(ceco => ({
+    name: ceco.nombre,
+    value: gastosFiltradomat
+      .filter(g => g.ceco === ceco.codigo)
+      .reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0)
+  }))
+  .filter(c => c.value > 0)
+  .sort((a, b) => b.value - a.value)
+  .slice(0, 5);
+
+  // Top Empresas
+  const topEmpresas = empresas.map(emp => ({
+    name: emp.split(' ')[0],
+    value: gastosFiltradomat
+      .filter(g => g.empresa === emp)
+      .reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0)
+  }))
+  .filter(e => e.value > 0)
+  .sort((a, b) => b.value - a.value)
+  .slice(0, 5);
+
+  // Colores para gráficos
+  const COLORS = ['#C4A747', '#ff6b6b', '#51cf66', '#4285F4', '#ffd43b', '#9c27b0'];
+
   // Color estado
   const getColorEstado = (estado) => {
     const colors = { Pendiente: '#ff6b6b', Aprobado: '#ffd43b', Pagado: '#51cf66', Legalizado: '#748ffc' };
@@ -1091,56 +1144,93 @@ const App = () => {
               </div>
             )}
 
-            {/* DASHBOARD FINANCIERO */}
+            {/* DASHBOARD FINANCIERO AVANZADO */}
             <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
-              <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📈 Resumen Financiero</h2>
+              <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📈 Dashboard Financiero Avanzado</h2>
               
+              {/* FILTRO DE FECHAS */}
+              <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem', marginBottom: '2rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div>
+                  <label style={{ display: 'block', color: '#a0a0a0', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Desde</label>
+                  <input type="date" value={filtroFechaInicio} onChange={(e) => setFiltroFechaInicio(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#a0a0a0', cursor: 'pointer' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#a0a0a0', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Hasta</label>
+                  <input type="date" value={filtroFechaFin} onChange={(e) => setFiltroFechaFin(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#a0a0a0', cursor: 'pointer' }} />
+                </div>
+                <button onClick={() => { setFiltroFechaInicio('2026-01-01'); setFiltroFechaFin(new Date().toISOString().split('T')[0]); }} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#2a2a2a', color: '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  🔄 Reiniciar
+                </button>
+              </div>
+
+              {/* CARDS RESUMEN */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
                 <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                  <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Total Ingresos</p>
-                  <h3 style={{ color: '#51cf66', margin: 0, fontSize: '2rem' }}>$ {totalIngresos.toLocaleString()}</h3>
+                  <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💰 Ingresos</p>
+                  <h3 style={{ color: '#51cf66', margin: 0, fontSize: '2rem' }}>$ {ingresosFiltradomat.reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0).toLocaleString()}</h3>
                 </div>
                 <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                  <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Total Gastos</p>
-                  <h3 style={{ color: '#ff6b6b', margin: 0, fontSize: '2rem' }}>$ {totalGastos.toLocaleString()}</h3>
+                  <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💸 Gastos</p>
+                  <h3 style={{ color: '#ff6b6b', margin: 0, fontSize: '2rem' }}>$ {gastosFiltradomat.reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0).toLocaleString()}</h3>
                 </div>
                 <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                  <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Balance</p>
-                  <h3 style={{ color: balance >= 0 ? '#51cf66' : '#ff6b6b', margin: 0, fontSize: '2rem' }}>$ {balance.toLocaleString()}</h3>
+                  <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>📊 Balance</p>
+                  <h3 style={{ color: (ingresosFiltradomat.reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0) - gastosFiltradomat.reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0)) >= 0 ? '#51cf66' : '#ff6b6b', margin: 0, fontSize: '2rem' }}>$ {(ingresosFiltradomat.reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0) - gastosFiltradomat.reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0)).toLocaleString()}</h3>
                 </div>
               </div>
 
-              {gastosPorCECO.length > 0 && (
-                <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem', marginBottom: '1.5rem' }}>
-                  <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>Gastos por Centro de Costo</h3>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <tbody>
-                      {gastosPorCECO.map((g, idx) => (
-                        <tr key={idx} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                          <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{g.ceco}</td>
-                          <td style={{ padding: '0.75rem', textAlign: 'right', color: '#ff6b6b', fontWeight: 'bold' }}>$ {g.valor.toLocaleString()}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              {/* GRÁFICO GASTOS VS INGRESOS POR MES */}
+              {datosPorMes.length > 0 && (
+                <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem', marginBottom: '2rem' }}>
+                  <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>Gastos vs Ingresos por Mes</h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={datosPorMes}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
+                      <XAxis dataKey="mes" stroke="#a0a0a0" />
+                      <YAxis stroke="#a0a0a0" />
+                      <Tooltip contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#a0a0a0' }} />
+                      <Legend />
+                      <Bar dataKey="gastos" fill="#ff6b6b" name="Gastos" />
+                      <Bar dataKey="ingresos" fill="#51cf66" name="Ingresos" />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
               )}
 
-              {gastosPorEmpresa.length > 0 && (
-                <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                  <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>Gastos por Empresa</h3>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <tbody>
-                      {gastosPorEmpresa.map((g, idx) => (
-                        <tr key={idx} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                          <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{g.empresa}</td>
-                          <td style={{ padding: '0.75rem', textAlign: 'right', color: '#ff6b6b', fontWeight: 'bold' }}>$ {g.valor.toLocaleString()}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              {/* GRÁFICOS TOP CECOs Y TOP EMPRESAS */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem' }}>
+                {topCecos.length > 0 && (
+                  <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
+                    <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🏆 Top 5 CECOs</h3>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <PieChart>
+                        <Pie data={topCecos} cx="50%" cy="50%" labelLine={false} label={({ name, value }) => `${name}: $${(value/1000000).toFixed(1)}M`} outerRadius={60} fill="#8884d8" dataKey="value">
+                          {topCecos.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value) => `$${(value/1000000).toFixed(2)}M`} contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#a0a0a0' }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+
+                {topEmpresas.length > 0 && (
+                  <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
+                    <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🏢 Top 5 Empresas</h3>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <PieChart>
+                        <Pie data={topEmpresas} cx="50%" cy="50%" labelLine={false} label={({ name, value }) => `${name}: $${(value/1000000).toFixed(1)}M`} outerRadius={60} fill="#8884d8" dataKey="value">
+                          {topEmpresas.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value) => `$${(value/1000000).toFixed(2)}M`} contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#a0a0a0' }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* NUEVA TRANSACCIÓN */}
