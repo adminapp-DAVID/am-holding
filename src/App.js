@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import JSZip from 'jszip';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 const App = () => {
   // Data - DEBE ir primero
@@ -749,9 +748,6 @@ const App = () => {
   .sort((a, b) => b.value - a.value)
   .slice(0, 5);
 
-  // Colores para gráficos
-  const COLORS = ['#C4A747', '#ff6b6b', '#51cf66', '#4285F4', '#ffd43b', '#9c27b0'];
-
   // Color estado
   const getColorEstado = (estado) => {
     const colors = { Pendiente: '#ff6b6b', Aprobado: '#ffd43b', Pagado: '#51cf66', Legalizado: '#748ffc' };
@@ -1183,17 +1179,40 @@ const App = () => {
               {datosPorMes.length > 0 && (
                 <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem', marginBottom: '2rem' }}>
                   <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>Gastos vs Ingresos por Mes</h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={datosPorMes}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
-                      <XAxis dataKey="mes" stroke="#a0a0a0" />
-                      <YAxis stroke="#a0a0a0" />
-                      <Tooltip contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#a0a0a0' }} />
-                      <Legend />
-                      <Bar dataKey="gastos" fill="#ff6b6b" name="Gastos" />
-                      <Bar dataKey="ingresos" fill="#51cf66" name="Ingresos" />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <svg width="100%" height="300" viewBox="0 0 800 300" style={{ backgroundColor: 'transparent' }}>
+                    {/* Grid */}
+                    {[0, 1, 2, 3, 4].map(i => (
+                      <line key={`grid-${i}`} x1="60" y1={50 + i * 50} x2="750" y2={50 + i * 50} stroke="#2a2a2a" strokeWidth="1" strokeDasharray="5,5" />
+                    ))}
+                    
+                    {/* Barras */}
+                    {datosPorMes.map((mes, idx) => {
+                      const maxVal = Math.max(...datosPorMes.map(m => Math.max(m.gastos, m.ingresos))) || 1;
+                      const x = 60 + (idx * 700 / datosPorMes.length);
+                      const barWidth = 700 / datosPorMes.length / 2.5;
+                      const gastosHeight = (mes.gastos / maxVal) * 200;
+                      const ingresosHeight = (mes.ingresos / maxVal) * 200;
+                      
+                      return (
+                        <g key={`mes-${idx}`}>
+                          {/* Gasto */}
+                          <rect x={x} y={250 - gastosHeight} width={barWidth} height={gastosHeight} fill="#ff6b6b" opacity="0.8" />
+                          {/* Ingreso */}
+                          <rect x={x + barWidth + 5} y={250 - ingresosHeight} width={barWidth} height={ingresosHeight} fill="#51cf66" opacity="0.8" />
+                          {/* Label */}
+                          <text x={x + barWidth} y="280" textAnchor="middle" fill="#a0a0a0" fontSize="12">{mes.mes.split('-')[1]}</text>
+                        </g>
+                      );
+                    })}
+                    
+                    {/* Ejes */}
+                    <line x1="60" y1="50" x2="60" y2="250" stroke="#2a2a2a" strokeWidth="2" />
+                    <line x1="60" y1="250" x2="750" y2="250" stroke="#2a2a2a" strokeWidth="2" />
+                  </svg>
+                  <div style={{ display: 'flex', gap: '2rem', justifyContent: 'center', marginTop: '1rem', fontSize: '0.85rem' }}>
+                    <div><span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#ff6b6b', marginRight: '0.5rem' }}></span><span style={{ color: '#a0a0a0' }}>Gastos</span></div>
+                    <div><span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#51cf66', marginRight: '0.5rem' }}></span><span style={{ color: '#a0a0a0' }}>Ingresos</span></div>
+                  </div>
                 </div>
               )}
 
@@ -1202,32 +1221,80 @@ const App = () => {
                 {topCecos.length > 0 && (
                   <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
                     <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🏆 Top 5 CECOs</h3>
-                    <ResponsiveContainer width="100%" height={250}>
-                      <PieChart>
-                        <Pie data={topCecos} cx="50%" cy="50%" labelLine={false} label={({ name, value }) => `${name}: $${(value/1000000).toFixed(1)}M`} outerRadius={60} fill="#8884d8" dataKey="value">
-                          {topCecos.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip formatter={(value) => `$${(value/1000000).toFixed(2)}M`} contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#a0a0a0' }} />
-                      </PieChart>
-                    </ResponsiveContainer>
+                    <svg width="100%" height="250" viewBox="0 0 200 200" style={{ backgroundColor: 'transparent' }}>
+                      {(() => {
+                        const total = topCecos.reduce((sum, c) => sum + c.value, 0);
+                        let angle = -90;
+                        const cx = 100, cy = 100, r = 70;
+                        const COLORS = ['#C4A747', '#ff6b6b', '#51cf66', '#4285F4', '#ffd43b'];
+                        
+                        return topCecos.map((ceco, idx) => {
+                          const sliceAngle = (ceco.value / total) * 360;
+                          const startAngle = angle * Math.PI / 180;
+                          const endAngle = (angle + sliceAngle) * Math.PI / 180;
+                          
+                          const x1 = cx + r * Math.cos(startAngle);
+                          const y1 = cy + r * Math.sin(startAngle);
+                          const x2 = cx + r * Math.cos(endAngle);
+                          const y2 = cy + r * Math.sin(endAngle);
+                          
+                          const largeArc = sliceAngle > 180 ? 1 : 0;
+                          const pathData = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+                          
+                          angle += sliceAngle;
+                          
+                          return <path key={`slice-${idx}`} d={pathData} fill={COLORS[idx % COLORS.length]} opacity="0.8" />;
+                        });
+                      })()}
+                    </svg>
+                    <div style={{ marginTop: '1rem', fontSize: '0.8rem' }}>
+                      {topCecos.map((ceco, idx) => (
+                        <div key={idx} style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>
+                          <span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: ['#C4A747', '#ff6b6b', '#51cf66', '#4285F4', '#ffd43b'][idx % 5], marginRight: '0.5rem' }}></span>
+                          {ceco.name}: ${(ceco.value / 1000000).toFixed(1)}M
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 
                 {topEmpresas.length > 0 && (
                   <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
                     <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🏢 Top 5 Empresas</h3>
-                    <ResponsiveContainer width="100%" height={250}>
-                      <PieChart>
-                        <Pie data={topEmpresas} cx="50%" cy="50%" labelLine={false} label={({ name, value }) => `${name}: $${(value/1000000).toFixed(1)}M`} outerRadius={60} fill="#8884d8" dataKey="value">
-                          {topEmpresas.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip formatter={(value) => `$${(value/1000000).toFixed(2)}M`} contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#a0a0a0' }} />
-                      </PieChart>
-                    </ResponsiveContainer>
+                    <svg width="100%" height="250" viewBox="0 0 200 200" style={{ backgroundColor: 'transparent' }}>
+                      {(() => {
+                        const total = topEmpresas.reduce((sum, e) => sum + e.value, 0);
+                        let angle = -90;
+                        const cx = 100, cy = 100, r = 70;
+                        const COLORS = ['#C4A747', '#ff6b6b', '#51cf66', '#4285F4', '#ffd43b'];
+                        
+                        return topEmpresas.map((empresa, idx) => {
+                          const sliceAngle = (empresa.value / total) * 360;
+                          const startAngle = angle * Math.PI / 180;
+                          const endAngle = (angle + sliceAngle) * Math.PI / 180;
+                          
+                          const x1 = cx + r * Math.cos(startAngle);
+                          const y1 = cy + r * Math.sin(startAngle);
+                          const x2 = cx + r * Math.cos(endAngle);
+                          const y2 = cy + r * Math.sin(endAngle);
+                          
+                          const largeArc = sliceAngle > 180 ? 1 : 0;
+                          const pathData = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+                          
+                          angle += sliceAngle;
+                          
+                          return <path key={`slice-${idx}`} d={pathData} fill={COLORS[idx % COLORS.length]} opacity="0.8" />;
+                        });
+                      })()}
+                    </svg>
+                    <div style={{ marginTop: '1rem', fontSize: '0.8rem' }}>
+                      {topEmpresas.map((empresa, idx) => (
+                        <div key={idx} style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>
+                          <span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: ['#C4A747', '#ff6b6b', '#51cf66', '#4285F4', '#ffd43b'][idx % 5], marginRight: '0.5rem' }}></span>
+                          {empresa.name}: ${(empresa.value / 1000000).toFixed(1)}M
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
