@@ -490,7 +490,7 @@ const App = () => {
     : cuentasDeCobro;
 
   // GASTOS E INGRESOS CRUD
-  const handleAddGasto = async () => {
+  const handleAddGasto = () => {
     if (!newGasto.detalle || !newGasto.valor) {
       alert('Detalle y valor son obligatorios');
       return;
@@ -506,32 +506,11 @@ const App = () => {
       return;
     }
 
-    // Crear transacción temporal para datos de Drive
-    const transaccionTemp = {
-      empresa: newGasto.empresa,
-      tipo: newGasto.tipo,
-      fecha: newGasto.fecha,
-      responsableNombre: responsables.find(r => r.nombre === newGasto.responsable)?.nombre || newGasto.responsable,
-      detalle: newGasto.detalle
-    };
-
-    // Subir soportes a Drive
-    let urlsSoportes = [];
-    if (soportesTemp.length > 0) {
-      urlsSoportes = await uploadSoportesToDrive(soportesTemp, transaccionTemp);
-    }
-
-    // Guardar transacción con URLs de Drive
     const nuevoGasto = {
       id: Date.now(),
       ...newGasto,
-      soportes: urlsSoportes.map((url, idx) => ({
-        id: Date.now() + idx,
-        nombre: soportesTemp[idx]?.nombre || `soporte_${idx}`,
-        url: url,
-        tipo: 'link_drive'
-      })),
-      responsableNombre: transaccionTemp.responsableNombre
+      soportes: soportesTemp,
+      responsableNombre: responsables.find(r => r.nombre === newGasto.responsable)?.nombre || newGasto.responsable
     };
 
     setGastos([...gastos, nuevoGasto]);
@@ -555,10 +534,10 @@ const App = () => {
       soportes: []
     });
     setSoportesTemp([]);
-    alert('✅ Transacción agregada - Soportes en Drive');
+    alert('✅ Transacción agregada con soportes');
   };
 
-  const handleAddIngreso = async () => {
+  const handleAddIngreso = () => {
     if (!newIngreso.detalle || !newIngreso.valor) {
       alert('Detalle y valor son obligatorios');
       return;
@@ -569,31 +548,11 @@ const App = () => {
       return;
     }
 
-    // Crear transacción temporal para datos de Drive
-    const transaccionTemp = {
-      empresa: newIngreso.empresa,
-      tipo: newIngreso.tipo,
-      fecha: newIngreso.fecha,
-      responsableNombre: responsables.find(r => r.nombre === newIngreso.responsable)?.nombre || newIngreso.responsable,
-      detalle: newIngreso.detalle
-    };
-
-    // Subir soportes a Drive
-    let urlsSoportes = [];
-    if (soportesTemp.length > 0) {
-      urlsSoportes = await uploadSoportesToDrive(soportesTemp, transaccionTemp);
-    }
-
     const nuevoIngreso = {
       id: Date.now(),
       ...newIngreso,
-      soportes: urlsSoportes.map((url, idx) => ({
-        id: Date.now() + idx,
-        nombre: soportesTemp[idx]?.nombre || `soporte_${idx}`,
-        url: url,
-        tipo: 'link_drive'
-      })),
-      responsableNombre: transaccionTemp.responsableNombre
+      soportes: soportesTemp,
+      responsableNombre: responsables.find(r => r.nombre === newIngreso.responsable)?.nombre || newIngreso.responsable
     };
 
     setIngresos([...ingresos, nuevoIngreso]);
@@ -614,7 +573,7 @@ const App = () => {
       soportes: []
     });
     setSoportesTemp([]);
-    alert('✅ Ingreso agregado - Soportes en Drive');
+    alert('✅ Ingreso agregado con soportes');
   };
 
   const handleUpdateGasto = (id, campo, valor) => {
@@ -674,44 +633,11 @@ const App = () => {
     setVerSoportes(soportes);
   };
 
-  // UPLOAD SOPORTES A DRIVE
-  const uploadSoportesToDrive = async (soportes, transaccion) => {
-    if (!soportes || soportes.length === 0) return [];
-    
-    try {
-      const archivos = soportes.map(soporte => ({
-        nombre: soporte.nombre,
-        data: soporte.data.split(',')[1], // Solo el base64, sin data:image/...
-        mimeType: soporte.tipo || 'application/octet-stream'
-      }));
-
-      const payload = {
-        tipo: 'soporte',
-        empresa: transaccion.empresa,
-        tipo_transaccion: transaccion.tipo,
-        fecha: transaccion.fecha,
-        responsable: transaccion.responsableNombre,
-        detalle: transaccion.detalle,
-        archivos: archivos
-      };
-
-      const response = await fetch(DRIVE_UPLOAD_URL, {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      });
-
-      const result = await response.json();
-      
-      if (result.success && result.urls) {
-        return result.urls; // Array de URLs de Drive
-      } else {
-        console.error('Error upload:', result.error);
-        return [];
-      }
-    } catch (error) {
-      console.error('Upload error:', error);
-      return [];
-    }
+  const handleDownloadSoporte = (soporte) => {
+    const link = document.createElement('a');
+    link.href = soporte.data;
+    link.download = soporte.nombre;
+    link.click();
   };
 
   // Filtrar gastos e ingresos
@@ -1554,7 +1480,7 @@ const App = () => {
         {verSoportes && (
           <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
             <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '2rem', maxWidth: '500px', width: '90%', maxHeight: '80vh', overflowY: 'auto' }}>
-              <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📎 Soportes en Drive</h2>
+              <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📎 Soportes</h2>
               
               {verSoportes.length === 0 ? (
                 <p style={{ color: '#a0a0a0', textAlign: 'center' }}>No hay soportes adjuntos</p>
@@ -1562,20 +1488,10 @@ const App = () => {
                 verSoportes.map((soporte, idx) => (
                   <div key={idx} style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1rem', marginBottom: '1rem' }}>
                     <p style={{ color: '#C4A747', fontWeight: 'bold', margin: '0 0 0.5rem 0' }}>📄 {soporte.nombre}</p>
-                    <p style={{ color: '#a0a0a0', fontSize: '0.8rem', margin: '0 0 1rem 0', wordBreak: 'break-all' }}>{soporte.url ? soporte.url.substring(0, 50) + '...' : 'Sin URL'}</p>
-                    
-                    {soporte.url ? (
-                      <>
-                        <a href={soporte.url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', width: '100%', padding: '0.75rem', backgroundColor: '#4285F4', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem', textAlign: 'center', textDecoration: 'none', marginBottom: '0.5rem' }}>
-                          🔗 Abrir en Drive
-                        </a>
-                        <button onClick={() => window.open(soporte.url, '_blank')} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#34A853', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>
-                          ⬇️ Descargar
-                        </button>
-                      </>
-                    ) : (
-                      <p style={{ color: '#ff6b6b', textAlign: 'center', fontSize: '0.8rem', margin: 0 }}>Error: Sin URL</p>
-                    )}
+                    <p style={{ color: '#a0a0a0', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
+                    <button onClick={() => handleDownloadSoporte(soporte)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>
+                      ⬇️ Descargar
+                    </button>
                   </div>
                 ))
               )}
