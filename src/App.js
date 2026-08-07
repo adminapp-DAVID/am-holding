@@ -860,7 +860,7 @@ const App = () => {
               </div>
             )}
 
-            {topColaboradors.length > 0 && (
+            {topResponsables.length > 0 && (
               <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem', marginBottom: '2rem' }}>
                 <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>👥 Top Colaboradores</h3>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -872,7 +872,7 @@ const App = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {topColaboradors.map((resp, idx) => (
+                    {topResponsables.map((resp, idx) => (
                       <tr key={idx} style={{ borderBottom: '1px solid #2a2a2a' }}>
                         <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{resp.nombre}</td>
                         <td style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>{resp.cantidad}</td>
