@@ -26,6 +26,15 @@ const App = () => {
   const empresas = ['AM SPORTS GROUP SAS', 'PRO INVESTMENTS GLOBAL SAS', 'PRONOVA CAPITAL SAS', 'FOR SEVEN MEDIA SAS', 'ARKO'];
   const estadosSolicitud = ['Pendiente', 'Aprobado', 'Pagado', 'Legalizado'];
   const tiposSolicitud = ['Anticipo', 'Legalización', 'Reembolso'];
+  const cecos = [
+    { codigo: 'CECO-001-GF', nombre: 'Gastos Fijos', tipo: 'ADMINISTRATIVOS' },
+    { codigo: 'CECO-002-NM', nombre: 'Nómina', tipo: 'NOMINA' },
+    { codigo: 'CECO-003-GR', nombre: 'Gastos de Representación', tipo: 'REEMBOLSOS' },
+    { codigo: 'CECO-004-HR', nombre: 'Honorarios', tipo: 'ANTICIPOS' },
+    { codigo: 'CECO-005-OT', nombre: 'Otros', tipo: 'VARIOS' },
+    { codigo: 'CECO-006-VI', nombre: 'Viajes', tipo: 'REEMBOLSOS' }
+  ];
+  const categorias = ['Transporte', 'Hospedaje', 'Alimentación', 'Servicios', 'Equipos', 'Comunicación', 'Otros'];
 
   // Estados
   const [user, setUser] = useState(null);
@@ -41,6 +50,11 @@ const App = () => {
   const [newResponsable, setNewResponsable] = useState({ nombre: '', email: '', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' });
   const [cuentasDeCobro, setCuentasDeCobro] = useState(() => JSON.parse(localStorage.getItem('amCuentasDeCobro') || '[]'));
   const [newCuentaCobro, setNewCuentaCobro] = useState({ fecha: new Date().toISOString().split('T')[0], numero: '', responsable: '', empresa: '', monto: '', concepto: '', driveLink: '', estado: 'Pendiente' });
+  const [gastos, setGastos] = useState(() => JSON.parse(localStorage.getItem('amGastos') || '[]'));
+  const [ingresos, setIngresos] = useState(() => JSON.parse(localStorage.getItem('amIngresos') || '[]'));
+  const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', detalle: '', valor: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '' });
+  const [newIngreso, setNewIngreso] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Ingreso', empresa: 'AM SPORTS GROUP SAS', responsable: '', detalle: '', valor: '', categoria: '', estado: 'Pagado', observaciones: '', linkSoporte: '' });
+  const [filtroFinanzas, setFiltroFinanzas] = useState({ mes: new Date().getMonth() + 1, empresa: 'Todos', tipo: 'Todos' });
 
   // URLs
   const DRIVE_UPLOAD_URL = 'https://script.google.com/macros/s/AKfycbxxz_jICfJ7LvXNNG4PHLtugVtYhYzRdIYpthlYI5WTIno7ZjIKJZHCdbPC9jUN3BUpRg/exec';
@@ -464,6 +478,122 @@ const App = () => {
     ? cuentasDeCobro.filter(c => c.responsableNombre === user.nombre)
     : cuentasDeCobro;
 
+  // GASTOS E INGRESOS CRUD
+  const handleAddGasto = () => {
+    if (!newGasto.detalle || !newGasto.valor) {
+      alert('Detalle y valor son obligatorios');
+      return;
+    }
+
+    const nuevoGasto = {
+      id: Date.now(),
+      ...newGasto,
+      responsableNombre: responsables.find(r => r.nombre === newGasto.responsable)?.nombre || newGasto.responsable
+    };
+
+    setGastos([...gastos, nuevoGasto]);
+    localStorage.setItem('amGastos', JSON.stringify([...gastos, nuevoGasto]));
+    
+    setNewGasto({ 
+      fecha: new Date().toISOString().split('T')[0], 
+      tipo: 'Gasto',
+      empresa: 'AM SPORTS GROUP SAS',
+      responsable: '',
+      ceco: 'CECO-001-GF',
+      detalle: '',
+      valor: '',
+      categoria: '',
+      estado: 'Pendiente',
+      observaciones: '',
+      linkSoporte: ''
+    });
+    alert('✅ Gasto agregado');
+  };
+
+  const handleAddIngreso = () => {
+    if (!newIngreso.detalle || !newIngreso.valor) {
+      alert('Detalle y valor son obligatorios');
+      return;
+    }
+
+    const nuevoIngreso = {
+      id: Date.now(),
+      ...newIngreso,
+      responsableNombre: responsables.find(r => r.nombre === newIngreso.responsable)?.nombre || newIngreso.responsable
+    };
+
+    setIngresos([...ingresos, nuevoIngreso]);
+    localStorage.setItem('amIngresos', JSON.stringify([...ingresos, nuevoIngreso]));
+    
+    setNewIngreso({ 
+      fecha: new Date().toISOString().split('T')[0], 
+      tipo: 'Ingreso',
+      empresa: 'AM SPORTS GROUP SAS',
+      responsable: '',
+      detalle: '',
+      valor: '',
+      categoria: '',
+      estado: 'Pagado',
+      observaciones: '',
+      linkSoporte: ''
+    });
+    alert('✅ Ingreso agregado');
+  };
+
+  const handleUpdateGasto = (id, campo, valor) => {
+    const updated = gastos.map(g => g.id === id ? {...g, [campo]: valor} : g);
+    setGastos(updated);
+    localStorage.setItem('amGastos', JSON.stringify(updated));
+  };
+
+  const handleDeleteGasto = (id) => {
+    if (window.confirm('¿Eliminar gasto?')) {
+      const updated = gastos.filter(g => g.id !== id);
+      setGastos(updated);
+      localStorage.setItem('amGastos', JSON.stringify(updated));
+    }
+  };
+
+  const handleDeleteIngreso = (id) => {
+    if (window.confirm('¿Eliminar ingreso?')) {
+      const updated = ingresos.filter(i => i.id !== id);
+      setIngresos(updated);
+      localStorage.setItem('amIngresos', JSON.stringify(updated));
+    }
+  };
+
+  // Filtrar gastos e ingresos
+  const gastosUsuario = user?.rol === 'Responsable' 
+    ? gastos.filter(g => g.responsableNombre === user.nombre)
+    : gastos;
+
+  const ingresosUsuario = user?.rol === 'Responsable' 
+    ? ingresos.filter(i => i.responsableNombre === user.nombre)
+    : ingresos;
+
+  // Dashboard financiero
+  const totalGastos = (user?.rol === 'Responsable' ? gastosUsuario : gastos)
+    .reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
+
+  const totalIngresos = (user?.rol === 'Responsable' ? ingresosUsuario : ingresos)
+    .reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0);
+
+  const balance = totalIngresos - totalGastos;
+
+  const gastosPorCECO = cecos.map(ceco => ({
+    ceco: ceco.nombre,
+    valor: (user?.rol === 'Responsable' ? gastosUsuario : gastos)
+      .filter(g => g.ceco === ceco.codigo)
+      .reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0)
+  })).filter(g => g.valor > 0);
+
+  const gastosPorEmpresa = empresas.map(emp => ({
+    empresa: emp,
+    valor: (user?.rol === 'Responsable' ? gastosUsuario : gastos)
+      .filter(g => g.empresa === emp)
+      .reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0)
+  })).filter(g => g.valor > 0);
+
   // Color estado
   const getColorEstado = (estado) => {
     const colors = { Pendiente: '#ff6b6b', Aprobado: '#ffd43b', Pagado: '#51cf66', Legalizado: '#748ffc' };
@@ -509,9 +639,10 @@ const App = () => {
       </header>
 
       <nav style={{ backgroundColor: '#0f0f0f', borderBottom: '1px solid #2a2a2a', padding: '1rem 0' }}>
-        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 1rem', display: 'flex', gap: '1rem' }}>
+        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'dashboard' ? '#C4A747' : '#2a2a2a', color: currentView === 'dashboard' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📊 Dashboard</button>
           <button onClick={() => setCurrentView('solicitudes')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'solicitudes' ? '#C4A747' : '#2a2a2a', color: currentView === 'solicitudes' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📋 Solicitudes</button>
+          <button onClick={() => setCurrentView('finanzas')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'finanzas' ? '#C4A747' : '#2a2a2a', color: currentView === 'finanzas' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💰 Finanzas</button>
           <button onClick={() => setCurrentView('cuentasCobro')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'cuentasCobro' ? '#C4A747' : '#2a2a2a', color: currentView === 'cuentasCobro' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💳 Cuentas de Cobro</button>
           {(user.rol === 'Administrador') && (
             <button onClick={() => setCurrentView('responsables')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'responsables' ? '#C4A747' : '#2a2a2a', color: currentView === 'responsables' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>👥 Responsables</button>
@@ -840,6 +971,209 @@ const App = () => {
                 </table>
               </div>
             </div>
+          </div>
+        )}
+
+        {currentView === 'finanzas' && (
+          <div>
+            {/* DASHBOARD FINANCIERO */}
+            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
+              <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📈 Resumen Financiero</h2>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
+                  <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Total Ingresos</p>
+                  <h3 style={{ color: '#51cf66', margin: 0, fontSize: '2rem' }}>$ {totalIngresos.toLocaleString()}</h3>
+                </div>
+                <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
+                  <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Total Gastos</p>
+                  <h3 style={{ color: '#ff6b6b', margin: 0, fontSize: '2rem' }}>$ {totalGastos.toLocaleString()}</h3>
+                </div>
+                <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
+                  <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Balance</p>
+                  <h3 style={{ color: balance >= 0 ? '#51cf66' : '#ff6b6b', margin: 0, fontSize: '2rem' }}>$ {balance.toLocaleString()}</h3>
+                </div>
+              </div>
+
+              {gastosPorCECO.length > 0 && (
+                <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem', marginBottom: '1.5rem' }}>
+                  <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>Gastos por Centro de Costo</h3>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <tbody>
+                      {gastosPorCECO.map((g, idx) => (
+                        <tr key={idx} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                          <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{g.ceco}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'right', color: '#ff6b6b', fontWeight: 'bold' }}>$ {g.valor.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {gastosPorEmpresa.length > 0 && (
+                <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
+                  <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>Gastos por Empresa</h3>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <tbody>
+                      {gastosPorEmpresa.map((g, idx) => (
+                        <tr key={idx} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                          <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{g.empresa}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'right', color: '#ff6b6b', fontWeight: 'bold' }}>$ {g.valor.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* NUEVA TRANSACCIÓN */}
+            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
+              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nuevo Gasto/Ingreso</h2>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Tipo</label>
+                  <select value={newGasto.tipo} onChange={(e) => {setNewGasto({...newGasto, tipo: e.target.value}); setNewIngreso({...newIngreso, tipo: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                    <option value="Gasto">💸 Gasto</option>
+                    <option value="Ingreso">💰 Ingreso</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Fecha</label>
+                  <input type="date" value={newGasto.fecha} onChange={(e) => {setNewGasto({...newGasto, fecha: e.target.value}); setNewIngreso({...newIngreso, fecha: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Empresa</label>
+                  <select value={newGasto.empresa} onChange={(e) => {setNewGasto({...newGasto, empresa: e.target.value}); setNewIngreso({...newIngreso, empresa: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                    {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Responsable</label>
+                  <select value={newGasto.responsable} onChange={(e) => {setNewGasto({...newGasto, responsable: e.target.value}); setNewIngreso({...newIngreso, responsable: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                    <option value="">Seleccionar</option>
+                    {responsables.map(r => <option key={r.id} value={r.nombre}>{r.nombre}</option>)}
+                  </select>
+                </div>
+                {newGasto.tipo === 'Gasto' && (
+                  <div>
+                    <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Centro de Costo</label>
+                    <select value={newGasto.ceco} onChange={(e) => setNewGasto({...newGasto, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                      {cecos.map(c => <option key={c.codigo} value={c.codigo}>{c.nombre}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <input type="text" placeholder="Detalle/Descripción" value={newGasto.detalle} onChange={(e) => {setNewGasto({...newGasto, detalle: e.target.value}); setNewIngreso({...newIngreso, detalle: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <input type="number" placeholder="Valor" value={newGasto.valor} onChange={(e) => {setNewGasto({...newGasto, valor: e.target.value}); setNewIngreso({...newIngreso, valor: e.target.value});}} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
+                <select value={newGasto.categoria} onChange={(e) => {setNewGasto({...newGasto, categoria: e.target.value}); setNewIngreso({...newIngreso, categoria: e.target.value});}} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
+                  <option value="">Categoría</option>
+                  {categorias.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                </select>
+              </div>
+
+              <input type="text" placeholder="Observaciones" value={newGasto.observaciones} onChange={(e) => {setNewGasto({...newGasto, observaciones: e.target.value}); setNewIngreso({...newIngreso, observaciones: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
+
+              <button onClick={newGasto.tipo === 'Gasto' ? handleAddGasto : handleAddIngreso} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+                Registrar {newGasto.tipo}
+              </button>
+            </div>
+
+            {/* TABLA GASTOS */}
+            {newGasto.tipo === 'Gasto' && (
+              <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
+                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>💸 Gastos Registrados ({gastosUsuario.length})</h2>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                    <thead style={{ backgroundColor: '#0f0f0f' }}>
+                      <tr style={{ borderBottom: '2px solid #C4A747' }}>
+                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
+                        {user.rol === 'Administrador' && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th>}
+                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
+                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Detalle</th>
+                        <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
+                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
+                        {user.rol === 'Administrador' && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {gastosUsuario.map(g => (
+                        <tr key={g.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                          <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.fecha}</td>
+                          {user.rol === 'Administrador' && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.responsableNombre}</td>}
+                          <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.ceco}</td>
+                          <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{g.detalle}</td>
+                          <td style={{ padding: '0.75rem', color: '#ff6b6b', textAlign: 'right', fontWeight: 'bold' }}>$ {parseFloat(g.valor).toLocaleString()}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            {user.rol === 'Administrador' ? (
+                              <select value={g.estado} onChange={(e) => handleUpdateGasto(g.id, 'estado', e.target.value)} style={{ backgroundColor: getColorEstado(g.estado), color: '#0f0f0f', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
+                                {estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}
+                              </select>
+                            ) : (
+                              <span style={{ backgroundColor: getColorEstado(g.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.estado}</span>
+                            )}
+                          </td>
+                          {user.rol === 'Administrador' && (
+                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                              <button onClick={() => handleDeleteGasto(g.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem' }}>🗑️</button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* TABLA INGRESOS */}
+            {newGasto.tipo === 'Ingreso' && (
+              <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>💰 Ingresos Registrados ({ingresosUsuario.length})</h2>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                    <thead style={{ backgroundColor: '#0f0f0f' }}>
+                      <tr style={{ borderBottom: '2px solid #C4A747' }}>
+                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
+                        {user.rol === 'Administrador' && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th>}
+                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
+                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Detalle</th>
+                        <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
+                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
+                        {user.rol === 'Administrador' && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ingresosUsuario.map(i => (
+                        <tr key={i.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                          <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.fecha}</td>
+                          {user.rol === 'Administrador' && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.responsableNombre}</td>}
+                          <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.empresa}</td>
+                          <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{i.detalle}</td>
+                          <td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>$ {parseFloat(i.valor).toLocaleString()}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            <span style={{ backgroundColor: getColorEstado(i.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{i.estado}</span>
+                          </td>
+                          {user.rol === 'Administrador' && (
+                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                              <button onClick={() => handleDeleteIngreso(i.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem' }}>🗑️</button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
