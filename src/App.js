@@ -1704,9 +1704,8 @@ const App = () => {
               <input type="url" placeholder="Link Carpeta Drive (Ej: https://drive.google.com/...)" value={newCuentaCobro.driveLink} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, driveLink: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
 
               <button onClick={handleAddCuentaCobro} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Crear Cuenta de Cobro</button>
-            </div>
 
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+              <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginTop: '2rem' }}>
               <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>💳 Cuentas de Cobro ({cuentasCobroUsuario.length})</h2>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
@@ -1761,6 +1760,7 @@ const App = () => {
                 )}
               </div>
             </div>
+            )}
           </div>
         )}
 
@@ -1771,7 +1771,6 @@ const App = () => {
               <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📥 Importar Histórico de Gastos</h2>
               
               <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem', marginBottom: '1.5rem' }}>
-            )}
                 <p style={{ color: '#a0a0a0', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>
                   ⚠️ Esto agregará todos los registros del archivo JSON al histórico.
                 </p>
