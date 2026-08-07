@@ -20,7 +20,10 @@ const App = () => {
 
   const usuariosAdmin = [
     { id: 999, nombre: 'Admin', email: 'admin@amholding.com', password: 'admin123', rol: 'Administrador' },
-    { id: 998, nombre: 'Contadora', email: 'contadora@amholding.com', password: 'pass123', rol: 'Contadora' }
+    { id: 998, nombre: 'Contadora', email: 'contadora@amholding.com', password: 'pass123', rol: 'Contadora' },
+    { id: 997, nombre: 'Gerente - Operaciones', email: 'gerente.ops@amholding.com', password: 'pass123', rol: 'Gerente' },
+    { id: 996, nombre: 'Gerente - Finanzas', email: 'gerente.fin@amholding.com', password: 'pass123', rol: 'Gerente' },
+    { id: 995, nombre: 'Caren Paola Garzón Márquez', email: 'caren@amholding.com', password: 'pass123', rol: 'Coordinadora Administrativa' }
   ];
 
   const empresas = ['AM SPORTS GROUP SAS', 'PRO INVESTMENTS GLOBAL SAS', 'PRONOVA CAPITAL SAS', 'FOR SEVEN MEDIA SAS', 'ARKO'];
@@ -50,6 +53,7 @@ const App = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginMode, setLoginMode] = useState('responsable');
+  const [selectedProfile, setSelectedProfile] = useState(null);
   const [currentView, setCurrentView] = useState('dashboard');
   const [solicitudes, setSolicitudes] = useState(() => JSON.parse(localStorage.getItem('amSolicitudes') || '[]'));
   const [responsables, setResponsables] = useState(() => JSON.parse(localStorage.getItem('amResponsables') || JSON.stringify(responsablesData)));
@@ -57,6 +61,7 @@ const App = () => {
   const [generandoPDF, setGenerandoPDF] = useState(null);
   const [editingResponsable, setEditingResponsable] = useState(null);
   const [newResponsable, setNewResponsable] = useState({ nombre: '', email: '', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' });
+  const [newUserType, setNewUserType] = useState('Colaborador');
   const [cuentasDeCobro, setCuentasDeCobro] = useState(() => JSON.parse(localStorage.getItem('amCuentasDeCobro') || '[]'));
   const [newCuentaCobro, setNewCuentaCobro] = useState({ fecha: new Date().toISOString().split('T')[0], numero: '', responsable: '', empresa: '', monto: '', concepto: '', driveLink: '', estado: 'Pendiente' });
   const [gastos, setGastos] = useState(() => JSON.parse(localStorage.getItem('amGastos') || '[]'));
@@ -76,25 +81,25 @@ const App = () => {
 
   // Funciones Login
   const handleLogin = () => {
-    if (loginMode === 'responsable') {
-      const found = responsables.find(u => u.email === email && u.password === password);
-      if (found) {
-        setUser({ ...found, rol: 'Responsable' });
-        setEmail('');
-        setPassword('');
-      } else {
-        alert('Email o contraseña incorrecto');
-      }
-    } else {
-      const found = usuariosAdmin.find(u => u.email === email && u.password === password);
-      if (found) {
-        setUser(found);
-        setEmail('');
-        setPassword('');
-      } else {
-        alert('Email o contraseña incorrecto');
-      }
+    // Buscar en responsables (colaboradores)
+    const foundResponsable = responsables.find(u => u.email === email && u.password === password);
+    if (foundResponsable) {
+      setUser({ ...foundResponsable, rol: 'Responsable' });
+      setEmail('');
+      setPassword('');
+      return;
     }
+    
+    // Buscar en usuariosAdmin (admin, contadora, coordinadora, gerentes)
+    const found = usuariosAdmin.find(u => u.email === email && u.password === password);
+    if (found) {
+      setUser(found);
+      setEmail('');
+      setPassword('');
+      return;
+    }
+    
+    alert('Email o contraseña incorrecto');
   };
 
   // Upload a Drive
@@ -416,21 +421,36 @@ const App = () => {
       return;
     }
     
-    const existe = responsables.some(r => r.email === newResponsable.email);
+    const existe = responsables.some(r => r.email === newResponsable.email) || 
+                   usuariosAdmin.some(u => u.email === newResponsable.email);
     if (existe) {
       alert('Email ya existe');
       return;
     }
 
-    const responsableNuevo = {
-      id: Math.max(...responsables.map(r => r.id || 0), 0) + 1,
-      ...newResponsable
-    };
-
-    setResponsables([...responsables, responsableNuevo]);
-    localStorage.setItem('amResponsables', JSON.stringify([...responsables, responsableNuevo]));
+    if (newUserType === 'Colaborador') {
+      // Agregar como colaborador
+      const responsableNuevo = {
+        id: Math.max(...responsables.map(r => r.id || 0), 0) + 1,
+        ...newResponsable
+      };
+      setResponsables([...responsables, responsableNuevo]);
+      localStorage.setItem('amResponsables', JSON.stringify([...responsables, responsableNuevo]));
+      alert('✅ Colaborador agregado');
+    } else if (newUserType === 'Gerente') {
+      // Agregar como gerente
+      const gerenteNuevo = {
+        id: Math.max(...usuariosAdmin.map(u => u.id || 0), 0) + 1,
+        nombre: newResponsable.nombre,
+        email: newResponsable.email,
+        password: newResponsable.password,
+        rol: 'Gerente'
+      };
+      // Aquí no guardamos en localStorage porque usuariosAdmin es estático, pero en una versión real se guardaría
+      alert('⚠️ Gerente agregado (requiere reiniciar la app). En producción se guardaría en base de datos.');
+    }
+    
     setNewResponsable({ nombre: '', email: '', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' });
-    alert('✅ Colaborador agregado');
   };
 
   const handleUpdateResponsable = (id, datos) => {
@@ -748,6 +768,11 @@ const App = () => {
   .sort((a, b) => b.value - a.value)
   .slice(0, 5);
 
+  // PERMISOS POR ROL
+  const canEdit = user?.rol && ['Administrador', 'Coordinadora Administrativa', 'Responsable'].includes(user.rol);
+  const canApprove = user?.rol && ['Administrador', 'Coordinadora Administrativa'].includes(user.rol);
+  const isReadOnly = user?.rol === 'Contadora';
+  
   // Color estado
   const getColorEstado = (estado) => {
     const colors = { Pendiente: '#ff6b6b', Aprobado: '#ffd43b', Pagado: '#51cf66', Legalizado: '#748ffc' };
@@ -762,9 +787,42 @@ const App = () => {
           <h1 style={{ color: '#C4A747', fontSize: '2.5rem', margin: 0 }}>AM HOLDING</h1>
           <p style={{ color: '#a0a0a0', margin: '1rem 0 2rem 0' }}>Gestión Financiera/Contable</p>
 
-          <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
-            <button onClick={() => setLoginMode('responsable')} style={{ flex: 1, padding: '0.75rem', backgroundColor: loginMode === 'responsable' ? '#C4A747' : '#2a2a2a', color: loginMode === 'responsable' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Colaborador</button>
-            <button onClick={() => setLoginMode('admin')} style={{ flex: 1, padding: '0.75rem', backgroundColor: loginMode === 'admin' ? '#C4A747' : '#2a2a2a', color: loginMode === 'admin' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Admin/Contadora</button>
+          <div style={{ marginBottom: '2rem' }}>
+            <label style={{ display: 'block', color: '#a0a0a0', fontSize: '0.9rem', marginBottom: '0.75rem', fontWeight: 'bold' }}>Seleccionar Perfil</label>
+            <select 
+              value={selectedProfile || ''} 
+              onChange={(e) => {
+                const profile = e.target.value;
+                setSelectedProfile(profile);
+                if (profile) {
+                  const allUsers = [...responsablesData, ...usuariosAdmin];
+                  const user = allUsers.find(u => u.email === profile);
+                  if (user) setEmail(user.email);
+                }
+              }}
+              style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '1rem', boxSizing: 'border-box', borderRadius: '4px', cursor: 'pointer' }}
+            >
+              <option value="">-- Elige un perfil --</option>
+              
+              <optgroup label="👥 COLABORADORES">
+                {responsablesData.map(r => (
+                  <option key={r.id} value={r.email}>{r.nombre}</option>
+                ))}
+              </optgroup>
+              
+              <optgroup label="📊 OPERATIVO">
+                {usuariosAdmin.filter(u => ['Coordinadora Administrativa', 'Contadora', 'Administrador'].includes(u.rol)).map(u => (
+                  <option key={u.id} value={u.email}>{u.nombre} ({u.rol})</option>
+                ))}
+              </optgroup>
+              
+              <optgroup label="📈 GERENTES">
+                {usuariosAdmin.filter(u => u.rol === 'Gerente').map(u => (
+                  <option key={u.id} value={u.email}>{u.nombre}</option>
+                ))}
+              </optgroup>
+            </select>
+            <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: 0 }}>Selecciona tu usuario para auto-llenar el email</p>
           </div>
 
           <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '1rem', boxSizing: 'border-box', borderRadius: '4px' }} />
@@ -773,10 +831,14 @@ const App = () => {
 
           <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '1rem 0 0.5rem 0' }}>COLABORADOR:</p>
           <p style={{ color: '#a0a0a0', fontSize: '0.75rem', margin: '0 0 1rem 0' }}>cristian@amholding.com / pass123</p>
+          <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>COORDINADORA ADMINISTRATIVA:</p>
+          <p style={{ color: '#a0a0a0', fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>caren@amholding.com / pass123</p>
+          <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>CONTADORA:</p>
+          <p style={{ color: '#a0a0a0', fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>contadora@amholding.com / pass123</p>
           <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>ADMIN:</p>
           <p style={{ color: '#a0a0a0', fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>admin@amholding.com / admin123</p>
-          <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>CONTADORA:</p>
-          <p style={{ color: '#a0a0a0', fontSize: '0.75rem', margin: 0 }}>contadora@amholding.com / pass123</p>
+          <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>GERENTE:</p>
+          <p style={{ color: '#a0a0a0', fontSize: '0.75rem', margin: 0 }}>gerente.ops@amholding.com / pass123</p>
         </div>
       </div>
     );
@@ -795,9 +857,15 @@ const App = () => {
       <nav style={{ backgroundColor: '#0f0f0f', borderBottom: '1px solid #2a2a2a', padding: '1rem 0' }}>
         <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'dashboard' ? '#C4A747' : '#2a2a2a', color: currentView === 'dashboard' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📊 Dashboard</button>
-          <button onClick={() => setCurrentView('solicitudes')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'solicitudes' ? '#C4A747' : '#2a2a2a', color: currentView === 'solicitudes' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📋 Solicitudes</button>
-          <button onClick={() => setCurrentView('finanzas')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'finanzas' ? '#C4A747' : '#2a2a2a', color: currentView === 'finanzas' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💰 Finanzas</button>
-          <button onClick={() => setCurrentView('cuentasCobro')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'cuentasCobro' ? '#C4A747' : '#2a2a2a', color: currentView === 'cuentasCobro' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💳 Cuentas de Cobro</button>
+          
+          {user.rol !== 'Gerente' && (
+            <>
+              <button onClick={() => setCurrentView('solicitudes')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'solicitudes' ? '#C4A747' : '#2a2a2a', color: currentView === 'solicitudes' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📋 Solicitudes</button>
+              <button onClick={() => setCurrentView('finanzas')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'finanzas' ? '#C4A747' : '#2a2a2a', color: currentView === 'finanzas' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💰 Finanzas</button>
+              <button onClick={() => setCurrentView('cuentasCobro')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'cuentasCobro' ? '#C4A747' : '#2a2a2a', color: currentView === 'cuentasCobro' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💳 Cuentas de Cobro</button>
+            </>
+          )}
+          
           {(user.rol === 'Administrador') && (
             <button onClick={() => setCurrentView('responsables')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'responsables' ? '#C4A747' : '#2a2a2a', color: currentView === 'responsables' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>👥 Colaboradores</button>
           )}
@@ -918,7 +986,14 @@ const App = () => {
 
         {currentView === 'solicitudes' && (
           <div>
-            {user.rol === 'Responsable' && (
+            {user.rol === 'Gerente' || user.rol === 'Contadora' ? (
+              <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', textAlign: 'center' }}>
+                <p style={{ color: '#ff6b6b', fontSize: '1.1rem', fontWeight: 'bold' }}>🔒 Acceso Restringido</p>
+                <p style={{ color: '#a0a0a0' }}>{user.rol === 'Gerente' ? 'Los Gerentes solo pueden ver el Dashboard.' : 'Los Contadores solo tienen acceso de lectura.'}</p>
+                <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>Ir al Dashboard</button>
+              </div>
+            ) : (
+              <div>
               <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
                 <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nueva Solicitud</h2>
                 
@@ -1049,18 +1124,29 @@ const App = () => {
         {currentView === 'responsables' && (
           <div>
             <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
-              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nuevo Colaborador</h2>
+              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Crear Nuevo Usuario</h2>
               
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', color: '#C4A747', fontSize: '0.85rem', marginBottom: '0.5rem', fontWeight: 'bold' }}>Tipo de Usuario</label>
+                  <select value={newUserType} onChange={(e) => setNewUserType(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
+                    <option value="Colaborador">👥 Colaborador</option>
+                    <option value="Gerente">📈 Gerente</option>
+                  </select>
+                </div>
+                
                 <input type="text" placeholder="Nombre Completo" value={newResponsable.nombre} onChange={(e) => setNewResponsable({...newResponsable, nombre: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
                 <input type="email" placeholder="Email" value={newResponsable.email} onChange={(e) => setNewResponsable({...newResponsable, email: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
                 <input type="password" placeholder="Contraseña" value={newResponsable.password} onChange={(e) => setNewResponsable({...newResponsable, password: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
-                <select value={newResponsable.empresa} onChange={(e) => setNewResponsable({...newResponsable, empresa: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
-                  {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
-                </select>
+                
+                {newUserType === 'Colaborador' && (
+                  <select value={newResponsable.empresa} onChange={(e) => setNewResponsable({...newResponsable, empresa: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
+                    {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                  </select>
+                )}
               </div>
 
-              <button onClick={handleAddResponsable} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Agregar Colaborador</button>
+              <button onClick={handleAddResponsable} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Crear {newUserType}</button>
             </div>
 
             <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
@@ -1125,6 +1211,7 @@ const App = () => {
                 </table>
               </div>
             </div>
+            )}
           </div>
         )}
 
@@ -1586,7 +1673,14 @@ const App = () => {
 
         {currentView === 'cuentasCobro' && (
           <div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
+            {user.rol === 'Gerente' || user.rol === 'Contadora' ? (
+              <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', textAlign: 'center' }}>
+                <p style={{ color: '#ff6b6b', fontSize: '1.1rem', fontWeight: 'bold' }}>🔒 Acceso Restringido</p>
+                <p style={{ color: '#a0a0a0' }}>{user.rol === 'Gerente' ? 'Los Gerentes solo pueden ver el Dashboard.' : 'Los Contadores solo tienen acceso de lectura.'}</p>
+                <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>Ir al Dashboard</button>
+              </div>
+            ) : (
+              <div>
               <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nueva Cuenta de Cobro</h2>
               
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
@@ -1677,6 +1771,7 @@ const App = () => {
               <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📥 Importar Histórico de Gastos</h2>
               
               <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem', marginBottom: '1.5rem' }}>
+            )}
                 <p style={{ color: '#a0a0a0', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>
                   ⚠️ Esto agregará todos los registros del archivo JSON al histórico.
                 </p>
