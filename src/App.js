@@ -35,6 +35,15 @@ const App = () => {
     { codigo: 'CECO-006-VI', nombre: 'Viajes', tipo: 'REEMBOLSOS' }
   ];
   const categorias = ['Transporte', 'Hospedaje', 'Alimentación', 'Servicios', 'Equipos', 'Comunicación', 'Otros'];
+  const cuentasPorEmpresa = {
+    'AM SPORTS GROUP SAS': ['CUENTA BANCOLOMBIA', 'CUENTA BBVA'],
+    'PRO INVESTMENTS GLOBAL SAS': ['CUENTA BANCOLOMBIA'],
+    'PRONOVA CAPITAL SAS': ['CUENTA BANCOLOMBIA'],
+    'FOR SEVEN MEDIA SAS': ['CUENTA BANCOLOMBIA'],
+    'ARKO': ['JPMORGAN'],
+    'CUBO': ['BANCOLOMBIA', 'ITAU', 'BTG', 'BBVA']
+  };
+  const tiposTransaccion = ['Gasto', 'Ingreso', 'Traslado'];
 
   // Estados
   const [user, setUser] = useState(null);
@@ -52,12 +61,14 @@ const App = () => {
   const [newCuentaCobro, setNewCuentaCobro] = useState({ fecha: new Date().toISOString().split('T')[0], numero: '', responsable: '', empresa: '', monto: '', concepto: '', driveLink: '', estado: 'Pendiente' });
   const [gastos, setGastos] = useState(() => JSON.parse(localStorage.getItem('amGastos') || '[]'));
   const [ingresos, setIngresos] = useState(() => JSON.parse(localStorage.getItem('amIngresos') || '[]'));
-  const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', detalle: '', valor: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '' });
-  const [newIngreso, setNewIngreso] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Ingreso', empresa: 'AM SPORTS GROUP SAS', responsable: '', detalle: '', valor: '', categoria: '', estado: 'Pagado', observaciones: '', linkSoporte: '' });
+  const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', soportes: [] });
+  const [newIngreso, setNewIngreso] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Ingreso', empresa: 'AM SPORTS GROUP SAS', responsable: '', detalle: '', valor: '', categoria: '', estado: 'Pagado', observaciones: '', linkSoporte: '', cuenta: '', soportes: [] });
   const [filtroFinanzas, setFiltroFinanzas] = useState({ mes: new Date().getMonth() + 1, empresa: 'Todos', tipo: 'Todos' });
+  const [soportesTemp, setSoportesTemp] = useState([]);
+  const [verSoportes, setVerSoportes] = useState(null);
 
   // URLs
-  const DRIVE_UPLOAD_URL = 'https://script.google.com/macros/s/AKfycbxxz_jICfJ7LvXNNG4PHLtugVtYhYzRdIYpthlYI5WTIno7ZjIKJZHCdbPC9jUN3BUpRg/exec';
+  const DRIVE_UPLOAD_URL = 'https://script.google.com/macros/s/AKfycby-voRnepppydRFrkEc4CO4dCV7Ymhac-bU63FPZrtVui71vxc2j0dC3TQphu8XhmEW5Q/exec';
 
   // Funciones Login
   const handleLogin = () => {
@@ -479,16 +490,48 @@ const App = () => {
     : cuentasDeCobro;
 
   // GASTOS E INGRESOS CRUD
-  const handleAddGasto = () => {
+  const handleAddGasto = async () => {
     if (!newGasto.detalle || !newGasto.valor) {
       alert('Detalle y valor son obligatorios');
       return;
     }
 
+    if (newGasto.tipo === 'Traslado') {
+      if (!newGasto.cuentaSalida || !newGasto.cuentaDestino) {
+        alert('Cuenta salida y cuenta destino son obligatorios para traslados');
+        return;
+      }
+    } else if (!newGasto.cuenta) {
+      alert('Cuenta es obligatoria');
+      return;
+    }
+
+    // Crear transacción temporal para datos de Drive
+    const transaccionTemp = {
+      empresa: newGasto.empresa,
+      tipo: newGasto.tipo,
+      fecha: newGasto.fecha,
+      responsableNombre: responsables.find(r => r.nombre === newGasto.responsable)?.nombre || newGasto.responsable,
+      detalle: newGasto.detalle
+    };
+
+    // Subir soportes a Drive
+    let urlsSoportes = [];
+    if (soportesTemp.length > 0) {
+      urlsSoportes = await uploadSoportesToDrive(soportesTemp, transaccionTemp);
+    }
+
+    // Guardar transacción con URLs de Drive
     const nuevoGasto = {
       id: Date.now(),
       ...newGasto,
-      responsableNombre: responsables.find(r => r.nombre === newGasto.responsable)?.nombre || newGasto.responsable
+      soportes: urlsSoportes.map((url, idx) => ({
+        id: Date.now() + idx,
+        nombre: soportesTemp[idx]?.nombre || `soporte_${idx}`,
+        url: url,
+        tipo: 'link_drive'
+      })),
+      responsableNombre: transaccionTemp.responsableNombre
     };
 
     setGastos([...gastos, nuevoGasto]);
@@ -500,26 +543,57 @@ const App = () => {
       empresa: 'AM SPORTS GROUP SAS',
       responsable: '',
       ceco: 'CECO-001-GF',
+      cuenta: '',
       detalle: '',
       valor: '',
       categoria: '',
       estado: 'Pendiente',
       observaciones: '',
-      linkSoporte: ''
+      linkSoporte: '',
+      cuentaSalida: '',
+      cuentaDestino: '',
+      soportes: []
     });
-    alert('✅ Gasto agregado');
+    setSoportesTemp([]);
+    alert('✅ Transacción agregada - Soportes en Drive');
   };
 
-  const handleAddIngreso = () => {
+  const handleAddIngreso = async () => {
     if (!newIngreso.detalle || !newIngreso.valor) {
       alert('Detalle y valor son obligatorios');
       return;
     }
 
+    if (!newIngreso.cuenta) {
+      alert('Cuenta es obligatoria');
+      return;
+    }
+
+    // Crear transacción temporal para datos de Drive
+    const transaccionTemp = {
+      empresa: newIngreso.empresa,
+      tipo: newIngreso.tipo,
+      fecha: newIngreso.fecha,
+      responsableNombre: responsables.find(r => r.nombre === newIngreso.responsable)?.nombre || newIngreso.responsable,
+      detalle: newIngreso.detalle
+    };
+
+    // Subir soportes a Drive
+    let urlsSoportes = [];
+    if (soportesTemp.length > 0) {
+      urlsSoportes = await uploadSoportesToDrive(soportesTemp, transaccionTemp);
+    }
+
     const nuevoIngreso = {
       id: Date.now(),
       ...newIngreso,
-      responsableNombre: responsables.find(r => r.nombre === newIngreso.responsable)?.nombre || newIngreso.responsable
+      soportes: urlsSoportes.map((url, idx) => ({
+        id: Date.now() + idx,
+        nombre: soportesTemp[idx]?.nombre || `soporte_${idx}`,
+        url: url,
+        tipo: 'link_drive'
+      })),
+      responsableNombre: transaccionTemp.responsableNombre
     };
 
     setIngresos([...ingresos, nuevoIngreso]);
@@ -535,9 +609,12 @@ const App = () => {
       categoria: '',
       estado: 'Pagado',
       observaciones: '',
-      linkSoporte: ''
+      linkSoporte: '',
+      cuenta: '',
+      soportes: []
     });
-    alert('✅ Ingreso agregado');
+    setSoportesTemp([]);
+    alert('✅ Ingreso agregado - Soportes en Drive');
   };
 
   const handleUpdateGasto = (id, campo, valor) => {
@@ -559,6 +636,81 @@ const App = () => {
       const updated = ingresos.filter(i => i.id !== id);
       setIngresos(updated);
       localStorage.setItem('amIngresos', JSON.stringify(updated));
+    }
+  };
+
+  // MANEJO DE SOPORTES (ARCHIVOS)
+  const handleAddSoporte = (e) => {
+    const files = Array.from(e.target.files);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const nuevoSoporte = {
+          id: Date.now() + Math.random(),
+          nombre: file.name,
+          tipo: file.type,
+          tamaño: file.size,
+          data: event.target.result
+        };
+        setSoportesTemp([...soportesTemp, nuevoSoporte]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const handleRemoveSoporte = (id) => {
+    setSoportesTemp(soportesTemp.filter(s => s.id !== id));
+  };
+
+  const handleDownloadSoporte = (soporte) => {
+    const link = document.createElement('a');
+    link.href = soporte.data;
+    link.download = soporte.nombre;
+    link.click();
+  };
+
+  const handleViewSoportes = (soportes) => {
+    setVerSoportes(soportes);
+  };
+
+  // UPLOAD SOPORTES A DRIVE
+  const uploadSoportesToDrive = async (soportes, transaccion) => {
+    if (!soportes || soportes.length === 0) return [];
+    
+    try {
+      const archivos = soportes.map(soporte => ({
+        nombre: soporte.nombre,
+        data: soporte.data.split(',')[1], // Solo el base64, sin data:image/...
+        mimeType: soporte.tipo || 'application/octet-stream'
+      }));
+
+      const payload = {
+        tipo: 'soporte',
+        empresa: transaccion.empresa,
+        tipo_transaccion: transaccion.tipo,
+        fecha: transaccion.fecha,
+        responsable: transaccion.responsableNombre,
+        detalle: transaccion.detalle,
+        archivos: archivos
+      };
+
+      const response = await fetch(DRIVE_UPLOAD_URL, {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+
+      const result = await response.json();
+      
+      if (result.success && result.urls) {
+        return result.urls; // Array de URLs de Drive
+      } else {
+        console.error('Error upload:', result.error);
+        return [];
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      return [];
     }
   };
 
@@ -1038,6 +1190,7 @@ const App = () => {
                   <select value={newGasto.tipo} onChange={(e) => {setNewGasto({...newGasto, tipo: e.target.value}); setNewIngreso({...newIngreso, tipo: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }}>
                     <option value="Gasto">💸 Gasto</option>
                     <option value="Ingreso">💰 Ingreso</option>
+                    <option value="Traslado">🔄 Traslado</option>
                   </select>
                 </div>
                 <div>
@@ -1049,17 +1202,51 @@ const App = () => {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Empresa</label>
-                  <select value={newGasto.empresa} onChange={(e) => {setNewGasto({...newGasto, empresa: e.target.value}); setNewIngreso({...newIngreso, empresa: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                  <select value={newGasto.empresa} onChange={(e) => {setNewGasto({...newGasto, empresa: e.target.value, cuenta: ''}); setNewIngreso({...newIngreso, empresa: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }}>
                     {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Responsable</label>
-                  <select value={newGasto.responsable} onChange={(e) => {setNewGasto({...newGasto, responsable: e.target.value}); setNewIngreso({...newIngreso, responsable: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }}>
-                    <option value="">Seleccionar</option>
-                    {responsables.map(r => <option key={r.id} value={r.nombre}>{r.nombre}</option>)}
-                  </select>
-                </div>
+                
+                {newGasto.tipo === 'Traslado' ? (
+                  <>
+                    <div>
+                      <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta Salida</label>
+                      <select value={newGasto.cuentaSalida} onChange={(e) => setNewGasto({...newGasto, cuentaSalida: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                        <option value="">Seleccionar</option>
+                        {(cuentasPorEmpresa[newGasto.empresa] || []).map(cuenta => <option key={cuenta} value={cuenta}>{cuenta}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta Destino</label>
+                      <select value={newGasto.cuentaDestino} onChange={(e) => setNewGasto({...newGasto, cuentaDestino: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                        <option value="">Seleccionar</option>
+                        {empresas.map(emp => (
+                          <optgroup key={emp} label={emp}>
+                            {(cuentasPorEmpresa[emp] || []).map(cuenta => <option key={`${emp}-${cuenta}`} value={`${emp}: ${cuenta}`}>{cuenta}</option>)}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta</label>
+                      <select value={newGasto.cuenta} onChange={(e) => setNewGasto({...newGasto, cuenta: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                        <option value="">Seleccionar</option>
+                        {(cuentasPorEmpresa[newGasto.empresa] || []).map(cuenta => <option key={cuenta} value={cuenta}>{cuenta}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Responsable</label>
+                      <select value={newGasto.responsable} onChange={(e) => {setNewGasto({...newGasto, responsable: e.target.value}); setNewIngreso({...newIngreso, responsable: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                        <option value="">Seleccionar</option>
+                        {responsables.map(r => <option key={r.id} value={r.nombre}>{r.nombre}</option>)}
+                      </select>
+                    </div>
+                  </>
+                )}
+                
                 {newGasto.tipo === 'Gasto' && (
                   <div>
                     <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Centro de Costo</label>
@@ -1082,36 +1269,126 @@ const App = () => {
 
               <input type="text" placeholder="Observaciones" value={newGasto.observaciones} onChange={(e) => {setNewGasto({...newGasto, observaciones: e.target.value}); setNewIngreso({...newIngreso, observaciones: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
 
-              <button onClick={newGasto.tipo === 'Gasto' ? handleAddGasto : handleAddIngreso} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
-                Registrar {newGasto.tipo}
+              {/* CARGA DE SOPORTES */}
+              <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1rem', marginBottom: '1rem' }}>
+                <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>📎 Soportes (Archivos)</label>
+                <input type="file" multiple onChange={handleAddSoporte} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#a0a0a0', marginTop: '0.5rem', marginBottom: '1rem', boxSizing: 'border-box', cursor: 'pointer' }} />
+                
+                {soportesTemp.length > 0 && (
+                  <div style={{ marginTop: '1rem' }}>
+                    <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.8rem' }}>Archivos cargados: {soportesTemp.length}</p>
+                    {soportesTemp.map(soporte => (
+                      <div key={soporte.id} style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ color: '#C4A747', margin: '0 0 0.25rem 0', fontSize: '0.8rem', fontWeight: 'bold' }}>{soporte.nombre}</p>
+                          <p style={{ color: '#a0a0a0', margin: 0, fontSize: '0.75rem' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
+                        </div>
+                        <button onClick={() => handleRemoveSoporte(soporte.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem', padding: '0.5rem' }}>🗑️</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button onClick={newGasto.tipo === 'Gasto' ? handleAddGasto : (newGasto.tipo === 'Traslado' ? handleAddGasto : handleAddIngreso)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+                Registrar {newGasto.tipo === 'Traslado' ? 'Traslado' : (newGasto.tipo === 'Ingreso' ? 'Ingreso' : 'Gasto')}
               </button>
             </div>
 
             {/* TABLA GASTOS */}
             {newGasto.tipo === 'Gasto' && (
               <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
-                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>💸 Gastos Registrados ({gastosUsuario.length})</h2>
+                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>💸 Gastos Registrados ({gastosUsuario.filter(g => g.tipo === 'Gasto').length})</h2>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                     <thead style={{ backgroundColor: '#0f0f0f' }}>
                       <tr style={{ borderBottom: '2px solid #C4A747' }}>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
                         {user.rol === 'Administrador' && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th>}
+                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
+                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Detalle</th>
                         <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
+                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Soportes</th>
                         <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
                         {user.rol === 'Administrador' && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
                       </tr>
                     </thead>
                     <tbody>
-                      {gastosUsuario.map(g => (
+                      {gastosUsuario.filter(g => g.tipo === 'Gasto').map(g => (
                         <tr key={g.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
                           <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.fecha}</td>
                           {user.rol === 'Administrador' && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.responsableNombre}</td>}
+                          <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.empresa}</td>
                           <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.ceco}</td>
+                          <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.cuenta}</td>
                           <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{g.detalle}</td>
                           <td style={{ padding: '0.75rem', color: '#ff6b6b', textAlign: 'right', fontWeight: 'bold' }}>$ {parseFloat(g.valor).toLocaleString()}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            {g.soportes && g.soportes.length > 0 ? (
+                              <button onClick={() => handleViewSoportes(g.soportes)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem' }}>📎 {g.soportes.length}</button>
+                            ) : (
+                              <span style={{ color: '#a0a0a0', fontSize: '0.8rem' }}>—</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            {user.rol === 'Administrador' ? (
+                              <select value={g.estado} onChange={(e) => handleUpdateGasto(g.id, 'estado', e.target.value)} style={{ backgroundColor: getColorEstado(g.estado), color: '#0f0f0f', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
+                                {estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}
+                              </select>
+                            ) : (
+                              <span style={{ backgroundColor: getColorEstado(g.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.estado}</span>
+                            )}
+                          </td>
+                          {user.rol === 'Administrador' && (
+                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                              <button onClick={() => handleDeleteGasto(g.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem' }}>🗑️</button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* TABLA TRASLADOS */}
+            {newGasto.tipo === 'Traslado' && (
+              <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
+                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🔄 Traslados Registrados ({gastosUsuario.filter(g => g.tipo === 'Traslado').length})</h2>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                    <thead style={{ backgroundColor: '#0f0f0f' }}>
+                      <tr style={{ borderBottom: '2px solid #C4A747' }}>
+                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
+                        {user.rol === 'Administrador' && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th>}
+                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta Salida</th>
+                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>→</th>
+                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta Destino</th>
+                        <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
+                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Soportes</th>
+                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
+                        {user.rol === 'Administrador' && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {gastosUsuario.filter(g => g.tipo === 'Traslado').map(g => (
+                        <tr key={g.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                          <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.fecha}</td>
+                          {user.rol === 'Administrador' && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.responsableNombre}</td>}
+                          <td style={{ padding: '0.75rem', color: '#51cf66', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.cuentaSalida}</td>
+                          <td style={{ padding: '0.75rem', color: '#C4A747', textAlign: 'center', fontWeight: 'bold' }}>→</td>
+                          <td style={{ padding: '0.75rem', color: '#ff6b6b', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.cuentaDestino}</td>
+                          <td style={{ padding: '0.75rem', color: '#C4A747', textAlign: 'right', fontWeight: 'bold' }}>$ {parseFloat(g.valor).toLocaleString()}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            {g.soportes && g.soportes.length > 0 ? (
+                              <button onClick={() => handleViewSoportes(g.soportes)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem' }}>📎 {g.soportes.length}</button>
+                            ) : (
+                              <span style={{ color: '#a0a0a0', fontSize: '0.8rem' }}>—</span>
+                            )}
+                          </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                             {user.rol === 'Administrador' ? (
                               <select value={g.estado} onChange={(e) => handleUpdateGasto(g.id, 'estado', e.target.value)} style={{ backgroundColor: getColorEstado(g.estado), color: '#0f0f0f', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
@@ -1145,8 +1422,10 @@ const App = () => {
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
                         {user.rol === 'Administrador' && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th>}
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
+                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Detalle</th>
                         <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
+                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Soportes</th>
                         <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
                         {user.rol === 'Administrador' && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
                       </tr>
@@ -1157,8 +1436,16 @@ const App = () => {
                           <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.fecha}</td>
                           {user.rol === 'Administrador' && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.responsableNombre}</td>}
                           <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.empresa}</td>
+                          <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.cuenta}</td>
                           <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{i.detalle}</td>
                           <td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>$ {parseFloat(i.valor).toLocaleString()}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            {i.soportes && i.soportes.length > 0 ? (
+                              <button onClick={() => handleViewSoportes(i.soportes)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem' }}>📎 {i.soportes.length}</button>
+                            ) : (
+                              <span style={{ color: '#a0a0a0', fontSize: '0.8rem' }}>—</span>
+                            )}
+                          </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                             <span style={{ backgroundColor: getColorEstado(i.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{i.estado}</span>
                           </td>
@@ -1259,6 +1546,43 @@ const App = () => {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL VER SOPORTES */}
+        {verSoportes && (
+          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
+            <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '2rem', maxWidth: '500px', width: '90%', maxHeight: '80vh', overflowY: 'auto' }}>
+              <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📎 Soportes en Drive</h2>
+              
+              {verSoportes.length === 0 ? (
+                <p style={{ color: '#a0a0a0', textAlign: 'center' }}>No hay soportes adjuntos</p>
+              ) : (
+                verSoportes.map((soporte, idx) => (
+                  <div key={idx} style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1rem', marginBottom: '1rem' }}>
+                    <p style={{ color: '#C4A747', fontWeight: 'bold', margin: '0 0 0.5rem 0' }}>📄 {soporte.nombre}</p>
+                    <p style={{ color: '#a0a0a0', fontSize: '0.8rem', margin: '0 0 1rem 0', wordBreak: 'break-all' }}>{soporte.url ? soporte.url.substring(0, 50) + '...' : 'Sin URL'}</p>
+                    
+                    {soporte.url ? (
+                      <>
+                        <a href={soporte.url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', width: '100%', padding: '0.75rem', backgroundColor: '#4285F4', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem', textAlign: 'center', textDecoration: 'none', marginBottom: '0.5rem' }}>
+                          🔗 Abrir en Drive
+                        </a>
+                        <button onClick={() => window.open(soporte.url, '_blank')} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#34A853', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>
+                          ⬇️ Descargar
+                        </button>
+                      </>
+                    ) : (
+                      <p style={{ color: '#ff6b6b', textAlign: 'center', fontSize: '0.8rem', margin: 0 }}>Error: Sin URL</p>
+                    )}
+                  </div>
+                ))
+              )}
+              
+              <button onClick={() => setVerSoportes(null)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#2a2a2a', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>
+                Cerrar
+              </button>
             </div>
           </div>
         )}
