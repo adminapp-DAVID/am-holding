@@ -277,7 +277,7 @@ const App = () => {
 
       doc.setFontSize(10);
       doc.text(`Fecha: ${s.fecha}`, 20, yPos);
-      doc.text(`Responsable: ${s.responsableNombre}`, pageWidth / 2, yPos);
+      doc.text(`Colaborador: ${s.responsableNombre}`, pageWidth / 2, yPos);
       yPos += 8;
       doc.text(`Empresa: ${s.empresa}`, 20, yPos);
       doc.text(`Concepto: ${s.detalle}`, pageWidth / 2, yPos);
@@ -346,7 +346,7 @@ const App = () => {
 
     doc.setFontSize(10);
     doc.text(`Fecha: ${s.fecha}`, 20, yPos);
-    doc.text(`Responsable: ${s.responsableNombre}`, pageWidth / 2, yPos);
+    doc.text(`Colaborador: ${s.responsableNombre}`, pageWidth / 2, yPos);
     yPos += 8;
     doc.text(`Empresa: ${s.empresa}`, 20, yPos);
     doc.text(`Concepto: ${s.detalle}`, pageWidth / 2, yPos);
@@ -430,7 +430,7 @@ const App = () => {
     setResponsables([...responsables, responsableNuevo]);
     localStorage.setItem('amResponsables', JSON.stringify([...responsables, responsableNuevo]));
     setNewResponsable({ nombre: '', email: '', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' });
-    alert('✅ Responsable agregado');
+    alert('✅ Colaborador agregado');
   };
 
   const handleUpdateResponsable = (id, datos) => {
@@ -760,10 +760,10 @@ const App = () => {
       <div style={{ minHeight: '100vh', backgroundColor: '#0f0f0f', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
         <div style={{ backgroundColor: '#1a1a1a', border: '2px solid #C4A747', borderRadius: '8px', padding: '3rem 2rem', textAlign: 'center', maxWidth: '500px', width: '100%' }}>
           <h1 style={{ color: '#C4A747', fontSize: '2.5rem', margin: 0 }}>AM HOLDING</h1>
-          <p style={{ color: '#a0a0a0', margin: '1rem 0 2rem 0' }}>Gestión de Solicitudes</p>
+          <p style={{ color: '#a0a0a0', margin: '1rem 0 2rem 0' }}>Gestión Financiera/Contable</p>
 
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
-            <button onClick={() => setLoginMode('responsable')} style={{ flex: 1, padding: '0.75rem', backgroundColor: loginMode === 'responsable' ? '#C4A747' : '#2a2a2a', color: loginMode === 'responsable' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Responsable</button>
+            <button onClick={() => setLoginMode('responsable')} style={{ flex: 1, padding: '0.75rem', backgroundColor: loginMode === 'responsable' ? '#C4A747' : '#2a2a2a', color: loginMode === 'responsable' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Colaborador</button>
             <button onClick={() => setLoginMode('admin')} style={{ flex: 1, padding: '0.75rem', backgroundColor: loginMode === 'admin' ? '#C4A747' : '#2a2a2a', color: loginMode === 'admin' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Admin/Contadora</button>
           </div>
 
@@ -771,7 +771,7 @@ const App = () => {
           <input type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleLogin()} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '2rem', boxSizing: 'border-box', borderRadius: '4px' }} />
           <button onClick={handleLogin} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '2rem' }}>Entrar</button>
 
-          <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '1rem 0 0.5rem 0' }}>RESPONSABLE:</p>
+          <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '1rem 0 0.5rem 0' }}>COLABORADOR:</p>
           <p style={{ color: '#a0a0a0', fontSize: '0.75rem', margin: '0 0 1rem 0' }}>cristian@amholding.com / pass123</p>
           <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>ADMIN:</p>
           <p style={{ color: '#a0a0a0', fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>admin@amholding.com / admin123</p>
@@ -799,7 +799,7 @@ const App = () => {
           <button onClick={() => setCurrentView('finanzas')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'finanzas' ? '#C4A747' : '#2a2a2a', color: currentView === 'finanzas' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💰 Finanzas</button>
           <button onClick={() => setCurrentView('cuentasCobro')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'cuentasCobro' ? '#C4A747' : '#2a2a2a', color: currentView === 'cuentasCobro' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💳 Cuentas de Cobro</button>
           {(user.rol === 'Administrador') && (
-            <button onClick={() => setCurrentView('responsables')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'responsables' ? '#C4A747' : '#2a2a2a', color: currentView === 'responsables' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>👥 Responsables</button>
+            <button onClick={() => setCurrentView('responsables')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'responsables' ? '#C4A747' : '#2a2a2a', color: currentView === 'responsables' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>👥 Colaboradores</button>
           )}
         </div>
       </nav>
@@ -860,19 +860,19 @@ const App = () => {
               </div>
             )}
 
-            {topResponsables.length > 0 && (
+            {topColaboradors.length > 0 && (
               <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem', marginBottom: '2rem' }}>
-                <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>👥 Top Responsables</h3>
+                <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>👥 Top Colaboradores</h3>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ borderBottom: '2px solid #C4A747' }}>
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>
                       <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Solicitudes</th>
                       <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {topResponsables.map((resp, idx) => (
+                    {topColaboradors.map((resp, idx) => (
                       <tr key={idx} style={{ borderBottom: '1px solid #2a2a2a' }}>
                         <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{resp.nombre}</td>
                         <td style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>{resp.cantidad}</td>
@@ -891,7 +891,7 @@ const App = () => {
                   <thead>
                     <tr style={{ borderBottom: '2px solid #C4A747' }}>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                      {(user.rol === 'Administrador' || user.rol === 'Contadora') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th>}
+                      {(user.rol === 'Administrador' || user.rol === 'Contadora') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
                       <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th>
                       <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
@@ -988,7 +988,7 @@ const App = () => {
                   <thead style={{ backgroundColor: '#0f0f0f' }}>
                     <tr style={{ borderBottom: '2px solid #C4A747' }}>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                      {(user.rol === 'Administrador' || user.rol === 'Contadora') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th>}
+                      {(user.rol === 'Administrador' || user.rol === 'Contadora') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
                       <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
                       <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Docs</th>
@@ -1049,7 +1049,7 @@ const App = () => {
         {currentView === 'responsables' && (
           <div>
             <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
-              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nuevo Responsable</h2>
+              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nuevo Colaborador</h2>
               
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
                 <input type="text" placeholder="Nombre Completo" value={newResponsable.nombre} onChange={(e) => setNewResponsable({...newResponsable, nombre: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
@@ -1060,11 +1060,11 @@ const App = () => {
                 </select>
               </div>
 
-              <button onClick={handleAddResponsable} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Agregar Responsable</button>
+              <button onClick={handleAddResponsable} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Agregar Colaborador</button>
             </div>
 
             <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
-              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>👥 Responsables ({responsables.length})</h2>
+              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>👥 Colaboradores ({responsables.length})</h2>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                   <thead style={{ backgroundColor: '#0f0f0f' }}>
@@ -1078,7 +1078,7 @@ const App = () => {
                   </thead>
                   <tbody>
                     {responsables.map(r => {
-                      const solicitudesResponsable = solicitudes.filter(s => s.responsableId === r.id).length;
+                      const solicitudesColaborador = solicitudes.filter(s => s.responsableId === r.id).length;
                       return (
                         <tr key={r.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
                           <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>
@@ -1104,7 +1104,7 @@ const App = () => {
                               r.empresa
                             )}
                           </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'center', color: '#51cf66', fontWeight: 'bold' }}>{solicitudesResponsable}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center', color: '#51cf66', fontWeight: 'bold' }}>{solicitudesColaborador}</td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                             {editingResponsable === r.id ? (
                               <>
@@ -1358,7 +1358,7 @@ const App = () => {
                       </select>
                     </div>
                     <div>
-                      <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Responsable</label>
+                      <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Colaborador</label>
                       <select value={newGasto.responsable} onChange={(e) => {setNewGasto({...newGasto, responsable: e.target.value}); setNewIngreso({...newIngreso, responsable: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }}>
                         <option value="">Seleccionar</option>
                         {responsables.map(r => <option key={r.id} value={r.nombre}>{r.nombre}</option>)}
@@ -1424,7 +1424,7 @@ const App = () => {
                     <thead style={{ backgroundColor: '#0f0f0f' }}>
                       <tr style={{ borderBottom: '2px solid #C4A747' }}>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                        {user.rol === 'Administrador' && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th>}
+                        {user.rol === 'Administrador' && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta</th>
@@ -1483,7 +1483,7 @@ const App = () => {
                     <thead style={{ backgroundColor: '#0f0f0f' }}>
                       <tr style={{ borderBottom: '2px solid #C4A747' }}>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                        {user.rol === 'Administrador' && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th>}
+                        {user.rol === 'Administrador' && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta Salida</th>
                         <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>→</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta Destino</th>
@@ -1540,7 +1540,7 @@ const App = () => {
                     <thead style={{ backgroundColor: '#0f0f0f' }}>
                       <tr style={{ borderBottom: '2px solid #C4A747' }}>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                        {user.rol === 'Administrador' && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th>}
+                        {user.rol === 'Administrador' && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Detalle</th>
@@ -1593,7 +1593,7 @@ const App = () => {
                 <input type="date" value={newCuentaCobro.fecha} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, fecha: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
                 <input type="text" placeholder="Número de Cuenta" value={newCuentaCobro.numero} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, numero: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
                 <select value={newCuentaCobro.responsable} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, responsable: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
-                  <option value="">Responsable</option>
+                  <option value="">Colaborador</option>
                   {responsables.map(r => <option key={r.id} value={r.nombre}>{r.nombre}</option>)}
                 </select>
                 <select value={newCuentaCobro.empresa} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, empresa: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
@@ -1620,7 +1620,7 @@ const App = () => {
                     <tr style={{ borderBottom: '2px solid #C4A747' }}>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Número</th>
-                      {user.rol === 'Administrador' && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th>}
+                      {user.rol === 'Administrador' && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
                       <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th>
                       <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
