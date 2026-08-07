@@ -66,6 +66,8 @@ const App = () => {
   const [filtroFinanzas, setFiltroFinanzas] = useState({ mes: new Date().getMonth() + 1, empresa: 'Todos', tipo: 'Todos' });
   const [soportesTemp, setSoportesTemp] = useState([]);
   const [verSoportes, setVerSoportes] = useState(null);
+  const [mostrarImportar, setMostrarImportar] = useState(false);
+  const [archivoImportacion, setArchivoImportacion] = useState(null);
 
   // URLs
   const DRIVE_UPLOAD_URL = 'https://script.google.com/macros/s/AKfycby-voRnepppydRFrkEc4CO4dCV7Ymhac-bU63FPZrtVui71vxc2j0dC3TQphu8XhmEW5Q/exec';
@@ -629,6 +631,38 @@ const App = () => {
     link.click();
   };
 
+  // IMPORTAR GASTOS DESDE JSON
+  const handleImportarGastos = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const gastosAImportar = JSON.parse(event.target.result);
+        
+        if (!Array.isArray(gastosAImportar)) {
+          alert('❌ El archivo no contiene un array válido');
+          return;
+        }
+
+        // Agregar todos los gastos
+        const gastosActuales = JSON.parse(localStorage.getItem('amGastos') || '[]');
+        const gastosNuevos = [...gastosActuales, ...gastosAImportar];
+        
+        localStorage.setItem('amGastos', JSON.stringify(gastosNuevos));
+        setGastos(gastosNuevos);
+        
+        setMostrarImportar(false);
+        setArchivoImportacion(null);
+        alert(`✅ Se importaron ${gastosAImportar.length} registros exitosamente!`);
+      } catch (error) {
+        alert('❌ Error al procesar el archivo: ' + error.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const handleViewSoportes = (soportes) => {
     setVerSoportes(soportes);
   };
@@ -1047,6 +1081,16 @@ const App = () => {
 
         {currentView === 'finanzas' && (
           <div>
+            {/* BOTÓN IMPORTAR (SOLO ADMIN) */}
+            {user?.rol === 'Administrador' && (
+              <div style={{ backgroundColor: '#1a1a1a', padding: '1rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                <button onClick={() => setMostrarImportar(true)} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#4285F4', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>
+                  📥 Importar Histórico
+                </button>
+                <p style={{ color: '#a0a0a0', margin: 0, fontSize: '0.85rem' }}>Gastos en localStorage: {gastos.length}</p>
+              </div>
+            )}
+
             {/* DASHBOARD FINANCIERO */}
             <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
               <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📈 Resumen Financiero</h2>
@@ -1464,6 +1508,43 @@ const App = () => {
                     Sin cuentas de cobro registradas
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL IMPORTAR HISTÓRICO */}
+        {mostrarImportar && (
+          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
+            <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '2rem', maxWidth: '500px', width: '90%' }}>
+              <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📥 Importar Histórico de Gastos</h2>
+              
+              <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem', marginBottom: '1.5rem' }}>
+                <p style={{ color: '#a0a0a0', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>
+                  ⚠️ Esto agregará todos los registros del archivo JSON al histórico.
+                </p>
+                <p style={{ color: '#a0a0a0', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>
+                  Registros actuales: <strong style={{ color: '#C4A747' }}>{gastos.length}</strong>
+                </p>
+                
+                <label style={{ display: 'block', marginBottom: '1rem' }}>
+                  <input 
+                    type="file" 
+                    accept=".json"
+                    onChange={handleImportarGastos}
+                    style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#a0a0a0', cursor: 'pointer' }}
+                  />
+                </label>
+                
+                <p style={{ color: '#a0a0a0', margin: 0, fontSize: '0.8rem' }}>
+                  📄 Carga el archivo <code style={{ color: '#C4A747' }}>gastos_importar.json</code> generado desde DBAMHolding
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <button onClick={() => setMostrarImportar(false)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#2a2a2a', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  Cancelar
+                </button>
               </div>
             </div>
           </div>
