@@ -633,13 +633,6 @@ const App = () => {
     setVerSoportes(soportes);
   };
 
-  const handleDownloadSoporte = (soporte) => {
-    const link = document.createElement('a');
-    link.href = soporte.data;
-    link.download = soporte.nombre;
-    link.click();
-  };
-
   // Filtrar gastos e ingresos
   const gastosUsuario = user?.rol === 'Responsable' 
     ? gastos.filter(g => g.responsableNombre === user.nombre)
