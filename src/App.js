@@ -1060,8 +1060,9 @@ const App = () => {
                   </tbody>
                 </table>
               </div>
+            )}
 
-              {/* REPORTES Y DESCARGAS */}
+            {/* REPORTES Y DESCARGAS */}
               {(isReadOnly || user?.rol === 'Administrador' || user?.rol === 'Coordinadora Administrativa') && (
                 <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginTop: '2rem' }}>
                   <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>📥 Reportes y Descargas</h3>
