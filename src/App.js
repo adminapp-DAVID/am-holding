@@ -859,11 +859,6 @@ const App = () => {
     });
   };
 
-  const getColorEstado = (estado) => {
-    const colors = { Pendiente: '#ff6b6b', Aprobado: '#ffd43b', Pagado: '#51cf66', Legalizado: '#748ffc' };
-    return colors[estado] || '#7a7a7a';
-  };
-
   // LOGIN
   if (!user) {
     return (
