@@ -1063,26 +1063,27 @@ const App = () => {
             )}
 
             {/* REPORTES Y DESCARGAS */}
-              {(isReadOnly || user?.rol === 'Administrador' || user?.rol === 'Coordinadora Administrativa') && (
-                <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginTop: '2rem' }}>
-                  <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>📥 Reportes y Descargas</h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem' }}>
-                    <button onClick={downloadReporteFinanzas} style={{ padding: '1rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#C4A747', fontWeight: 'bold', cursor: 'pointer', textAlign: 'left' }}>
-                      📊 Descargar Reporte Finanzas (CSV)
-                      <p style={{ fontSize: '0.8rem', color: '#a0a0a0', margin: '0.5rem 0 0 0' }}>Gastos e Ingresos por período</p>
-                    </button>
-                    <button onClick={downloadReporteSolicitudes} style={{ padding: '1rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#C4A747', fontWeight: 'bold', cursor: 'pointer', textAlign: 'left' }}>
-                      📋 Descargar Reporte Solicitudes (CSV)
-                      <p style={{ fontSize: '0.8rem', color: '#a0a0a0', margin: '0.5rem 0 0 0' }}>Todas las solicitudes y estados</p>
-                    </button>
-                    <button onClick={downloadSoportesZIP} style={{ padding: '1rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#C4A747', fontWeight: 'bold', cursor: 'pointer', textAlign: 'left' }}>
-                      📦 Descargar Soportes (ZIP)
-                      <p style={{ fontSize: '0.8rem', color: '#a0a0a0', margin: '0.5rem 0 0 0' }}>Todos los documentos adjuntos</p>
-                    </button>
-                  </div>
+            {(isReadOnly || user?.rol === 'Administrador' || user?.rol === 'Coordinadora Administrativa') && (
+              <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginTop: '2rem' }}>
+                <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>📥 Reportes y Descargas</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem' }}>
+                  <button onClick={downloadReporteFinanzas} style={{ padding: '1rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#C4A747', fontWeight: 'bold', cursor: 'pointer', textAlign: 'left' }}>
+                    📊 Descargar Reporte Finanzas (CSV)
+                    <p style={{ fontSize: '0.8rem', color: '#a0a0a0', margin: '0.5rem 0 0 0' }}>Gastos e Ingresos por período</p>
+                  </button>
+                  <button onClick={downloadReporteSolicitudes} style={{ padding: '1rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#C4A747', fontWeight: 'bold', cursor: 'pointer', textAlign: 'left' }}>
+                    📋 Descargar Reporte Solicitudes (CSV)
+                    <p style={{ fontSize: '0.8rem', color: '#a0a0a0', margin: '0.5rem 0 0 0' }}>Todas las solicitudes y estados</p>
+                  </button>
+                  <button onClick={downloadSoportesZIP} style={{ padding: '1rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#C4A747', fontWeight: 'bold', cursor: 'pointer', textAlign: 'left' }}>
+                    📦 Descargar Soportes (ZIP)
+                    <p style={{ fontSize: '0.8rem', color: '#a0a0a0', margin: '0.5rem 0 0 0' }}>Todos los documentos adjuntos</p>
+                  </button>
                 </div>
-              )}
+              </div>
             )}
+          </div>
+        )}
 
         {currentView === 'solicitudes' && (
           <div>
