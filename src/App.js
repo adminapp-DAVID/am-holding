@@ -12,7 +12,6 @@ const App = () => {
     { id: 4, nombre: 'Luis Rodrigo Rivas Arboleda', email: 'luis@amholding.com', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' },
     { id: 5, nombre: 'Cristian Camilo Tabares Arango', email: 'tabares@amholding.com', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' },
     { id: 6, nombre: 'Sergio Alejandro Mejía Valencia', email: 'sergio@amholding.com', password: 'pass123', empresa: 'PRO INVESTMENTS GLOBAL SAS' },
-    { id: 7, nombre: 'Caren Paola Garzón Márquez', email: 'caren@amholding.com', password: 'pass123', empresa: 'PRO INVESTMENTS GLOBAL SAS' },
     { id: 8, nombre: 'Andrei Martinez Orjuela', email: 'andrei@amholding.com', password: 'pass123', empresa: 'PRONOVA CAPITAL SAS' },
     { id: 9, nombre: 'Daniel Santiago Tarquino', email: 'daniel@amholding.com', password: 'pass123', empresa: 'FOR SEVEN MEDIA SAS' },
     { id: 10, nombre: 'Nestor Ovidio', email: 'nestor@amholding.com', password: 'pass123', empresa: 'ARKO' }
@@ -81,6 +80,16 @@ const App = () => {
 
   // Funciones Login
   const handleLogin = () => {
+    // Buscar primero en usuariosAdmin (admin, contadora, coordinadora, gerentes)
+    // para que un email duplicado por error en Colaboradores nunca le quite el rol administrativo
+    const found = usuariosAdmin.find(u => u.email === email && u.password === password);
+    if (found) {
+      setUser(found);
+      setEmail('');
+      setPassword('');
+      return;
+    }
+
     // Buscar en responsables (colaboradores)
     const foundResponsable = responsables.find(u => u.email === email && u.password === password);
     if (foundResponsable) {
@@ -89,16 +98,7 @@ const App = () => {
       setPassword('');
       return;
     }
-    
-    // Buscar en usuariosAdmin (admin, contadora, coordinadora, gerentes)
-    const found = usuariosAdmin.find(u => u.email === email && u.password === password);
-    if (found) {
-      setUser(found);
-      setEmail('');
-      setPassword('');
-      return;
-    }
-    
+
     alert('Email o contraseña incorrecto');
   };
 
