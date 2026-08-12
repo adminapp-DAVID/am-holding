@@ -961,9 +961,12 @@ const App = () => {
           {user.rol !== 'Gerente' && (
             <>
               <button onClick={() => setCurrentView('solicitudes')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'solicitudes' ? '#C4A747' : '#2a2a2a', color: currentView === 'solicitudes' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📋 Solicitudes</button>
-              <button onClick={() => setCurrentView('finanzas')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'finanzas' ? '#C4A747' : '#2a2a2a', color: currentView === 'finanzas' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💰 Finanzas</button>
               <button onClick={() => setCurrentView('cuentasCobro')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'cuentasCobro' ? '#C4A747' : '#2a2a2a', color: currentView === 'cuentasCobro' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💳 Cuentas de Cobro</button>
             </>
+          )}
+
+          {user.rol !== 'Gerente' && user.rol !== 'Responsable' && (
+            <button onClick={() => setCurrentView('finanzas')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'finanzas' ? '#C4A747' : '#2a2a2a', color: currentView === 'finanzas' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💰 Finanzas</button>
           )}
           
           {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
@@ -1343,7 +1346,15 @@ const App = () => {
           </div>
         )}
 
-        {currentView === 'finanzas' && (
+        {currentView === 'finanzas' && (user.rol === 'Gerente' || user.rol === 'Responsable') && (
+          <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', textAlign: 'center' }}>
+            <p style={{ color: '#ff6b6b', fontSize: '1.1rem', fontWeight: 'bold' }}>🔒 Acceso Restringido</p>
+            <p style={{ color: '#a0a0a0' }}>{user.rol === 'Gerente' ? 'Los Gerentes solo pueden ver el Dashboard.' : 'Los Colaboradores no tienen acceso al módulo de Finanzas.'}</p>
+            <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>Ir al Dashboard</button>
+          </div>
+        )}
+
+        {currentView === 'finanzas' && user.rol !== 'Gerente' && user.rol !== 'Responsable' && (
           <div>
             {/* BOTÓN IMPORTAR (SOLO ADMIN) */}
             {user?.rol === 'Administrador' && (
@@ -1515,7 +1526,8 @@ const App = () => {
               </div>
             </div>
 
-            {/* NUEVA TRANSACCIÓN */}
+            {/* NUEVA TRANSACCIÓN (SOLO ADMIN Y COORDINADORA) */}
+            {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
             <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
               <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nuevo Gasto/Ingreso</h2>
               
@@ -1629,6 +1641,7 @@ const App = () => {
                 Registrar {newGasto.tipo === 'Traslado' ? 'Traslado' : (newGasto.tipo === 'Ingreso' ? 'Ingreso' : 'Gasto')}
               </button>
             </div>
+            )}
 
             {/* TABLA GASTOS */}
             {newGasto.tipo === 'Gasto' && (
@@ -1639,7 +1652,7 @@ const App = () => {
                     <thead style={{ backgroundColor: '#0f0f0f' }}>
                       <tr style={{ borderBottom: '2px solid #C4A747' }}>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
+                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta</th>
@@ -1654,7 +1667,7 @@ const App = () => {
                       {gastosUsuario.filter(g => g.tipo === 'Gasto').map(g => (
                         <tr key={g.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
                           <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.fecha}</td>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.responsableNombre}</td>}
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.responsableNombre}</td>}
                           <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.empresa}</td>
                           <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.ceco}</td>
                           <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.cuenta}</td>
@@ -1698,7 +1711,7 @@ const App = () => {
                     <thead style={{ backgroundColor: '#0f0f0f' }}>
                       <tr style={{ borderBottom: '2px solid #C4A747' }}>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
+                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta Salida</th>
                         <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>→</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta Destino</th>
@@ -1712,7 +1725,7 @@ const App = () => {
                       {gastosUsuario.filter(g => g.tipo === 'Traslado').map(g => (
                         <tr key={g.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
                           <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.fecha}</td>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.responsableNombre}</td>}
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.responsableNombre}</td>}
                           <td style={{ padding: '0.75rem', color: '#51cf66', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.cuentaSalida}</td>
                           <td style={{ padding: '0.75rem', color: '#C4A747', textAlign: 'center', fontWeight: 'bold' }}>→</td>
                           <td style={{ padding: '0.75rem', color: '#ff6b6b', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.cuentaDestino}</td>
@@ -1755,7 +1768,7 @@ const App = () => {
                     <thead style={{ backgroundColor: '#0f0f0f' }}>
                       <tr style={{ borderBottom: '2px solid #C4A747' }}>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
+                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Detalle</th>
@@ -1769,7 +1782,7 @@ const App = () => {
                       {ingresosUsuario.map(i => (
                         <tr key={i.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
                           <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.fecha}</td>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.responsableNombre}</td>}
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.responsableNombre}</td>}
                           <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.empresa}</td>
                           <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.cuenta}</td>
                           <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{i.detalle}</td>
