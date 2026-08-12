@@ -1160,6 +1160,7 @@ const App = () => {
 
                 <button onClick={handleAddSolicitud} disabled={isReadOnly} style={{ width: '100%', padding: '0.75rem', backgroundColor: isReadOnly ? '#666' : '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: isReadOnly ? 'not-allowed' : 'pointer', opacity: isReadOnly ? 0.5 : 1 }}>Guardar Solicitud</button>
               </div>
+              </div>
             )}
 
             <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
@@ -1319,7 +1320,6 @@ const App = () => {
                 </table>
               </div>
             </div>
-            )}
           </div>
         )}
 
