@@ -177,6 +177,11 @@ const App = () => {
       return;
     }
 
+    if (newSolicitud.tipo === 'Anticipo' && parseFloat(newSolicitud.valor) <= 0) {
+      alert('El valor solicitado debe ser mayor a cero');
+      return;
+    }
+
     if ((newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso') && newSolicitud.documentos.length === 0) {
       alert('Agrega al menos un documento');
       return;
@@ -473,6 +478,11 @@ const App = () => {
       return;
     }
 
+    if (parseFloat(newCuentaCobro.monto) <= 0) {
+      alert('El monto debe ser mayor a cero');
+      return;
+    }
+
     const nuevaCuenta = {
       id: Date.now(),
       ...newCuentaCobro,
@@ -520,6 +530,11 @@ const App = () => {
       return;
     }
 
+    if (parseFloat(newGasto.valor) <= 0) {
+      alert('El valor debe ser mayor a cero');
+      return;
+    }
+
     if (newGasto.tipo === 'Traslado') {
       if (!newGasto.cuentaSalida || !newGasto.cuentaDestino) {
         alert('Cuenta salida y cuenta destino son obligatorios para traslados');
@@ -564,6 +579,11 @@ const App = () => {
   const handleAddIngreso = () => {
     if (!newIngreso.detalle || !newIngreso.valor) {
       alert('Detalle y valor son obligatorios');
+      return;
+    }
+
+    if (parseFloat(newIngreso.valor) <= 0) {
+      alert('El valor debe ser mayor a cero');
       return;
     }
 
@@ -946,7 +966,7 @@ const App = () => {
             </>
           )}
           
-          {(user.rol === 'Administrador') && (
+          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
             <button onClick={() => setCurrentView('responsables')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'responsables' ? '#C4A747' : '#2a2a2a', color: currentView === 'responsables' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>👥 Colaboradores</button>
           )}
         </div>
@@ -1039,7 +1059,7 @@ const App = () => {
                   <thead>
                     <tr style={{ borderBottom: '2px solid #C4A747' }}>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                      {(user.rol === 'Administrador' || user.rol === 'Contadora') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
+                      {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
                       <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th>
                       <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
@@ -1049,7 +1069,7 @@ const App = () => {
                     {ultimasSolicitudes.map(s => (
                       <tr key={s.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
                         <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{s.fecha}</td>
-                        {(user.rol === 'Administrador' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{s.responsableNombre}</td>}
+                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{s.responsableNombre}</td>}
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
                         <td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>$ {(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0).toLocaleString()}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
@@ -1087,10 +1107,10 @@ const App = () => {
 
         {currentView === 'solicitudes' && (
           <div>
-            {user.rol === 'Gerente' || user.rol === 'Contadora' ? (
+            {user.rol === 'Gerente' ? (
               <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', textAlign: 'center' }}>
                 <p style={{ color: '#ff6b6b', fontSize: '1.1rem', fontWeight: 'bold' }}>🔒 Acceso Restringido</p>
-                <p style={{ color: '#a0a0a0' }}>{user.rol === 'Gerente' ? 'Los Gerentes solo pueden ver el Dashboard.' : 'Los Contadores solo tienen acceso de lectura.'}</p>
+                <p style={{ color: '#a0a0a0' }}>Los Gerentes solo pueden ver el Dashboard.</p>
                 <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>Ir al Dashboard</button>
               </div>
             ) : (
@@ -1172,7 +1192,7 @@ const App = () => {
                   <thead style={{ backgroundColor: '#0f0f0f' }}>
                     <tr style={{ borderBottom: '2px solid #C4A747' }}>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                      {(user.rol === 'Administrador' || user.rol === 'Contadora') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
+                      {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
                       <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
                       <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Docs</th>
@@ -1184,12 +1204,12 @@ const App = () => {
                     {solicitudesUsuario.map(s => (
                       <tr key={s.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
                         <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{s.fecha}</td>
-                        {(user.rol === 'Administrador' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{s.responsableNombre}</td>}
+                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{s.responsableNombre}</td>}
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
                         <td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>$ {(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0).toLocaleString()}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center', color: s.documentos?.length > 0 ? '#51cf66' : '#7a7a7a' }}>{s.documentos?.length || 0}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                          {user.rol === 'Administrador' ? (
+                          {canApprove ? (
                             <select value={s.estado} onChange={(e) => handleChangeEstado(s.id, e.target.value)} style={{ backgroundColor: getColorEstado(s.estado), color: '#0f0f0f', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
                               {estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}
                             </select>
@@ -1205,7 +1225,7 @@ const App = () => {
                                   {generandoPDF === s.id ? '⏳' : '📄'}
                                 </button>
                               )}
-                              {(user.rol === 'Administrador' || user.rol === 'Contadora') && (
+                              {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && (
                                 <>
                                   <button onClick={() => handleDescargarZIP(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem', marginRight: '0.5rem' }} title="ZIP">
                                     📦
@@ -1619,7 +1639,7 @@ const App = () => {
                     <thead style={{ backgroundColor: '#0f0f0f' }}>
                       <tr style={{ borderBottom: '2px solid #C4A747' }}>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                        {user.rol === 'Administrador' && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
+                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta</th>
@@ -1627,14 +1647,14 @@ const App = () => {
                         <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
                         <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Soportes</th>
                         <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
-                        {user.rol === 'Administrador' && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
+                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
                       </tr>
                     </thead>
                     <tbody>
                       {gastosUsuario.filter(g => g.tipo === 'Gasto').map(g => (
                         <tr key={g.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
                           <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.fecha}</td>
-                          {user.rol === 'Administrador' && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.responsableNombre}</td>}
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.responsableNombre}</td>}
                           <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.empresa}</td>
                           <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.ceco}</td>
                           <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.cuenta}</td>
@@ -1648,7 +1668,7 @@ const App = () => {
                             )}
                           </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            {user.rol === 'Administrador' ? (
+                            {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') ? (
                               <select value={g.estado} onChange={(e) => handleUpdateGasto(g.id, 'estado', e.target.value)} style={{ backgroundColor: getColorEstado(g.estado), color: '#0f0f0f', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
                                 {estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}
                               </select>
@@ -1656,7 +1676,7 @@ const App = () => {
                               <span style={{ backgroundColor: getColorEstado(g.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.estado}</span>
                             )}
                           </td>
-                          {user.rol === 'Administrador' && (
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
                             <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                               <button onClick={() => handleDeleteGasto(g.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem' }}>🗑️</button>
                             </td>
@@ -1678,21 +1698,21 @@ const App = () => {
                     <thead style={{ backgroundColor: '#0f0f0f' }}>
                       <tr style={{ borderBottom: '2px solid #C4A747' }}>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                        {user.rol === 'Administrador' && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
+                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta Salida</th>
                         <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>→</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta Destino</th>
                         <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
                         <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Soportes</th>
                         <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
-                        {user.rol === 'Administrador' && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
+                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
                       </tr>
                     </thead>
                     <tbody>
                       {gastosUsuario.filter(g => g.tipo === 'Traslado').map(g => (
                         <tr key={g.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
                           <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.fecha}</td>
-                          {user.rol === 'Administrador' && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.responsableNombre}</td>}
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.responsableNombre}</td>}
                           <td style={{ padding: '0.75rem', color: '#51cf66', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.cuentaSalida}</td>
                           <td style={{ padding: '0.75rem', color: '#C4A747', textAlign: 'center', fontWeight: 'bold' }}>→</td>
                           <td style={{ padding: '0.75rem', color: '#ff6b6b', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.cuentaDestino}</td>
@@ -1705,7 +1725,7 @@ const App = () => {
                             )}
                           </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            {user.rol === 'Administrador' ? (
+                            {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') ? (
                               <select value={g.estado} onChange={(e) => handleUpdateGasto(g.id, 'estado', e.target.value)} style={{ backgroundColor: getColorEstado(g.estado), color: '#0f0f0f', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
                                 {estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}
                               </select>
@@ -1713,7 +1733,7 @@ const App = () => {
                               <span style={{ backgroundColor: getColorEstado(g.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.estado}</span>
                             )}
                           </td>
-                          {user.rol === 'Administrador' && (
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
                             <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                               <button onClick={() => handleDeleteGasto(g.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem' }}>🗑️</button>
                             </td>
@@ -1735,21 +1755,21 @@ const App = () => {
                     <thead style={{ backgroundColor: '#0f0f0f' }}>
                       <tr style={{ borderBottom: '2px solid #C4A747' }}>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                        {user.rol === 'Administrador' && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
+                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Detalle</th>
                         <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
                         <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Soportes</th>
                         <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
-                        {user.rol === 'Administrador' && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
+                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
                       </tr>
                     </thead>
                     <tbody>
                       {ingresosUsuario.map(i => (
                         <tr key={i.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
                           <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.fecha}</td>
-                          {user.rol === 'Administrador' && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.responsableNombre}</td>}
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.responsableNombre}</td>}
                           <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.empresa}</td>
                           <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.cuenta}</td>
                           <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{i.detalle}</td>
@@ -1764,7 +1784,7 @@ const App = () => {
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                             <span style={{ backgroundColor: getColorEstado(i.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{i.estado}</span>
                           </td>
-                          {user.rol === 'Administrador' && (
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
                             <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                               <button onClick={() => handleDeleteIngreso(i.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem' }}>🗑️</button>
                             </td>
@@ -1779,7 +1799,7 @@ const App = () => {
           </div>
         )}
 
-        {currentView === 'cuentasCobro' && user.rol !== 'Gerente' && user.rol !== 'Contadora' && (
+        {currentView === 'cuentasCobro' && user.rol !== 'Gerente' && (
           <div>
             <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
               <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nueva Cuenta de Cobro</h2>
@@ -1811,7 +1831,7 @@ const App = () => {
                     <tr style={{ borderBottom: '2px solid #C4A747' }}>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Número</th>
-                      {user.rol === 'Administrador' && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
+                      {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
                       <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th>
                       <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
@@ -1823,12 +1843,12 @@ const App = () => {
                       <tr key={c.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
                         <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{c.fecha}</td>
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{c.numero}</td>
-                        {user.rol === 'Administrador' && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{c.responsableNombre}</td>}
+                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{c.responsableNombre}</td>}
                         <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{c.empresa}</td>
                         <td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>$ {parseFloat(c.monto).toLocaleString()}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                          {user.rol === 'Administrador' ? (
-                            <select value={c.estado} onChange={(e) => handleUpdateCuentaCobro(c.id, 'estado', e.target.value)} disabled={isReadOnly || user.rol !== 'Administrador'} style={{ backgroundColor: getColorEstado(c.estado), color: '#0f0f0f', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: isReadOnly || user.rol !== 'Administrador' ? 'not-allowed' : 'pointer', fontSize: '0.8rem', opacity: isReadOnly || user.rol !== 'Administrador' ? 0.6 : 1 }}>
+                          {canApprove ? (
+                            <select value={c.estado} onChange={(e) => handleUpdateCuentaCobro(c.id, 'estado', e.target.value)} disabled={isReadOnly || !canApprove} style={{ backgroundColor: getColorEstado(c.estado), color: '#0f0f0f', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: isReadOnly || !canApprove ? 'not-allowed' : 'pointer', fontSize: '0.8rem', opacity: isReadOnly || !canApprove ? 0.6 : 1 }}>
                               {estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}
                             </select>
                           ) : (
@@ -1861,10 +1881,10 @@ const App = () => {
           </div>
         )}
 
-        {currentView === 'cuentasCobro' && (user.rol === 'Gerente' || user.rol === 'Contadora') && (
+        {currentView === 'cuentasCobro' && user.rol === 'Gerente' && (
           <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', textAlign: 'center' }}>
             <p style={{ color: '#ff6b6b', fontSize: '1.1rem', fontWeight: 'bold' }}>🔒 Acceso Restringido</p>
-            <p style={{ color: '#a0a0a0' }}>{user.rol === 'Gerente' ? 'Los Gerentes solo pueden ver el Dashboard.' : 'Los Contadores solo tienen acceso de lectura.'}</p>
+            <p style={{ color: '#a0a0a0' }}>Los Gerentes solo pueden ver el Dashboard.</p>
             <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>Ir al Dashboard</button>
           </div>
         )}
