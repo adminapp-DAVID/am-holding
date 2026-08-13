@@ -2,8 +2,24 @@
 import React, { useState, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import JSZip from 'jszip';
+import { PDFDocument } from 'pdf-lib';
+import * as XLSX from 'xlsx';
 
 const App = () => {
+  // MONEDA POR EMPRESA — ARKO opera en dólares, el resto de la holding en pesos colombianos
+  // DEBE ir primero: se usa en cálculos que aparecen más abajo en el componente.
+  const getMoneda = (empresa) => empresa === 'ARKO' ? 'USD' : 'COP';
+
+  const formatMoneyByMoneda = (valor, moneda) => {
+    const num = parseFloat(valor) || 0;
+    if (moneda === 'USD') {
+      return `US$ ${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+    return `$ ${num.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
+  };
+
+  const formatMoney = (valor, empresa) => formatMoneyByMoneda(valor, getMoneda(empresa));
+
   // Data - DEBE ir primero
   const responsablesData = [
     { id: 1, nombre: 'Cristian Alejandro Giraldo Carvajal', email: 'cristian@amholding.com', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' },
@@ -28,6 +44,7 @@ const App = () => {
   const empresas = ['AM SPORTS GROUP SAS', 'PRO INVESTMENTS GLOBAL SAS', 'PRONOVA CAPITAL SAS', 'FOR SEVEN MEDIA SAS', 'ARKO'];
   const estadosSolicitud = ['Pendiente', 'Aprobado', 'Pagado', 'Legalizado'];
   const tiposSolicitud = ['Anticipo', 'Legalización', 'Reembolso'];
+  const tiposSoporte = ['Factura/Electrónica', 'Recibo/Entradas', 'Consignación', 'Cuenta de Cobro', 'Otro'];
   const cecos = [
     { codigo: 'CECO-001-GF', nombre: 'Gastos Fijos', tipo: 'ADMINISTRATIVOS' },
     { codigo: 'CECO-002-NM', nombre: 'Nómina', tipo: 'NOMINA' },
@@ -56,19 +73,22 @@ const App = () => {
   const [currentView, setCurrentView] = useState('dashboard');
   const [solicitudes, setSolicitudes] = useState(() => JSON.parse(localStorage.getItem('amSolicitudes') || '[]'));
   const [responsables, setResponsables] = useState(() => JSON.parse(localStorage.getItem('amResponsables') || JSON.stringify(responsablesData)));
-  const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', detalle: '', empresa: 'AM SPORTS GROUP SAS', consignado: { nit: '', nombre: '', cedula: '' }, documentos: [] });
+  const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', valorAnticipoOriginal: '', detalle: '', empresa: 'AM SPORTS GROUP SAS', documentos: [] });
   const [generandoPDF, setGenerandoPDF] = useState(null);
   const [editingResponsable, setEditingResponsable] = useState(null);
   const [newResponsable, setNewResponsable] = useState({ nombre: '', email: '', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' });
   const [newUserType, setNewUserType] = useState('Colaborador');
   const [cuentasDeCobro, setCuentasDeCobro] = useState(() => JSON.parse(localStorage.getItem('amCuentasDeCobro') || '[]'));
-  const [newCuentaCobro, setNewCuentaCobro] = useState({ fecha: new Date().toISOString().split('T')[0], numero: '', responsable: '', empresa: '', monto: '', concepto: '', driveLink: '', estado: 'Pendiente' });
+  const [newCuentaCobro, setNewCuentaCobro] = useState({ fecha: new Date().toISOString().split('T')[0], numero: '', responsable: '', empresa: '', monto: '', concepto: '', estado: 'Pendiente' });
   const [gastos, setGastos] = useState(() => JSON.parse(localStorage.getItem('amGastos') || '[]'));
   const [ingresos, setIngresos] = useState(() => JSON.parse(localStorage.getItem('amIngresos') || '[]'));
   const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', soportes: [] });
   const [newIngreso, setNewIngreso] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Ingreso', empresa: 'AM SPORTS GROUP SAS', responsable: '', detalle: '', valor: '', categoria: '', estado: 'Pagado', observaciones: '', linkSoporte: '', cuenta: '', soportes: [] });
   const [filtroFinanzas, setFiltroFinanzas] = useState({ mes: new Date().getMonth() + 1, empresa: 'Todos', tipo: 'Todos' });
   const [soportesTemp, setSoportesTemp] = useState([]);
+  const [soportesCuentaCobroTemp, setSoportesCuentaCobroTemp] = useState([]);
+  const [soportesLegalizacionTemp, setSoportesLegalizacionTemp] = useState([]);
+  const [generandoSoportesPDF, setGenerandoSoportesPDF] = useState(false);
   const [verSoportes, setVerSoportes] = useState(null);
   const [mostrarImportar, setMostrarImportar] = useState(false);
   const [archivoImportacion, setArchivoImportacion] = useState(null);
@@ -77,6 +97,78 @@ const App = () => {
 
   // URLs
   const DRIVE_UPLOAD_URL = 'https://script.google.com/macros/s/AKfycby-voRnepppydRFrkEc4CO4dCV7Ymhac-bU63FPZrtVui71vxc2j0dC3TQphu8XhmEW5Q/exec';
+
+  // UNIR SOPORTES (PDF + imágenes) EN UN SOLO PDF — Legalizaciones y Reembolsos
+  const dataUrlToUint8Array = (dataUrl) => {
+    const base64 = dataUrl.split(',')[1];
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  };
+
+  const uint8ArrayToDataUrl = (bytes, mimeType) => {
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+    }
+    return `data:${mimeType};base64,${btoa(binary)}`;
+  };
+
+  const mergeSoportesToPDF = async (soportes) => {
+    const mergedPdf = await PDFDocument.create();
+    const omitidos = [];
+
+    for (const soporte of soportes) {
+      try {
+        const bytes = dataUrlToUint8Array(soporte.data);
+        if (soporte.tipo === 'application/pdf') {
+          const srcPdf = await PDFDocument.load(bytes);
+          const pages = await mergedPdf.copyPages(srcPdf, srcPdf.getPageIndices());
+          pages.forEach(p => mergedPdf.addPage(p));
+        } else if (soporte.tipo && soporte.tipo.startsWith('image/')) {
+          let image;
+          try {
+            image = soporte.tipo === 'image/png' ? await mergedPdf.embedPng(bytes) : await mergedPdf.embedJpg(bytes);
+          } catch (e) {
+            // Algunos navegadores etiquetan mal el mime type — probamos el otro formato antes de rendirnos
+            image = await mergedPdf.embedPng(bytes).catch(() => mergedPdf.embedJpg(bytes));
+          }
+          const pageWidth = 612;
+          const pageHeight = 792;
+          const maxWidth = pageWidth - 60;
+          const maxHeight = pageHeight - 60;
+          const scale = Math.min(maxWidth / image.width, maxHeight / image.height, 1);
+          const drawWidth = image.width * scale;
+          const drawHeight = image.height * scale;
+          const page = mergedPdf.addPage([pageWidth, pageHeight]);
+          page.drawImage(image, {
+            x: (pageWidth - drawWidth) / 2,
+            y: (pageHeight - drawHeight) / 2,
+            width: drawWidth,
+            height: drawHeight
+          });
+        } else {
+          omitidos.push(soporte.nombre);
+        }
+      } catch (error) {
+        console.warn('No se pudo unir el soporte al PDF:', soporte.nombre, error);
+        omitidos.push(soporte.nombre);
+      }
+    }
+
+    if (omitidos.length > 0) {
+      alert(`⚠️ No se pudieron unir al PDF (formato no soportado, solo PDF o imágenes): ${omitidos.join(', ')}`);
+    }
+
+    const mergedBytes = await mergedPdf.save();
+    return {
+      nombre: `Soportes_Consolidados_${Date.now()}.pdf`,
+      tipo: 'application/pdf',
+      data: uint8ArrayToDataUrl(mergedBytes, 'application/pdf')
+    };
+  };
 
   // Funciones Login
   const handleLogin = () => {
@@ -102,25 +194,21 @@ const App = () => {
     alert('Email o contraseña incorrecto');
   };
 
-  // Upload a Drive
+  // Upload a Drive — ahora sube el PDF único de soportes consolidado, en vez de un archivo por documento
   const handleUploadArchivesToDrive = async (solicitud) => {
     try {
-      const archivos = solicitud.documentos
-        .filter(doc => doc.archivo && doc.archivoNombre)
-        .map(doc => ({
-          nombre: doc.archivoNombre,
-          data: doc.archivo.split(',')[1],
-          mimeType: doc.archivo.split(';')[0].split(':')[1] || 'application/octet-stream'
-        }));
-
-      if (archivos.length === 0) return;
+      if (!solicitud.soportePDF) return;
 
       const payLoad = {
         empresa: solicitud.empresa,
         tipo: solicitud.tipo,
         responsableNombre: solicitud.responsableNombre,
         fecha: solicitud.fecha,
-        archivos: archivos
+        archivos: [{
+          nombre: solicitud.soportePDF.nombre,
+          data: solicitud.soportePDF.data.split(',')[1],
+          mimeType: solicitud.soportePDF.tipo
+        }]
       };
 
       const response = await fetch(DRIVE_UPLOAD_URL, {
@@ -130,31 +218,19 @@ const App = () => {
 
       const result = await response.json();
       if (result.success) {
-        alert(`✅ ${result.filesCount} archivo(s) guardado(s) en Drive`);
+        alert(`✅ Soportes guardados en Drive`);
       }
     } catch (error) {
       console.warn('Error upload Drive:', error);
     }
   };
 
-  // Agregar documento
+  // Agregar documento (línea de gasto/soporte)
   const handleAddDocumento = () => {
     setNewSolicitud({
       ...newSolicitud,
-      documentos: [...newSolicitud.documentos, { proveedor: '', nit: '', descripcion: '', valor: '', archivoNombre: '', archivo: null }]
+      documentos: [...newSolicitud.documentos, { fecha: newSolicitud.fecha, proveedor: '', nit: '', descripcion: '', valor: '', tipoSoporte: '' }]
     });
-  };
-
-  // Agregar archivo a documento
-  const handleAddArchivo = (idx, file) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const newDocs = [...newSolicitud.documentos];
-      newDocs[idx].archivo = e.target.result;
-      newDocs[idx].archivoNombre = file.name;
-      setNewSolicitud({ ...newSolicitud, documentos: newDocs });
-    };
-    reader.readAsDataURL(file);
   };
 
   // Eliminar documento
@@ -163,6 +239,30 @@ const App = () => {
       ...newSolicitud,
       documentos: newSolicitud.documentos.filter((_, i) => i !== idx)
     });
+  };
+
+  // Soportes consolidados (Legalización / Reembolso) — se unen en un solo PDF al guardar
+  const handleAddSoporteLegalizacion = (e) => {
+    const files = Array.from(e.target.files);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const nuevoSoporte = {
+          id: Date.now() + Math.random(),
+          nombre: file.name,
+          tipo: file.type,
+          tamaño: file.size,
+          data: event.target.result
+        };
+        setSoportesLegalizacionTemp(prev => [...prev, nuevoSoporte]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const handleRemoveSoporteLegalizacion = (id) => {
+    setSoportesLegalizacionTemp(soportesLegalizacionTemp.filter(s => s.id !== id));
   };
 
   // Guardar solicitud
@@ -187,31 +287,39 @@ const App = () => {
       return;
     }
 
-    if ((newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso') && !newSolicitud.consignado?.nombre) {
-      alert('Ingresa nombre del consignatario');
-      return;
-    }
-
     const totalCalculado = newSolicitud.documentos.reduce((sum, doc) => sum + (parseFloat(doc.valor) || 0), 0);
+
+    let soportePDF = null;
+    if ((newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso') && soportesLegalizacionTemp.length > 0) {
+      setGenerandoSoportesPDF(true);
+      try {
+        soportePDF = await mergeSoportesToPDF(soportesLegalizacionTemp);
+      } catch (error) {
+        console.error('Error uniendo soportes a PDF:', error);
+        alert('❌ Hubo un error uniendo los soportes en un solo PDF. La solicitud se guardará sin el PDF consolidado.');
+      }
+      setGenerandoSoportesPDF(false);
+    }
 
     const nuevaSolicitud = {
       id: Date.now(),
       fecha: newSolicitud.fecha,
       tipo: newSolicitud.tipo,
       valor: newSolicitud.tipo === 'Anticipo' ? newSolicitud.valor : 0,
+      valorAnticipoOriginal: newSolicitud.tipo === 'Legalización' ? (newSolicitud.valorAnticipoOriginal || '') : '',
       totalCalculado: totalCalculado,
       detalle: newSolicitud.detalle,
-      empresa: newSolicitud.empresa,
+      empresa: user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa,
       responsableId: user.id,
       responsableNombre: user.nombre,
-      consignado: newSolicitud.consignado,
       documentos: newSolicitud.documentos,
+      soportePDF: soportePDF,
       estado: 'Pendiente'
     };
 
     setSolicitudes([...solicitudes, nuevaSolicitud]);
 
-    if ((newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso') && newSolicitud.documentos.length > 0) {
+    if ((newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso') && soportePDF) {
       await handleUploadArchivesToDrive(nuevaSolicitud);
     }
 
@@ -221,11 +329,12 @@ const App = () => {
       fecha: new Date().toISOString().split('T')[0],
       tipo: '',
       valor: '',
+      valorAnticipoOriginal: '',
       detalle: '',
       empresa: 'AM SPORTS GROUP SAS',
-      consignado: { nit: '', nombre: '', cedula: '' },
       documentos: []
     });
+    setSoportesLegalizacionTemp([]);
     alert('✅ Solicitud creada');
   };
 
@@ -252,19 +361,23 @@ const App = () => {
   };
 
   const totalSolicitudes = solicitudesUsuario.length;
-  const totalMonto = solicitudesUsuario.reduce((sum, s) => sum + (s.tipo === 'Anticipo' ? parseFloat(s.valor) || 0 : s.totalCalculado || 0), 0);
+  const montoSolicitud = (s) => s.tipo === 'Anticipo' ? parseFloat(s.valor) || 0 : s.totalCalculado || 0;
+  // Montos separados por moneda: sumar pesos y dólares directamente daría un número sin sentido
+  const totalMontoCOP = solicitudesUsuario.filter(s => getMoneda(s.empresa) === 'COP').reduce((sum, s) => sum + montoSolicitud(s), 0);
+  const totalMontoUSD = solicitudesUsuario.filter(s => getMoneda(s.empresa) === 'USD').reduce((sum, s) => sum + montoSolicitud(s), 0);
 
   const statsPorEmpresa = empresas.map(emp => ({
     empresa: emp,
     cantidad: solicitudesUsuario.filter(s => s.empresa === emp).length,
-    monto: solicitudesUsuario.filter(s => s.empresa === emp).reduce((sum, s) => sum + (s.tipo === 'Anticipo' ? parseFloat(s.valor) || 0 : s.totalCalculado || 0), 0)
+    monto: solicitudesUsuario.filter(s => s.empresa === emp).reduce((sum, s) => sum + montoSolicitud(s), 0)
   })).filter(s => s.cantidad > 0);
 
   const topResponsables = responsables
     .map(resp => ({
       nombre: resp.nombre,
+      empresa: resp.empresa,
       cantidad: solicitudesUsuario.filter(s => s.responsableId === resp.id).length,
-      monto: solicitudesUsuario.filter(s => s.responsableId === resp.id).reduce((sum, s) => sum + (s.tipo === 'Anticipo' ? parseFloat(s.valor) || 0 : s.totalCalculado || 0), 0)
+      monto: solicitudesUsuario.filter(s => s.responsableId === resp.id).reduce((sum, s) => sum + montoSolicitud(s), 0)
     }))
     .filter(s => s.cantidad > 0)
     .sort((a, b) => b.cantidad - a.cantidad)
@@ -294,34 +407,34 @@ const App = () => {
       yPos += 12;
 
       if (s.tipo !== 'Anticipo') {
-        doc.text(`Consignatario: ${s.consignado?.nombre}`, 20, yPos);
-        yPos += 6;
-        doc.text(`NIT: ${s.consignado?.nit}`, 20, yPos);
-        doc.text(`Cédula: ${s.consignado?.cedula}`, pageWidth / 2, yPos);
-        yPos += 12;
-
         if (s.documentos && s.documentos.length > 0) {
           doc.setFontSize(11);
           doc.text('DOCUMENTOS', 20, yPos);
           yPos += 8;
           doc.setFontSize(9);
-          
-          const tableData = s.documentos.map(d => [d.proveedor, d.nit, d.descripcion, `$${parseFloat(d.valor).toLocaleString()}`]);
+
+          const tableData = s.documentos.map(d => [d.fecha || '-', d.proveedor, d.nit, d.descripcion, formatMoneyByMoneda(d.valor, getMoneda(s.empresa)), d.tipoSoporte || '-']);
           doc.autoTable({
             startY: yPos,
-            head: [['Proveedor', 'NIT', 'Descripción', 'Valor']],
+            head: [['Fecha', 'Pagado a', 'NIT', 'Concepto', 'Valor', 'Tipo Soporte']],
             body: tableData,
             margin: 20,
             theme: 'grid'
           });
           yPos = doc.lastAutoTable.finalY + 10;
         }
+
+        if (s.tipo === 'Legalización' && s.valorAnticipoOriginal) {
+          doc.setFontSize(10);
+          doc.text(`Anticipo Original: ${formatMoneyByMoneda(s.valorAnticipoOriginal, getMoneda(s.empresa))}`, 20, yPos);
+          yPos += 10;
+        }
       }
 
       yPos += 5;
       doc.setFontSize(11);
       const totalLabel = s.tipo === 'Anticipo' ? 'TOTAL SOLICITADO' : 'TOTAL';
-      const totalValue = s.tipo === 'Anticipo' ? `$${parseFloat(s.valor).toLocaleString()}` : `$${s.totalCalculado.toLocaleString()}`;
+      const totalValue = s.tipo === 'Anticipo' ? formatMoneyByMoneda(s.valor, getMoneda(s.empresa)) : formatMoneyByMoneda(s.totalCalculado, getMoneda(s.empresa));
       doc.text(`${totalLabel}: ${totalValue}`, 20, yPos);
 
       doc.save(`${s.tipo}-${s.id}.pdf`);
@@ -331,19 +444,44 @@ const App = () => {
     setGenerandoPDF(null);
   };
 
-  // Descargar archivos
+  // Descargar el PDF único de soportes consolidado
   const handleDescargarArchivos = (s) => {
-    s.documentos.forEach(doc => {
-      if (doc.archivo) {
-        const link = document.createElement('a');
-        link.href = doc.archivo;
-        link.download = doc.archivoNombre;
-        link.click();
-      }
-    });
+    if (!s.soportePDF) {
+      alert('Esta solicitud no tiene soportes adjuntos.');
+      return;
+    }
+    const link = document.createElement('a');
+    link.href = s.soportePDF.data;
+    link.download = s.soportePDF.nombre;
+    link.click();
   };
 
-  // Descargar ZIP
+  // Generar Excel con el mismo formato del control de pagos (Fecha, Pagado a, NIT, Concepto, Valor, Tipo de Soporte)
+  const handleGenerarExcel = (s) => {
+    const moneda = getMoneda(s.empresa);
+    const rows = [];
+    rows.push([`${s.tipo === 'Legalización' ? 'LEGALIZACIÓN' : 'REEMBOLSO'} — ${s.empresa}`]);
+    rows.push([]);
+    rows.push(['Fecha del Gasto', 'Pagado a', 'NIT', 'Por concepto de', `Valor pagado (${moneda})`, 'Tipo de soporte']);
+    (s.documentos || []).forEach(d => {
+      rows.push([d.fecha || '', d.proveedor || '', d.nit || '', d.descripcion || '', parseFloat(d.valor) || 0, d.tipoSoporte || '']);
+    });
+    rows.push(['', '', '', 'TOTAL', s.totalCalculado || 0, '']);
+    rows.push([]);
+    rows.push(['Elaborado por', s.responsableNombre || '']);
+    rows.push(['Estado', s.estado || '']);
+    if (s.tipo === 'Legalización' && s.valorAnticipoOriginal) {
+      rows.push(['Anticipo Original', parseFloat(s.valorAnticipoOriginal) || 0]);
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch: 14 }, { wch: 22 }, { wch: 16 }, { wch: 30 }, { wch: 16 }, { wch: 20 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, s.tipo.substring(0, 30));
+    XLSX.writeFile(wb, `${s.tipo}_${s.responsableNombre}_${s.fecha}.xlsx`);
+  };
+
+  // Descargar ZIP (reporte PDF + PDF único de soportes)
   const handleDescargarZIP = async (s) => {
     const zip = new JSZip();
     const doc = new jsPDF();
@@ -363,44 +501,42 @@ const App = () => {
     yPos += 12;
 
     if (s.tipo !== 'Anticipo') {
-      doc.text(`Consignatario: ${s.consignado?.nombre}`, 20, yPos);
-      yPos += 6;
-      doc.text(`NIT: ${s.consignado?.nit}`, 20, yPos);
-      doc.text(`Cédula: ${s.consignado?.cedula}`, pageWidth / 2, yPos);
-      yPos += 12;
-
       if (s.documentos && s.documentos.length > 0) {
         doc.setFontSize(11);
         doc.text('DOCUMENTOS', 20, yPos);
         yPos += 8;
         doc.setFontSize(9);
-        
-        const tableData = s.documentos.map(d => [d.proveedor, d.nit, d.descripcion, `$${parseFloat(d.valor).toLocaleString()}`]);
+
+        const tableData = s.documentos.map(d => [d.fecha || '-', d.proveedor, d.nit, d.descripcion, formatMoneyByMoneda(d.valor, getMoneda(s.empresa)), d.tipoSoporte || '-']);
         doc.autoTable({
           startY: yPos,
-          head: [['Proveedor', 'NIT', 'Descripción', 'Valor']],
+          head: [['Fecha', 'Pagado a', 'NIT', 'Concepto', 'Valor', 'Tipo Soporte']],
           body: tableData,
           margin: 20,
           theme: 'grid'
         });
         yPos = doc.lastAutoTable.finalY + 10;
       }
+
+      if (s.tipo === 'Legalización' && s.valorAnticipoOriginal) {
+        doc.setFontSize(10);
+        doc.text(`Anticipo Original: ${formatMoneyByMoneda(s.valorAnticipoOriginal, getMoneda(s.empresa))}`, 20, yPos);
+        yPos += 10;
+      }
     }
 
     yPos += 5;
     doc.setFontSize(11);
     const totalLabel = s.tipo === 'Anticipo' ? 'TOTAL SOLICITADO' : 'TOTAL';
-    const totalValue = s.tipo === 'Anticipo' ? `$${parseFloat(s.valor).toLocaleString()}` : `$${s.totalCalculado.toLocaleString()}`;
+    const totalValue = s.tipo === 'Anticipo' ? formatMoneyByMoneda(s.valor, getMoneda(s.empresa)) : formatMoneyByMoneda(s.totalCalculado, getMoneda(s.empresa));
     doc.text(`${totalLabel}: ${totalValue}`, 20, yPos);
 
     zip.file(`${s.tipo}-${s.id}.pdf`, doc.output('blob'));
 
-    s.documentos.forEach((doc, idx) => {
-      if (doc.archivo) {
-        const base64 = doc.archivo.split(',')[1];
-        zip.file(doc.archivoNombre, base64, { base64: true });
-      }
-    });
+    if (s.soportePDF) {
+      const base64 = s.soportePDF.data.split(',')[1];
+      zip.file(s.soportePDF.nombre, base64, { base64: true });
+    }
 
     zip.generateAsync({ type: 'blob' }).then(blob => {
       const link = document.createElement('a');
@@ -486,22 +622,23 @@ const App = () => {
     const nuevaCuenta = {
       id: Date.now(),
       ...newCuentaCobro,
+      soportes: soportesCuentaCobroTemp,
       responsableNombre: responsables.find(r => r.nombre === newCuentaCobro.responsable)?.nombre || newCuentaCobro.responsable
     };
 
     setCuentasDeCobro([...cuentasDeCobro, nuevaCuenta]);
     localStorage.setItem('amCuentasDeCobro', JSON.stringify([...cuentasDeCobro, nuevaCuenta]));
-    
-    setNewCuentaCobro({ 
-      fecha: new Date().toISOString().split('T')[0], 
-      numero: '', 
-      responsable: '', 
-      empresa: '', 
-      monto: '', 
-      concepto: '', 
-      driveLink: '', 
-      estado: 'Pendiente' 
+
+    setNewCuentaCobro({
+      fecha: new Date().toISOString().split('T')[0],
+      numero: '',
+      responsable: '',
+      empresa: '',
+      monto: '',
+      concepto: '',
+      estado: 'Pendiente'
     });
+    setSoportesCuentaCobroTemp([]);
     alert('✅ Cuenta de cobro agregada');
   };
 
@@ -666,6 +803,30 @@ const App = () => {
     setSoportesTemp(soportesTemp.filter(s => s.id !== id));
   };
 
+  // MANEJO DE SOPORTES (ARCHIVOS) — Cuentas de Cobro (reemplaza el link de Drive)
+  const handleAddSoporteCuentaCobro = (e) => {
+    const files = Array.from(e.target.files);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const nuevoSoporte = {
+          id: Date.now() + Math.random(),
+          nombre: file.name,
+          tipo: file.type,
+          tamaño: file.size,
+          data: event.target.result
+        };
+        setSoportesCuentaCobroTemp(prev => [...prev, nuevoSoporte]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const handleRemoveSoporteCuentaCobro = (id) => {
+    setSoportesCuentaCobroTemp(soportesCuentaCobroTemp.filter(s => s.id !== id));
+  };
+
   const handleDownloadSoporte = (soporte) => {
     const link = document.createElement('a');
     link.href = soporte.data;
@@ -718,47 +879,58 @@ const App = () => {
     ? ingresos.filter(i => i.responsableNombre === user.nombre)
     : ingresos;
 
-  // Dashboard financiero
-  const totalGastos = (user?.rol === 'Responsable' ? gastosUsuario : gastos)
-    .reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
+  // Dashboard financiero — separado por moneda (ARKO en USD, el resto en COP).
+  // Sumar pesos y dólares en un mismo total daría un número financieramente incorrecto.
+  const gastosBase = user?.rol === 'Responsable' ? gastosUsuario : gastos;
+  const ingresosBase = user?.rol === 'Responsable' ? ingresosUsuario : ingresos;
 
-  const totalIngresos = (user?.rol === 'Responsable' ? ingresosUsuario : ingresos)
-    .reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0);
+  const totalGastosCOP = gastosBase.filter(g => getMoneda(g.empresa) === 'COP').reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
+  const totalGastosUSD = gastosBase.filter(g => getMoneda(g.empresa) === 'USD').reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
 
-  const balance = totalIngresos - totalGastos;
+  const totalIngresosCOP = ingresosBase.filter(i => getMoneda(i.empresa) === 'COP').reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0);
+  const totalIngresosUSD = ingresosBase.filter(i => getMoneda(i.empresa) === 'USD').reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0);
+
+  const balanceCOP = totalIngresosCOP - totalGastosCOP;
+  const balanceUSD = totalIngresosUSD - totalGastosUSD;
 
   const gastosPorCECO = cecos.map(ceco => ({
     ceco: ceco.nombre,
-    valor: (user?.rol === 'Responsable' ? gastosUsuario : gastos)
-      .filter(g => g.ceco === ceco.codigo)
+    valor: gastosBase
+      .filter(g => g.ceco === ceco.codigo && getMoneda(g.empresa) === 'COP')
       .reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0)
   })).filter(g => g.valor > 0);
 
   const gastosPorEmpresa = empresas.map(emp => ({
     empresa: emp,
-    valor: (user?.rol === 'Responsable' ? gastosUsuario : gastos)
+    valor: gastosBase
       .filter(g => g.empresa === emp)
       .reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0)
   })).filter(g => g.valor > 0);
 
   // FUNCIONES PARA DASHBOARD AVANZADO
-  const gastosFiltradomat = (user?.rol === 'Responsable' ? gastosUsuario : gastos).filter(g => 
+  const gastosFiltradomat = gastosBase.filter(g =>
     g.fecha >= filtroFechaInicio && g.fecha <= filtroFechaFin
   );
-  
-  const ingresosFiltradomat = (user?.rol === 'Responsable' ? ingresosUsuario : ingresos).filter(i => 
+
+  const ingresosFiltradomat = ingresosBase.filter(i =>
     i.fecha >= filtroFechaInicio && i.fecha <= filtroFechaFin
   );
 
-  // Datos por mes
+  // Vistas filtradas por moneda — para tarjetas y gráficos que comparan varias empresas a la vez
+  const gastosFiltradomatCOP = gastosFiltradomat.filter(g => getMoneda(g.empresa) === 'COP');
+  const gastosFiltradomatUSD = gastosFiltradomat.filter(g => getMoneda(g.empresa) === 'USD');
+  const ingresosFiltradomatCOP = ingresosFiltradomat.filter(i => getMoneda(i.empresa) === 'COP');
+  const ingresosFiltradomatUSD = ingresosFiltradomat.filter(i => getMoneda(i.empresa) === 'USD');
+
+  // Datos por mes (solo empresas en COP — ARKO se muestra aparte en su propio resumen USD)
   const datosPorMes = (() => {
     const meses = {};
-    gastosFiltradomat.forEach(g => {
+    gastosFiltradomatCOP.forEach(g => {
       const mes = g.fecha.substring(0, 7);
       if (!meses[mes]) meses[mes] = { mes, gastos: 0, ingresos: 0 };
       meses[mes].gastos += parseFloat(g.valor) || 0;
     });
-    ingresosFiltradomat.forEach(i => {
+    ingresosFiltradomatCOP.forEach(i => {
       const mes = i.fecha.substring(0, 7);
       if (!meses[mes]) meses[mes] = { mes, gastos: 0, ingresos: 0 };
       meses[mes].ingresos += parseFloat(i.valor) || 0;
@@ -766,10 +938,10 @@ const App = () => {
     return Object.values(meses).sort((a, b) => a.mes.localeCompare(b.mes));
   })();
 
-  // Top CECOs
+  // Top CECOs (solo COP — mezclar CECOs en dólares y pesos en el mismo top daría proporciones falsas)
   const topCecos = cecos.map(ceco => ({
     name: ceco.nombre,
-    value: gastosFiltradomat
+    value: gastosFiltradomatCOP
       .filter(g => g.ceco === ceco.codigo)
       .reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0)
   }))
@@ -777,10 +949,10 @@ const App = () => {
   .sort((a, b) => b.value - a.value)
   .slice(0, 5);
 
-  // Top Empresas
+  // Top Empresas (solo COP — ARKO ya tiene su propio resumen en USD más abajo)
   const topEmpresas = empresas.map(emp => ({
     name: emp.split(' ')[0],
-    value: gastosFiltradomat
+    value: gastosFiltradomatCOP
       .filter(g => g.empresa === emp)
       .reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0)
   }))
@@ -801,7 +973,7 @@ const App = () => {
 
   // DESCARGAS Y REPORTES
   const downloadReporteFinanzas = () => {
-    const headers = ['Fecha', 'Tipo', 'Empresa', 'CECO', 'Detalle', 'Valor', 'Estado', 'Responsable'];
+    const headers = ['Fecha', 'Tipo', 'Empresa', 'CECO', 'Detalle', 'Valor', 'Moneda', 'Estado', 'Responsable'];
     const datos = [...gastos, ...ingresos].map(item => [
       item.fecha,
       item.tipo,
@@ -809,6 +981,7 @@ const App = () => {
       item.ceco || '-',
       item.detalle,
       item.valor,
+      getMoneda(item.empresa),
       item.estado,
       item.responsable
     ]).sort((a, b) => new Date(b[0]) - new Date(a[0]));
@@ -826,13 +999,14 @@ const App = () => {
   };
 
   const downloadReporteSolicitudes = () => {
-    const headers = ['Fecha', 'Tipo', 'Empresa', 'Concepto', 'Valor', 'Estado', 'Responsable'];
+    const headers = ['Fecha', 'Tipo', 'Empresa', 'Concepto', 'Valor', 'Moneda', 'Estado', 'Responsable'];
     const datos = solicitudes.map(s => [
       s.fecha,
       s.tipo,
       s.empresa,
       s.detalle,
       s.valor || s.totalCalculado || '-',
+      getMoneda(s.empresa),
       s.estado,
       s.responsableNombre || '-'
     ]).sort((a, b) => new Date(b[0]) - new Date(a[0]));
@@ -854,6 +1028,13 @@ const App = () => {
     let count = 0;
 
     solicitudes.forEach((sol, idx) => {
+      // Solicitudes nuevas: un solo PDF consolidado de soportes por solicitud
+      if (sol.soportePDF) {
+        const data = sol.soportePDF.data.split(',')[1];
+        zip.file(`${sol.fecha}_${sol.tipo}_${sol.soportePDF.nombre}`, data, { base64: true });
+        count++;
+      }
+      // Compatibilidad con solicitudes antiguas que aún tengan archivo por documento
       if (sol.documentos && sol.documentos.length > 0) {
         sol.documentos.forEach((doc, docIdx) => {
           if (doc.archivo) {
@@ -986,8 +1167,12 @@ const App = () => {
                 <h3 style={{ color: '#C4A747', margin: 0, fontSize: '2.5rem' }}>{totalSolicitudes}</h3>
               </div>
               <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Monto Total</p>
-                <h3 style={{ color: '#51cf66', margin: 0, fontSize: '2.5rem' }}>$ {totalMonto.toLocaleString()}</h3>
+                <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Monto Total (COP)</p>
+                <h3 style={{ color: '#51cf66', margin: 0, fontSize: '2.5rem' }}>{formatMoneyByMoneda(totalMontoCOP, 'COP')}</h3>
+              </div>
+              <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
+                <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Monto Total ARKO (USD)</p>
+                <h3 style={{ color: '#51cf66', margin: 0, fontSize: '2.5rem' }}>{formatMoneyByMoneda(totalMontoUSD, 'USD')}</h3>
               </div>
               <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
                 <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Pendiente</p>
@@ -1023,7 +1208,7 @@ const App = () => {
                       <tr key={idx} style={{ borderBottom: '1px solid #2a2a2a' }}>
                         <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{emp.empresa}</td>
                         <td style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>{emp.cantidad}</td>
-                        <td style={{ textAlign: 'right', padding: '0.75rem', color: '#51cf66', fontWeight: 'bold' }}>$ {emp.monto.toLocaleString()}</td>
+                        <td style={{ textAlign: 'right', padding: '0.75rem', color: '#51cf66', fontWeight: 'bold' }}>{formatMoney(emp.monto, emp.empresa)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1047,7 +1232,7 @@ const App = () => {
                       <tr key={idx} style={{ borderBottom: '1px solid #2a2a2a' }}>
                         <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{resp.nombre}</td>
                         <td style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>{resp.cantidad}</td>
-                        <td style={{ textAlign: 'right', padding: '0.75rem', color: '#51cf66', fontWeight: 'bold' }}>$ {resp.monto.toLocaleString()}</td>
+                        <td style={{ textAlign: 'right', padding: '0.75rem', color: '#51cf66', fontWeight: 'bold' }}>{formatMoney(resp.monto, resp.empresa)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1074,7 +1259,7 @@ const App = () => {
                         <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{s.fecha}</td>
                         {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{s.responsableNombre}</td>}
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
-                        <td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>$ {(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0).toLocaleString()}</td>
+                        <td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                           <span style={{ backgroundColor: getColorEstado(s.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{s.estado}</span>
                         </td>
@@ -1136,8 +1321,16 @@ const App = () => {
                     <option value="Legalización">Legalización</option>
                     <option value="Reembolso">Reembolso</option>
                   </select>
+                  {user.rol !== 'Responsable' && (
+                    <select value={newSolicitud.empresa} onChange={(e) => setNewSolicitud({...newSolicitud, empresa: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
+                      {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                    </select>
+                  )}
                   {newSolicitud.tipo === 'Anticipo' && (
-                    <input type="number" placeholder="Valor Solicitado" value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
+                    <input type="number" placeholder={`Valor Solicitado (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
+                  )}
+                  {newSolicitud.tipo === 'Legalización' && (
+                    <input type="number" placeholder={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valorAnticipoOriginal} onChange={(e) => setNewSolicitud({...newSolicitud, valorAnticipoOriginal: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
                   )}
                 </div>
 
@@ -1145,43 +1338,64 @@ const App = () => {
 
                 {(newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso') && (
                   <>
-                    <div style={{ marginBottom: '1rem', padding: '1rem', backgroundColor: '#0f0f0f', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
-                      <p style={{ color: '#C4A747', fontWeight: 'bold', margin: '0 0 1rem 0' }}>Datos del Consignatario</p>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                        <input type="text" placeholder="NIT" value={newSolicitud.consignado?.nit || ''} onChange={(e) => setNewSolicitud({...newSolicitud, consignado: {...newSolicitud.consignado, nit: e.target.value}})} style={{ padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
-                        <input type="text" placeholder="Cédula" value={newSolicitud.consignado?.cedula || ''} onChange={(e) => setNewSolicitud({...newSolicitud, consignado: {...newSolicitud.consignado, cedula: e.target.value}})} style={{ padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
-                      </div>
-                      <input type="text" placeholder="Nombre Completo" value={newSolicitud.consignado?.nombre || ''} onChange={(e) => setNewSolicitud({...newSolicitud, consignado: {...newSolicitud.consignado, nombre: e.target.value}})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
-                    </div>
-
                     <div style={{ marginBottom: '1rem', backgroundColor: '#0f0f0f', padding: '1rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                        <h3 style={{ color: '#C4A747', margin: 0, fontSize: '1rem' }}>Documentos con Soportes</h3>
+                        <h3 style={{ color: '#C4A747', margin: 0, fontSize: '1rem' }}>Ítems del Gasto</h3>
                         <button onClick={handleAddDocumento} style={{ padding: '0.5rem 1rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>+ Agregar</button>
                       </div>
 
                       {newSolicitud.documentos.map((doc, idx) => (
                         <div key={idx} style={{ backgroundColor: '#1a1a1a', padding: '1rem', marginBottom: '1rem', borderRadius: '3px', border: '1px solid #2a2a2a' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                            <input type="text" placeholder="Proveedor" value={doc.proveedor} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].proveedor = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '3px', color: '#fff', boxSizing: 'border-box', fontSize: '0.8rem' }} />
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr 1fr 1.6fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                            <input type="date" placeholder="Fecha del Gasto" value={doc.fecha || ''} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].fecha = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '3px', color: '#fff', boxSizing: 'border-box', fontSize: '0.8rem' }} />
+                            <input type="text" placeholder="Pagado a" value={doc.proveedor} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].proveedor = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '3px', color: '#fff', boxSizing: 'border-box', fontSize: '0.8rem' }} />
                             <input type="text" placeholder="NIT" value={doc.nit} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].nit = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '3px', color: '#fff', boxSizing: 'border-box', fontSize: '0.8rem' }} />
-                            <input type="text" placeholder="Descripción" value={doc.descripcion} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].descripcion = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '3px', color: '#fff', boxSizing: 'border-box', fontSize: '0.8rem' }} />
-                            <input type="number" placeholder="Valor" value={doc.valor} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].valor = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '3px', color: '#fff', boxSizing: 'border-box', fontSize: '0.8rem' }} />
+                            <input type="text" placeholder="Por concepto de" value={doc.descripcion} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].descripcion = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '3px', color: '#fff', boxSizing: 'border-box', fontSize: '0.8rem' }} />
                           </div>
-                          <div style={{ display: 'flex', gap: '0.75rem' }}>
-                            <label style={{ flex: 1, padding: '0.75rem', backgroundColor: '#748ffc', color: '#0f0f0f', border: 'none', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', textAlign: 'center', fontSize: '0.8rem' }}>
-                              📎 {doc.archivoNombre ? '✓' : 'Archivo'}
-                              <input type="file" onChange={(e) => handleAddArchivo(idx, e.target.files[0])} style={{ display: 'none' }} />
-                            </label>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr auto', gap: '0.75rem' }}>
+                            <input type="number" placeholder="Valor pagado" value={doc.valor} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].valor = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '3px', color: '#fff', boxSizing: 'border-box', fontSize: '0.8rem' }} />
+                            <select value={doc.tipoSoporte || ''} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].tipoSoporte = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '3px', color: '#fff', boxSizing: 'border-box', fontSize: '0.8rem' }}>
+                              <option value="">Tipo de Soporte</option>
+                              {tiposSoporte.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
                             <button onClick={() => handleDeleteDocumento(idx)} style={{ padding: '0.75rem 1rem', backgroundColor: '#ff6b6b', color: '#0f0f0f', border: 'none', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>✕</button>
                           </div>
                         </div>
                       ))}
+
+                      {newSolicitud.documentos.length > 0 && (
+                        <p style={{ color: '#C4A747', textAlign: 'right', margin: '0.5rem 0 0 0', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                          Total: {formatMoney(newSolicitud.documentos.reduce((sum, d) => sum + (parseFloat(d.valor) || 0), 0), user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* SOPORTES CONSOLIDADOS — se unen automáticamente en un solo PDF al guardar */}
+                    <div style={{ marginBottom: '1rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1rem' }}>
+                      <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>📎 Soportes (PDFs e imágenes — se unen en un solo PDF)</label>
+                      <input type="file" multiple accept="application/pdf,image/*" onChange={handleAddSoporteLegalizacion} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#a0a0a0', marginTop: '0.5rem', marginBottom: '1rem', boxSizing: 'border-box', cursor: 'pointer' }} />
+
+                      {soportesLegalizacionTemp.length > 0 && (
+                        <div style={{ marginTop: '1rem' }}>
+                          <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.8rem' }}>Archivos cargados: {soportesLegalizacionTemp.length} (se unirán en un solo PDF al guardar)</p>
+                          {soportesLegalizacionTemp.map(soporte => (
+                            <div key={soporte.id} style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ flex: 1 }}>
+                                <p style={{ color: '#C4A747', margin: '0 0 0.25rem 0', fontSize: '0.8rem', fontWeight: 'bold' }}>{soporte.nombre}</p>
+                                <p style={{ color: '#a0a0a0', margin: 0, fontSize: '0.75rem' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
+                              </div>
+                              <button onClick={() => handleRemoveSoporteLegalizacion(soporte.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem', padding: '0.5rem' }}>🗑️</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
 
-                <button onClick={handleAddSolicitud} disabled={isReadOnly} style={{ width: '100%', padding: '0.75rem', backgroundColor: isReadOnly ? '#666' : '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: isReadOnly ? 'not-allowed' : 'pointer', opacity: isReadOnly ? 0.5 : 1 }}>Guardar Solicitud</button>
+                <button onClick={handleAddSolicitud} disabled={isReadOnly || generandoSoportesPDF} style={{ width: '100%', padding: '0.75rem', backgroundColor: isReadOnly ? '#666' : '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: isReadOnly || generandoSoportesPDF ? 'not-allowed' : 'pointer', opacity: isReadOnly || generandoSoportesPDF ? 0.5 : 1 }}>
+                  {generandoSoportesPDF ? '⏳ Uniendo soportes en PDF...' : 'Guardar Solicitud'}
+                </button>
               </div>
               </div>
             )}
@@ -1209,7 +1423,7 @@ const App = () => {
                         <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{s.fecha}</td>
                         {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{s.responsableNombre}</td>}
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
-                        <td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>$ {(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0).toLocaleString()}</td>
+                        <td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center', color: s.documentos?.length > 0 ? '#51cf66' : '#7a7a7a' }}>{s.documentos?.length || 0}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                           {canApprove ? (
@@ -1230,10 +1444,13 @@ const App = () => {
                               )}
                               {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && (
                                 <>
+                                  <button onClick={() => handleGenerarExcel(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem', marginRight: '0.5rem' }} title="Excel">
+                                    📊
+                                  </button>
                                   <button onClick={() => handleDescargarZIP(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem', marginRight: '0.5rem' }} title="ZIP">
                                     📦
                                   </button>
-                                  <button onClick={() => handleDescargarArchivos(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem' }} title="Archivos">
+                                  <button onClick={() => handleDescargarArchivos(s)} disabled={!s.soportePDF} style={{ background: 'none', border: 'none', cursor: s.soportePDF ? 'pointer' : 'not-allowed', color: s.soportePDF ? '#51cf66' : '#7a7a7a', fontSize: '1rem' }} title="PDF de Soportes">
                                     ⬇️
                                   </button>
                                 </>
@@ -1385,26 +1602,56 @@ const App = () => {
                 </button>
               </div>
 
-              {/* CARDS RESUMEN */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-                <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                  <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💰 Ingresos</p>
-                  <h3 style={{ color: '#51cf66', margin: 0, fontSize: '2rem' }}>$ {ingresosFiltradomat.reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0).toLocaleString()}</h3>
-                </div>
-                <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                  <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💸 Gastos</p>
-                  <h3 style={{ color: '#ff6b6b', margin: 0, fontSize: '2rem' }}>$ {gastosFiltradomat.reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0).toLocaleString()}</h3>
-                </div>
-                <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                  <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>📊 Balance</p>
-                  <h3 style={{ color: (ingresosFiltradomat.reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0) - gastosFiltradomat.reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0)) >= 0 ? '#51cf66' : '#ff6b6b', margin: 0, fontSize: '2rem' }}>$ {(ingresosFiltradomat.reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0) - gastosFiltradomat.reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0)).toLocaleString()}</h3>
-                </div>
-              </div>
+              {/* CARDS RESUMEN — COP (todas las empresas excepto ARKO) */}
+              {(() => {
+                const ingresosCOPFiltrado = ingresosFiltradomatCOP.reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0);
+                const gastosCOPFiltrado = gastosFiltradomatCOP.reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
+                const balanceCOPFiltrado = ingresosCOPFiltrado - gastosCOPFiltrado;
+                const ingresosUSDFiltrado = ingresosFiltradomatUSD.reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0);
+                const gastosUSDFiltrado = gastosFiltradomatUSD.reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
+                const balanceUSDFiltrado = ingresosUSDFiltrado - gastosUSDFiltrado;
+                return (
+                  <>
+                    <h3 style={{ color: '#a0a0a0', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>Resumen en Pesos (COP) — todas las empresas excepto ARKO</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                      <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
+                        <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💰 Ingresos</p>
+                        <h3 style={{ color: '#51cf66', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(ingresosCOPFiltrado, 'COP')}</h3>
+                      </div>
+                      <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
+                        <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💸 Gastos</p>
+                        <h3 style={{ color: '#ff6b6b', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(gastosCOPFiltrado, 'COP')}</h3>
+                      </div>
+                      <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
+                        <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>📊 Balance</p>
+                        <h3 style={{ color: balanceCOPFiltrado >= 0 ? '#51cf66' : '#ff6b6b', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(balanceCOPFiltrado, 'COP')}</h3>
+                      </div>
+                    </div>
+
+                    {/* CARDS RESUMEN — USD (solo ARKO) */}
+                    <h3 style={{ color: '#a0a0a0', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>💵 Resumen ARKO (USD)</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                      <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
+                        <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💰 Ingresos ARKO</p>
+                        <h3 style={{ color: '#51cf66', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(ingresosUSDFiltrado, 'USD')}</h3>
+                      </div>
+                      <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
+                        <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💸 Gastos ARKO</p>
+                        <h3 style={{ color: '#ff6b6b', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(gastosUSDFiltrado, 'USD')}</h3>
+                      </div>
+                      <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
+                        <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>📊 Balance ARKO</p>
+                        <h3 style={{ color: balanceUSDFiltrado >= 0 ? '#51cf66' : '#ff6b6b', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(balanceUSDFiltrado, 'USD')}</h3>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
 
               {/* GRÁFICO GASTOS VS INGRESOS POR MES */}
               {datosPorMes.length > 0 && (
                 <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem', marginBottom: '2rem' }}>
-                  <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>Gastos vs Ingresos por Mes</h3>
+                  <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>Gastos vs Ingresos por Mes <span style={{ color: '#a0a0a0', fontSize: '0.8rem', fontWeight: 'normal' }}>(COP — excluye ARKO/USD)</span></h3>
                   <svg width="100%" height="300" viewBox="0 0 800 300" style={{ backgroundColor: 'transparent' }}>
                     {/* Grid */}
                     {[0, 1, 2, 3, 4].map(i => (
@@ -1446,7 +1693,7 @@ const App = () => {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem' }}>
                 {topCecos.length > 0 && (
                   <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                    <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🏆 Top 5 CECOs</h3>
+                    <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🏆 Top 5 CECOs <span style={{ color: '#a0a0a0', fontSize: '0.8rem', fontWeight: 'normal' }}>(COP — excluye ARKO/USD)</span></h3>
                     <svg width="100%" height="250" viewBox="0 0 200 200" style={{ backgroundColor: 'transparent' }}>
                       {(() => {
                         const total = topCecos.reduce((sum, c) => sum + c.value, 0);
@@ -1486,7 +1733,7 @@ const App = () => {
 
                 {topEmpresas.length > 0 && (
                   <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                    <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🏢 Top 5 Empresas</h3>
+                    <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🏢 Top 5 Empresas <span style={{ color: '#a0a0a0', fontSize: '0.8rem', fontWeight: 'normal' }}>(COP — excluye ARKO/USD)</span></h3>
                     <svg width="100%" height="250" viewBox="0 0 200 200" style={{ backgroundColor: 'transparent' }}>
                       {(() => {
                         const total = topEmpresas.reduce((sum, e) => sum + e.value, 0);
@@ -1672,7 +1919,7 @@ const App = () => {
                           <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.ceco}</td>
                           <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.cuenta}</td>
                           <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{g.detalle}</td>
-                          <td style={{ padding: '0.75rem', color: '#ff6b6b', textAlign: 'right', fontWeight: 'bold' }}>$ {parseFloat(g.valor).toLocaleString()}</td>
+                          <td style={{ padding: '0.75rem', color: '#ff6b6b', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(g.valor, g.empresa)}</td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                             {g.soportes && g.soportes.length > 0 ? (
                               <button onClick={() => handleViewSoportes(g.soportes)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem' }}>📎 {g.soportes.length}</button>
@@ -1729,7 +1976,7 @@ const App = () => {
                           <td style={{ padding: '0.75rem', color: '#51cf66', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.cuentaSalida}</td>
                           <td style={{ padding: '0.75rem', color: '#C4A747', textAlign: 'center', fontWeight: 'bold' }}>→</td>
                           <td style={{ padding: '0.75rem', color: '#ff6b6b', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.cuentaDestino}</td>
-                          <td style={{ padding: '0.75rem', color: '#C4A747', textAlign: 'right', fontWeight: 'bold' }}>$ {parseFloat(g.valor).toLocaleString()}</td>
+                          <td style={{ padding: '0.75rem', color: '#C4A747', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(g.valor, g.empresa)}</td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                             {g.soportes && g.soportes.length > 0 ? (
                               <button onClick={() => handleViewSoportes(g.soportes)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem' }}>📎 {g.soportes.length}</button>
@@ -1786,7 +2033,7 @@ const App = () => {
                           <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.empresa}</td>
                           <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.cuenta}</td>
                           <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{i.detalle}</td>
-                          <td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>$ {parseFloat(i.valor).toLocaleString()}</td>
+                          <td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(i.valor, i.empresa)}</td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                             {i.soportes && i.soportes.length > 0 ? (
                               <button onClick={() => handleViewSoportes(i.soportes)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem' }}>📎 {i.soportes.length}</button>
@@ -1832,7 +2079,26 @@ const App = () => {
                 <input type="number" placeholder="Monto" value={newCuentaCobro.monto} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, monto: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
                 <input type="text" placeholder="Concepto" value={newCuentaCobro.concepto} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, concepto: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
               </div>
-              <input type="url" placeholder="Link Carpeta Drive (Ej: https://drive.google.com/...)" value={newCuentaCobro.driveLink} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, driveLink: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
+              {/* CARGA DE SOPORTES */}
+              <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1rem', marginBottom: '1rem' }}>
+                <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>📎 Soportes (PDF u otros archivos)</label>
+                <input type="file" multiple onChange={handleAddSoporteCuentaCobro} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#a0a0a0', marginTop: '0.5rem', marginBottom: '1rem', boxSizing: 'border-box', cursor: 'pointer' }} />
+
+                {soportesCuentaCobroTemp.length > 0 && (
+                  <div style={{ marginTop: '1rem' }}>
+                    <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.8rem' }}>Archivos cargados: {soportesCuentaCobroTemp.length}</p>
+                    {soportesCuentaCobroTemp.map(soporte => (
+                      <div key={soporte.id} style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ color: '#C4A747', margin: '0 0 0.25rem 0', fontSize: '0.8rem', fontWeight: 'bold' }}>{soporte.nombre}</p>
+                          <p style={{ color: '#a0a0a0', margin: 0, fontSize: '0.75rem' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
+                        </div>
+                        <button onClick={() => handleRemoveSoporteCuentaCobro(soporte.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem', padding: '0.5rem' }}>🗑️</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button onClick={handleAddCuentaCobro} disabled={isReadOnly} style={{ width: '100%', padding: '0.75rem', backgroundColor: isReadOnly ? '#666' : '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: isReadOnly ? 'not-allowed' : 'pointer', opacity: isReadOnly ? 0.5 : 1 }}>Crear Cuenta de Cobro</button>
             </div>
 
@@ -1858,7 +2124,7 @@ const App = () => {
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{c.numero}</td>
                         {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{c.responsableNombre}</td>}
                         <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{c.empresa}</td>
-                        <td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>$ {parseFloat(c.monto).toLocaleString()}</td>
+                        <td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(c.monto, c.empresa)}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                           {canApprove ? (
                             <select value={c.estado} onChange={(e) => handleUpdateCuentaCobro(c.id, 'estado', e.target.value)} disabled={isReadOnly || !canApprove} style={{ backgroundColor: getColorEstado(c.estado), color: '#0f0f0f', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: isReadOnly || !canApprove ? 'not-allowed' : 'pointer', fontSize: '0.8rem', opacity: isReadOnly || !canApprove ? 0.6 : 1 }}>
@@ -1869,10 +2135,10 @@ const App = () => {
                           )}
                         </td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                          {c.driveLink && (
-                            <a href={c.driveLink} target="_blank" rel="noopener noreferrer" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#748ffc', fontSize: '1rem', marginRight: '0.5rem', textDecoration: 'none' }} title="Abrir Drive">
-                              ☁️
-                            </a>
+                          {c.soportes && c.soportes.length > 0 ? (
+                            <button onClick={() => handleViewSoportes(c.soportes)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem', marginRight: '0.5rem' }} title="Ver soportes">📎 {c.soportes.length}</button>
+                          ) : (
+                            <span style={{ color: '#a0a0a0', fontSize: '0.8rem', marginRight: '0.5rem' }}>—</span>
                           )}
                           {user.rol === 'Administrador' && (
                             <button onClick={() => handleDeleteCuentaCobro(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem' }} title="Eliminar">
