@@ -4,6 +4,23 @@ import jsPDF from 'jspdf';
 import JSZip from 'jszip';
 import { PDFDocument } from 'pdf-lib';
 import * as XLSX from 'xlsx';
+import logoAmHolding from './assets/logos/logo-am-holding.png';
+import logoNoss from './assets/logos/logo-noss.png';
+import logoProGlobal from './assets/logos/logo-pro-global.png';
+import logoForSeven from './assets/logos/logo-for-seven.png';
+
+// Logo por empresa — Pronova Capital y Arko aún no tienen logo, se muestran solo con el nombre en texto
+const EMPRESA_LOGOS = {
+  'AM SPORTS GROUP SAS': logoNoss,
+  'PRO INVESTMENTS GLOBAL SAS': logoProGlobal,
+  'FOR SEVEN MEDIA SAS': logoForSeven,
+};
+
+const EmpresaLogo = ({ empresa, height = 20, style = {} }) => {
+  const src = EMPRESA_LOGOS[empresa];
+  if (!src) return null;
+  return <img src={src} alt={empresa} style={{ height: `${height}px`, width: 'auto', maxWidth: `${height * 4.5}px`, objectFit: 'contain', verticalAlign: 'middle', ...style }} />;
+};
 
 const App = () => {
   // MONEDA POR EMPRESA — ARKO opera en dólares, el resto de la holding en pesos colombianos
@@ -1096,8 +1113,8 @@ const App = () => {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#F8F6F1', backgroundImage: 'radial-gradient(circle at 15% 10%, rgba(196,167,71,0.10), transparent 45%), radial-gradient(circle at 85% 90%, rgba(196,167,71,0.08), transparent 45%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
         <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderTop: '4px solid #C4A747', borderRadius: '12px', padding: '3rem 2rem', textAlign: 'center', maxWidth: '500px', width: '100%', boxShadow: '0 20px 50px -12px rgba(34,30,21,0.18), 0 2px 8px rgba(34,30,21,0.06)' }}>
-          <h1 style={{ color: '#C4A747', fontSize: '2.5rem', margin: 0, letterSpacing: '0.02em', fontWeight: '800' }}>AM HOLDING</h1>
-          <p style={{ color: '#6B6458', margin: '1rem 0 2rem 0' }}>Gestión Financiera/Contable</p>
+          <img src={logoAmHolding} alt="AM HOLDING" style={{ height: '64px', width: 'auto', maxWidth: '100%', objectFit: 'contain' }} />
+          <p style={{ color: '#6B6458', margin: '1.25rem 0 2rem 0' }}>Gestión Financiera/Contable</p>
 
           <div style={{ marginBottom: '2rem' }}>
             <label style={{ display: 'block', color: '#6B6458', fontSize: '0.9rem', marginBottom: '0.75rem', fontWeight: 'bold' }}>Seleccionar Perfil</label>
@@ -1150,7 +1167,7 @@ const App = () => {
     <div style={{ minHeight: '100vh', backgroundColor: '#F8F6F1', color: '#221E15' }}>
       <header style={{ backgroundColor: '#FFFFFF', borderBottom: '1px solid #E6E0D2', padding: '1.5rem', boxShadow: '0 1px 3px rgba(34,30,21,0.04)', position: 'sticky', top: 0, zIndex: 100 }}>
         <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div><h1 style={{ color: '#C4A747', margin: 0, fontWeight: '800', letterSpacing: '0.02em' }}>AM HOLDING</h1><p style={{ fontSize: '0.85rem', color: '#6B6458', margin: '0.5rem 0 0 0' }}>{user.nombre} ({user.rol})</p></div>
+          <div><img src={logoAmHolding} alt="AM HOLDING" style={{ height: '32px', width: 'auto', objectFit: 'contain', display: 'block' }} /><p style={{ fontSize: '0.85rem', color: '#6B6458', margin: '0.5rem 0 0 0' }}>{user.nombre} ({user.rol})</p></div>
           <button onClick={() => setUser(null)} style={{ backgroundColor: '#C4A747', color: '#221E15', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 2px 6px rgba(196,167,71,0.35)' }}>Salir</button>
         </div>
       </header>
@@ -1226,7 +1243,7 @@ const App = () => {
                   <tbody>
                     {statsPorEmpresa.map((emp, idx) => (
                       <tr key={idx} style={{ borderBottom: '1px solid #E6E0D2' }}>
-                        <td style={{ padding: '0.75rem', color: '#6B6458' }}>{emp.empresa}</td>
+                        <td style={{ padding: '0.75rem', color: '#6B6458' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><EmpresaLogo empresa={emp.empresa} height={18} />{emp.empresa}</div></td>
                         <td style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>{emp.cantidad}</td>
                         <td style={{ textAlign: 'right', padding: '0.75rem', color: '#2F9E52', fontWeight: 'bold' }}>{formatMoney(emp.monto, emp.empresa)}</td>
                       </tr>
@@ -1663,7 +1680,7 @@ const App = () => {
                         <tbody>
                           {resumenPorEmpresaCOP.map(r => (
                             <tr key={r.empresa} style={{ borderBottom: '1px solid #E6E0D2' }}>
-                              <td style={{ padding: '0.75rem', color: '#221E15', fontWeight: 'bold' }}>{r.empresa}</td>
+                              <td style={{ padding: '0.75rem', color: '#221E15', fontWeight: 'bold' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><EmpresaLogo empresa={r.empresa} height={18} />{r.empresa}</div></td>
                               <td style={{ padding: '0.75rem', textAlign: 'right', color: '#2F9E52' }}>{formatMoneyByMoneda(r.ingresos, 'COP')}</td>
                               <td style={{ padding: '0.75rem', textAlign: 'right', color: '#CC4B4B' }}>{formatMoneyByMoneda(r.gastos, 'COP')}</td>
                               <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: 'bold', color: r.balance >= 0 ? '#2F9E52' : '#CC4B4B' }}>{formatMoneyByMoneda(r.balance, 'COP')}</td>
@@ -1827,7 +1844,10 @@ const App = () => {
                         <tr style={{ borderBottom: '2px solid #C4A747' }}>
                           <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
                           {empresasCOP.map(emp => (
-                            <th key={emp} style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>{emp.split(' ')[0]}</th>
+                            <th key={emp} style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>
+                              {EMPRESA_LOGOS[emp] ? <EmpresaLogo empresa={emp} height={16} style={{ display: 'block', marginLeft: 'auto', marginBottom: '0.25rem' }} /> : null}
+                              {emp.split(' ')[0]}
+                            </th>
                           ))}
                           <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Total Ejecutado</th>
                         </tr>
@@ -2017,7 +2037,7 @@ const App = () => {
                         <tr key={g.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.fecha}</td>
                           {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.responsableNombre}</td>}
-                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.empresa}</td>
+                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><EmpresaLogo empresa={g.empresa} height={16} />{g.empresa}</div></td>
                           <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.ceco}</td>
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.cuenta}</td>
                           <td style={{ padding: '0.75rem', color: '#6B6458' }}>{g.detalle}</td>
@@ -2132,7 +2152,7 @@ const App = () => {
                         <tr key={i.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{i.fecha}</td>
                           {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{i.responsableNombre}</td>}
-                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{i.empresa}</td>
+                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><EmpresaLogo empresa={i.empresa} height={16} />{i.empresa}</div></td>
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{i.cuenta}</td>
                           <td style={{ padding: '0.75rem', color: '#6B6458' }}>{i.detalle}</td>
                           <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(i.valor, i.empresa)}</td>
@@ -2225,7 +2245,7 @@ const App = () => {
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{c.fecha}</td>
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{c.numero}</td>
                         {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{c.responsableNombre}</td>}
-                        <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{c.empresa}</td>
+                        <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><EmpresaLogo empresa={c.empresa} height={16} />{c.empresa}</div></td>
                         <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(c.monto, c.empresa)}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                           {canApprove ? (
