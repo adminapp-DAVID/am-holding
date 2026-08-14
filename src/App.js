@@ -960,6 +960,37 @@ const App = () => {
   .sort((a, b) => b.value - a.value)
   .slice(0, 5);
 
+  // Ingresos, Gastos y Balance de cada empresa individual en COP (ARKO mantiene su propio resumen en USD, aparte)
+  const resumenPorEmpresaCOP = empresas.filter(emp => getMoneda(emp) === 'COP').map(emp => {
+    const ingresosEmp = ingresosFiltradomatCOP.filter(i => i.empresa === emp).reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0);
+    const gastosEmp = gastosFiltradomatCOP.filter(g => g.empresa === emp).reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
+    return { empresa: emp, ingresos: ingresosEmp, gastos: gastosEmp, balance: ingresosEmp - gastosEmp };
+  });
+
+  // Valor ejecutado (gastos) de cada CECO, cruzado por empresa (COP) — ARKO se muestra aparte en USD
+  const empresasCOP = empresas.filter(emp => getMoneda(emp) === 'COP');
+  const cecosPorEmpresaCOP = cecos.map(ceco => {
+    const porEmpresa = {};
+    let total = 0;
+    empresasCOP.forEach(emp => {
+      const valor = gastosFiltradomatCOP
+        .filter(g => g.ceco === ceco.codigo && g.empresa === emp)
+        .reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
+      porEmpresa[emp] = valor;
+      total += valor;
+    });
+    return { codigo: ceco.codigo, nombre: ceco.nombre, porEmpresa, total };
+  }).filter(c => c.total > 0);
+
+  // Valor ejecutado por CECO en ARKO (USD)
+  const cecosArkoUSD = cecos.map(ceco => ({
+    codigo: ceco.codigo,
+    nombre: ceco.nombre,
+    valor: gastosFiltradomatUSD
+      .filter(g => g.ceco === ceco.codigo)
+      .reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0)
+  })).filter(c => c.valor > 0);
+
   // PERMISOS POR ROL
   const canEdit = user?.rol && ['Administrador', 'Coordinadora Administrativa', 'Responsable'].includes(user.rol);
   const canApprove = user?.rol && ['Administrador', 'Coordinadora Administrativa'].includes(user.rol);
@@ -1628,6 +1659,31 @@ const App = () => {
                       </div>
                     </div>
 
+                    {/* RESUMEN POR EMPRESA — Ingresos, Gastos y Balance de cada empresa individual (COP) */}
+                    <h3 style={{ color: '#a0a0a0', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>Resumen por Empresa (COP)</h3>
+                    <div style={{ overflowX: 'auto', marginBottom: '2rem' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                        <thead style={{ backgroundColor: '#0f0f0f' }}>
+                          <tr style={{ borderBottom: '2px solid #C4A747' }}>
+                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Ingresos</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Gastos</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Balance</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {resumenPorEmpresaCOP.map(r => (
+                            <tr key={r.empresa} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                              <td style={{ padding: '0.75rem', color: '#fff', fontWeight: 'bold' }}>{r.empresa}</td>
+                              <td style={{ padding: '0.75rem', textAlign: 'right', color: '#51cf66' }}>{formatMoneyByMoneda(r.ingresos, 'COP')}</td>
+                              <td style={{ padding: '0.75rem', textAlign: 'right', color: '#ff6b6b' }}>{formatMoneyByMoneda(r.gastos, 'COP')}</td>
+                              <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: 'bold', color: r.balance >= 0 ? '#51cf66' : '#ff6b6b' }}>{formatMoneyByMoneda(r.balance, 'COP')}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
                     {/* CARDS RESUMEN — USD (solo ARKO) */}
                     <h3 style={{ color: '#a0a0a0', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>💵 Resumen ARKO (USD)</h3>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
@@ -1771,6 +1827,63 @@ const App = () => {
                   </div>
                 )}
               </div>
+
+              {/* CECOs POR EMPRESA — VALOR EJECUTADO TOTAL */}
+              {cecosPorEmpresaCOP.length > 0 && (
+                <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem', marginTop: '2rem' }}>
+                  <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>📁 CECOs por Empresa <span style={{ color: '#a0a0a0', fontSize: '0.8rem', fontWeight: 'normal' }}>— Valor Ejecutado (COP — excluye ARKO/USD)</span></h3>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                      <thead style={{ backgroundColor: '#1a1a1a' }}>
+                        <tr style={{ borderBottom: '2px solid #C4A747' }}>
+                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
+                          {empresasCOP.map(emp => (
+                            <th key={emp} style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>{emp.split(' ')[0]}</th>
+                          ))}
+                          <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Total Ejecutado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cecosPorEmpresaCOP.map(c => (
+                          <tr key={c.codigo} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                            <td style={{ padding: '0.75rem', color: '#fff', fontWeight: 'bold' }}>{c.nombre}</td>
+                            {empresasCOP.map(emp => (
+                              <td key={emp} style={{ padding: '0.75rem', textAlign: 'right', color: c.porEmpresa[emp] > 0 ? '#ff6b6b' : '#5a5a5a' }}>
+                                {c.porEmpresa[emp] > 0 ? formatMoneyByMoneda(c.porEmpresa[emp], 'COP') : '—'}
+                              </td>
+                            ))}
+                            <td style={{ padding: '0.75rem', textAlign: 'right', color: '#C4A747', fontWeight: 'bold' }}>{formatMoneyByMoneda(c.total, 'COP')}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {cecosArkoUSD.length > 0 && (
+                    <>
+                      <h3 style={{ color: '#C4A747', margin: '2rem 0 1rem 0' }}>📁 CECOs ARKO <span style={{ color: '#a0a0a0', fontSize: '0.8rem', fontWeight: 'normal' }}>— Valor Ejecutado (USD)</span></h3>
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                          <thead style={{ backgroundColor: '#1a1a1a' }}>
+                            <tr style={{ borderBottom: '2px solid #C4A747' }}>
+                              <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
+                              <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Total Ejecutado</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {cecosArkoUSD.map(c => (
+                              <tr key={c.codigo} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                                <td style={{ padding: '0.75rem', color: '#fff', fontWeight: 'bold' }}>{c.nombre}</td>
+                                <td style={{ padding: '0.75rem', textAlign: 'right', color: '#ff6b6b', fontWeight: 'bold' }}>{formatMoneyByMoneda(c.valor, 'USD')}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* NUEVA TRANSACCIÓN (SOLO ADMIN Y COORDINADORA) */}
