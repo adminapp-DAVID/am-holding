@@ -5,15 +5,16 @@ import JSZip from 'jszip';
 import { PDFDocument } from 'pdf-lib';
 import * as XLSX from 'xlsx';
 import logoAmHolding from './assets/logos/logo-am-holding.png';
-import logoNoss from './assets/logos/logo-noss.png';
-import logoProGlobal from './assets/logos/logo-pro-global.png';
-import logoForSeven from './assets/logos/logo-for-seven.png';
+// Logos de empresas pendientes por subir al repo (se reactivan agregando el import y la línea correspondiente abajo):
+// import logoNoss from './assets/logos/logo-noss.png';
+// import logoProGlobal from './assets/logos/logo-pro-global.png';
+// import logoForSeven from './assets/logos/logo-for-seven.png';
 
-// Logo por empresa — Pronova Capital y Arko aún no tienen logo, se muestran solo con el nombre en texto
+// Logo por empresa — por ahora solo AM Holding (marca general) está activo. Las demás se agregan cuando se suban sus archivos.
 const EMPRESA_LOGOS = {
-  'AM SPORTS GROUP SAS': logoNoss,
-  'PRO INVESTMENTS GLOBAL SAS': logoProGlobal,
-  'FOR SEVEN MEDIA SAS': logoForSeven,
+  // 'AM SPORTS GROUP SAS': logoNoss,
+  // 'PRO INVESTMENTS GLOBAL SAS': logoProGlobal,
+  // 'FOR SEVEN MEDIA SAS': logoForSeven,
 };
 
 const EmpresaLogo = ({ empresa, height = 20, style = {} }) => {
