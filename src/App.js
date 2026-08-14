@@ -1139,18 +1139,7 @@ const App = () => {
 
           <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '1rem', boxSizing: 'border-box', borderRadius: '4px' }} />
           <input type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleLogin()} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '2rem', boxSizing: 'border-box', borderRadius: '4px' }} />
-          <button onClick={handleLogin} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '2rem' }}>Entrar</button>
-
-          <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '1rem 0 0.5rem 0' }}>COLABORADOR:</p>
-          <p style={{ color: '#6B6458', fontSize: '0.75rem', margin: '0 0 1rem 0' }}>cristian@amholding.com / pass123</p>
-          <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>COORDINADORA ADMINISTRATIVA:</p>
-          <p style={{ color: '#6B6458', fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>caren@amholding.com / pass123</p>
-          <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>CONTADORA:</p>
-          <p style={{ color: '#6B6458', fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>contadora@amholding.com / pass123</p>
-          <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>ADMIN:</p>
-          <p style={{ color: '#6B6458', fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>admin@amholding.com / admin123</p>
-          <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>GERENTE:</p>
-          <p style={{ color: '#6B6458', fontSize: '0.75rem', margin: 0 }}>gerente.ops@amholding.com / pass123</p>
+          <button onClick={handleLogin} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Entrar</button>
         </div>
       </div>
     );
