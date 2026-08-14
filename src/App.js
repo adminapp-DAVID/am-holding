@@ -998,8 +998,8 @@ const App = () => {
   
   // Color estado
   const getColorEstado = (estado) => {
-    const colores = { 'Pendiente': '#ff6b6b', 'Aprobado': '#ffd43b', 'Pagado': '#51cf66', 'Legalizado': '#748ffc' };
-    return colores[estado] || '#a0a0a0';
+    const colores = { 'Pendiente': '#CC4B4B', 'Aprobado': '#D6A419', 'Pagado': '#2F9E52', 'Legalizado': '#6C63D1' };
+    return colores[estado] || '#6B6458';
   };
 
   // DESCARGAS Y REPORTES
@@ -1094,13 +1094,13 @@ const App = () => {
   // LOGIN
   if (!user) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#0f0f0f', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-        <div style={{ backgroundColor: '#1a1a1a', border: '2px solid #C4A747', borderRadius: '8px', padding: '3rem 2rem', textAlign: 'center', maxWidth: '500px', width: '100%' }}>
-          <h1 style={{ color: '#C4A747', fontSize: '2.5rem', margin: 0 }}>AM HOLDING</h1>
-          <p style={{ color: '#a0a0a0', margin: '1rem 0 2rem 0' }}>Gestión Financiera/Contable</p>
+      <div style={{ minHeight: '100vh', backgroundColor: '#F8F6F1', backgroundImage: 'radial-gradient(circle at 15% 10%, rgba(196,167,71,0.10), transparent 45%), radial-gradient(circle at 85% 90%, rgba(196,167,71,0.08), transparent 45%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+        <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderTop: '4px solid #C4A747', borderRadius: '12px', padding: '3rem 2rem', textAlign: 'center', maxWidth: '500px', width: '100%', boxShadow: '0 20px 50px -12px rgba(34,30,21,0.18), 0 2px 8px rgba(34,30,21,0.06)' }}>
+          <h1 style={{ color: '#C4A747', fontSize: '2.5rem', margin: 0, letterSpacing: '0.02em', fontWeight: '800' }}>AM HOLDING</h1>
+          <p style={{ color: '#6B6458', margin: '1rem 0 2rem 0' }}>Gestión Financiera/Contable</p>
 
           <div style={{ marginBottom: '2rem' }}>
-            <label style={{ display: 'block', color: '#a0a0a0', fontSize: '0.9rem', marginBottom: '0.75rem', fontWeight: 'bold' }}>Seleccionar Perfil</label>
+            <label style={{ display: 'block', color: '#6B6458', fontSize: '0.9rem', marginBottom: '0.75rem', fontWeight: 'bold' }}>Seleccionar Perfil</label>
             <select 
               value={selectedProfile || ''} 
               onChange={(e) => {
@@ -1112,7 +1112,7 @@ const App = () => {
                   if (user) setEmail(user.email);
                 }
               }}
-              style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '1rem', boxSizing: 'border-box', borderRadius: '4px', cursor: 'pointer' }}
+              style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '1rem', boxSizing: 'border-box', borderRadius: '4px', cursor: 'pointer' }}
             >
               <option value="">-- Elige un perfil --</option>
               
@@ -1134,23 +1134,23 @@ const App = () => {
                 ))}
               </optgroup>
             </select>
-            <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: 0 }}>Selecciona tu usuario para auto-llenar el email</p>
+            <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: 0 }}>Selecciona tu usuario para auto-llenar el email</p>
           </div>
 
-          <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '1rem', boxSizing: 'border-box', borderRadius: '4px' }} />
-          <input type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleLogin()} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '2rem', boxSizing: 'border-box', borderRadius: '4px' }} />
-          <button onClick={handleLogin} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '2rem' }}>Entrar</button>
+          <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '1rem', boxSizing: 'border-box', borderRadius: '4px' }} />
+          <input type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleLogin()} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '2rem', boxSizing: 'border-box', borderRadius: '4px' }} />
+          <button onClick={handleLogin} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '2rem' }}>Entrar</button>
 
-          <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '1rem 0 0.5rem 0' }}>COLABORADOR:</p>
-          <p style={{ color: '#a0a0a0', fontSize: '0.75rem', margin: '0 0 1rem 0' }}>cristian@amholding.com / pass123</p>
-          <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>COORDINADORA ADMINISTRATIVA:</p>
-          <p style={{ color: '#a0a0a0', fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>caren@amholding.com / pass123</p>
-          <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>CONTADORA:</p>
-          <p style={{ color: '#a0a0a0', fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>contadora@amholding.com / pass123</p>
-          <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>ADMIN:</p>
-          <p style={{ color: '#a0a0a0', fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>admin@amholding.com / admin123</p>
-          <p style={{ color: '#7a7a7a', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>GERENTE:</p>
-          <p style={{ color: '#a0a0a0', fontSize: '0.75rem', margin: 0 }}>gerente.ops@amholding.com / pass123</p>
+          <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '1rem 0 0.5rem 0' }}>COLABORADOR:</p>
+          <p style={{ color: '#6B6458', fontSize: '0.75rem', margin: '0 0 1rem 0' }}>cristian@amholding.com / pass123</p>
+          <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>COORDINADORA ADMINISTRATIVA:</p>
+          <p style={{ color: '#6B6458', fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>caren@amholding.com / pass123</p>
+          <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>CONTADORA:</p>
+          <p style={{ color: '#6B6458', fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>contadora@amholding.com / pass123</p>
+          <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>ADMIN:</p>
+          <p style={{ color: '#6B6458', fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>admin@amholding.com / admin123</p>
+          <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '0.5rem 0 0 0' }}>GERENTE:</p>
+          <p style={{ color: '#6B6458', fontSize: '0.75rem', margin: 0 }}>gerente.ops@amholding.com / pass123</p>
         </div>
       </div>
     );
@@ -1158,31 +1158,31 @@ const App = () => {
 
   // APP MAIN
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#0f0f0f', color: '#fff' }}>
-      <header style={{ backgroundColor: '#1a1a1a', borderBottom: '2px solid #C4A747', padding: '1.5rem' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#F8F6F1', color: '#221E15' }}>
+      <header style={{ backgroundColor: '#FFFFFF', borderBottom: '1px solid #E6E0D2', padding: '1.5rem', boxShadow: '0 1px 3px rgba(34,30,21,0.04)', position: 'sticky', top: 0, zIndex: 100 }}>
         <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div><h1 style={{ color: '#C4A747', margin: 0 }}>AM HOLDING</h1><p style={{ fontSize: '0.85rem', color: '#a0a0a0', margin: '0.5rem 0 0 0' }}>{user.nombre} ({user.rol})</p></div>
-          <button onClick={() => setUser(null)} style={{ backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Salir</button>
+          <div><h1 style={{ color: '#C4A747', margin: 0, fontWeight: '800', letterSpacing: '0.02em' }}>AM HOLDING</h1><p style={{ fontSize: '0.85rem', color: '#6B6458', margin: '0.5rem 0 0 0' }}>{user.nombre} ({user.rol})</p></div>
+          <button onClick={() => setUser(null)} style={{ backgroundColor: '#C4A747', color: '#221E15', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 2px 6px rgba(196,167,71,0.35)' }}>Salir</button>
         </div>
       </header>
 
-      <nav style={{ backgroundColor: '#0f0f0f', borderBottom: '1px solid #2a2a2a', padding: '1rem 0' }}>
+      <nav style={{ backgroundColor: '#F8F6F1', borderBottom: '1px solid #E6E0D2', padding: '1rem 0' }}>
         <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-          <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'dashboard' ? '#C4A747' : '#2a2a2a', color: currentView === 'dashboard' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📊 Dashboard</button>
+          <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'dashboard' ? '#C4A747' : '#E6E0D2', color: currentView === 'dashboard' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📊 Dashboard</button>
           
           {user.rol !== 'Gerente' && (
             <>
-              <button onClick={() => setCurrentView('solicitudes')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'solicitudes' ? '#C4A747' : '#2a2a2a', color: currentView === 'solicitudes' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📋 Solicitudes</button>
-              <button onClick={() => setCurrentView('cuentasCobro')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'cuentasCobro' ? '#C4A747' : '#2a2a2a', color: currentView === 'cuentasCobro' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💳 Cuentas de Cobro</button>
+              <button onClick={() => setCurrentView('solicitudes')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'solicitudes' ? '#C4A747' : '#E6E0D2', color: currentView === 'solicitudes' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📋 Solicitudes</button>
+              <button onClick={() => setCurrentView('cuentasCobro')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'cuentasCobro' ? '#C4A747' : '#E6E0D2', color: currentView === 'cuentasCobro' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💳 Cuentas de Cobro</button>
             </>
           )}
 
           {user.rol !== 'Gerente' && user.rol !== 'Responsable' && (
-            <button onClick={() => setCurrentView('finanzas')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'finanzas' ? '#C4A747' : '#2a2a2a', color: currentView === 'finanzas' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💰 Finanzas</button>
+            <button onClick={() => setCurrentView('finanzas')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'finanzas' ? '#C4A747' : '#E6E0D2', color: currentView === 'finanzas' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💰 Finanzas</button>
           )}
           
           {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
-            <button onClick={() => setCurrentView('responsables')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'responsables' ? '#C4A747' : '#2a2a2a', color: currentView === 'responsables' ? '#0f0f0f' : '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>👥 Colaboradores</button>
+            <button onClick={() => setCurrentView('responsables')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'responsables' ? '#C4A747' : '#E6E0D2', color: currentView === 'responsables' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>👥 Colaboradores</button>
           )}
         </div>
       </nav>
@@ -1193,38 +1193,38 @@ const App = () => {
             <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📊 Dashboard</h2>
             
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-              <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Total Solicitudes</p>
+              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.5rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
+                <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Total Solicitudes</p>
                 <h3 style={{ color: '#C4A747', margin: 0, fontSize: '2.5rem' }}>{totalSolicitudes}</h3>
               </div>
-              <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Monto Total (COP)</p>
-                <h3 style={{ color: '#51cf66', margin: 0, fontSize: '2.5rem' }}>{formatMoneyByMoneda(totalMontoCOP, 'COP')}</h3>
+              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.5rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
+                <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Monto Total (COP)</p>
+                <h3 style={{ color: '#2F9E52', margin: 0, fontSize: '2.5rem' }}>{formatMoneyByMoneda(totalMontoCOP, 'COP')}</h3>
               </div>
-              <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Monto Total ARKO (USD)</p>
-                <h3 style={{ color: '#51cf66', margin: 0, fontSize: '2.5rem' }}>{formatMoneyByMoneda(totalMontoUSD, 'USD')}</h3>
+              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.5rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
+                <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Monto Total ARKO (USD)</p>
+                <h3 style={{ color: '#2F9E52', margin: 0, fontSize: '2.5rem' }}>{formatMoneyByMoneda(totalMontoUSD, 'USD')}</h3>
               </div>
-              <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Pendiente</p>
-                <h3 style={{ color: '#ff6b6b', margin: 0, fontSize: '2.5rem' }}>{statsEstado.Pendiente}</h3>
+              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.5rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
+                <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Pendiente</p>
+                <h3 style={{ color: '#CC4B4B', margin: 0, fontSize: '2.5rem' }}>{statsEstado.Pendiente}</h3>
               </div>
-              <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Aprobado</p>
-                <h3 style={{ color: '#ffd43b', margin: 0, fontSize: '2.5rem' }}>{statsEstado.Aprobado}</h3>
+              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.5rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
+                <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Aprobado</p>
+                <h3 style={{ color: '#D6A419', margin: 0, fontSize: '2.5rem' }}>{statsEstado.Aprobado}</h3>
               </div>
-              <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Pagado</p>
-                <h3 style={{ color: '#51cf66', margin: 0, fontSize: '2.5rem' }}>{statsEstado.Pagado}</h3>
+              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.5rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
+                <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Pagado</p>
+                <h3 style={{ color: '#2F9E52', margin: 0, fontSize: '2.5rem' }}>{statsEstado.Pagado}</h3>
               </div>
-              <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Legalizado</p>
-                <h3 style={{ color: '#748ffc', margin: 0, fontSize: '2.5rem' }}>{statsEstado.Legalizado}</h3>
+              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.5rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
+                <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Legalizado</p>
+                <h3 style={{ color: '#6C63D1', margin: 0, fontSize: '2.5rem' }}>{statsEstado.Legalizado}</h3>
               </div>
             </div>
 
             {statsPorEmpresa.length > 0 && (
-              <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem', marginBottom: '2rem' }}>
+              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.5rem', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
                 <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>Por Empresa</h3>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
@@ -1236,10 +1236,10 @@ const App = () => {
                   </thead>
                   <tbody>
                     {statsPorEmpresa.map((emp, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                        <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{emp.empresa}</td>
+                      <tr key={idx} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                        <td style={{ padding: '0.75rem', color: '#6B6458' }}>{emp.empresa}</td>
                         <td style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>{emp.cantidad}</td>
-                        <td style={{ textAlign: 'right', padding: '0.75rem', color: '#51cf66', fontWeight: 'bold' }}>{formatMoney(emp.monto, emp.empresa)}</td>
+                        <td style={{ textAlign: 'right', padding: '0.75rem', color: '#2F9E52', fontWeight: 'bold' }}>{formatMoney(emp.monto, emp.empresa)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1248,7 +1248,7 @@ const App = () => {
             )}
 
             {topResponsables.length > 0 && (
-              <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem', marginBottom: '2rem' }}>
+              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.5rem', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
                 <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>👥 Top Colaboradores</h3>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
@@ -1260,10 +1260,10 @@ const App = () => {
                   </thead>
                   <tbody>
                     {topResponsables.map((resp, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                        <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{resp.nombre}</td>
+                      <tr key={idx} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                        <td style={{ padding: '0.75rem', color: '#6B6458' }}>{resp.nombre}</td>
                         <td style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>{resp.cantidad}</td>
-                        <td style={{ textAlign: 'right', padding: '0.75rem', color: '#51cf66', fontWeight: 'bold' }}>{formatMoney(resp.monto, resp.empresa)}</td>
+                        <td style={{ textAlign: 'right', padding: '0.75rem', color: '#2F9E52', fontWeight: 'bold' }}>{formatMoney(resp.monto, resp.empresa)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1272,7 +1272,7 @@ const App = () => {
             )}
 
             {ultimasSolicitudes.length > 0 && (
-              <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
+              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.5rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
                 <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>📋 Últimas Solicitudes</h3>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
@@ -1286,13 +1286,13 @@ const App = () => {
                   </thead>
                   <tbody>
                     {ultimasSolicitudes.map(s => (
-                      <tr key={s.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                        <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{s.fecha}</td>
-                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{s.responsableNombre}</td>}
+                      <tr key={s.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                        <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.fecha}</td>
+                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.responsableNombre}</td>}
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
-                        <td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
+                        <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                          <span style={{ backgroundColor: getColorEstado(s.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{s.estado}</span>
+                          <span style={{ backgroundColor: getColorEstado(s.estado), color: '#221E15', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{s.estado}</span>
                         </td>
                       </tr>
                     ))}
@@ -1303,20 +1303,20 @@ const App = () => {
 
             {/* REPORTES Y DESCARGAS */}
             {(isReadOnly || user?.rol === 'Administrador' || user?.rol === 'Coordinadora Administrativa') && (
-              <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginTop: '2rem' }}>
+              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginTop: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
                 <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>📥 Reportes y Descargas</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem' }}>
-                  <button onClick={downloadReporteFinanzas} style={{ padding: '1rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#C4A747', fontWeight: 'bold', cursor: 'pointer', textAlign: 'left' }}>
+                  <button onClick={downloadReporteFinanzas} style={{ padding: '1rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#C4A747', fontWeight: 'bold', cursor: 'pointer', textAlign: 'left' }}>
                     📊 Descargar Reporte Finanzas (CSV)
-                    <p style={{ fontSize: '0.8rem', color: '#a0a0a0', margin: '0.5rem 0 0 0' }}>Gastos e Ingresos por período</p>
+                    <p style={{ fontSize: '0.8rem', color: '#6B6458', margin: '0.5rem 0 0 0' }}>Gastos e Ingresos por período</p>
                   </button>
-                  <button onClick={downloadReporteSolicitudes} style={{ padding: '1rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#C4A747', fontWeight: 'bold', cursor: 'pointer', textAlign: 'left' }}>
+                  <button onClick={downloadReporteSolicitudes} style={{ padding: '1rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#C4A747', fontWeight: 'bold', cursor: 'pointer', textAlign: 'left' }}>
                     📋 Descargar Reporte Solicitudes (CSV)
-                    <p style={{ fontSize: '0.8rem', color: '#a0a0a0', margin: '0.5rem 0 0 0' }}>Todas las solicitudes y estados</p>
+                    <p style={{ fontSize: '0.8rem', color: '#6B6458', margin: '0.5rem 0 0 0' }}>Todas las solicitudes y estados</p>
                   </button>
-                  <button onClick={downloadSoportesZIP} style={{ padding: '1rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#C4A747', fontWeight: 'bold', cursor: 'pointer', textAlign: 'left' }}>
+                  <button onClick={downloadSoportesZIP} style={{ padding: '1rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#C4A747', fontWeight: 'bold', cursor: 'pointer', textAlign: 'left' }}>
                     📦 Descargar Soportes (ZIP)
-                    <p style={{ fontSize: '0.8rem', color: '#a0a0a0', margin: '0.5rem 0 0 0' }}>Todos los documentos adjuntos</p>
+                    <p style={{ fontSize: '0.8rem', color: '#6B6458', margin: '0.5rem 0 0 0' }}>Todos los documentos adjuntos</p>
                   </button>
                 </div>
               </div>
@@ -1327,69 +1327,69 @@ const App = () => {
         {currentView === 'solicitudes' && (
           <div>
             {user.rol === 'Gerente' ? (
-              <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', textAlign: 'center' }}>
-                <p style={{ color: '#ff6b6b', fontSize: '1.1rem', fontWeight: 'bold' }}>🔒 Acceso Restringido</p>
-                <p style={{ color: '#a0a0a0' }}>Los Gerentes solo pueden ver el Dashboard.</p>
-                <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>Ir al Dashboard</button>
+              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', textAlign: 'center', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
+                <p style={{ color: '#CC4B4B', fontSize: '1.1rem', fontWeight: 'bold' }}>🔒 Acceso Restringido</p>
+                <p style={{ color: '#6B6458' }}>Los Gerentes solo pueden ver el Dashboard.</p>
+                <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>Ir al Dashboard</button>
               </div>
             ) : (
               <div>
-              <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
+              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
                 <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nueva Solicitud</h2>
                 
                 {isReadOnly && (
-                  <div style={{ backgroundColor: '#ffebee', border: '1px solid #ff6b6b', borderRadius: '4px', padding: '1rem', marginBottom: '1rem', color: '#c41c3b' }}>
+                  <div style={{ backgroundColor: '#FFF4F4', border: '1px solid #CC4B4B', borderRadius: '4px', padding: '1rem', marginBottom: '1rem', color: '#B0102B' }}>
                     <p style={{ margin: 0, fontWeight: 'bold' }}>🔒 Modo Solo Lectura</p>
                     <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem' }}>Los Contadores no pueden crear ni editar solicitudes. Solo pueden ver y descargar.</p>
                   </div>
                 )}
                 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem', opacity: isReadOnly ? 0.5 : 1, pointerEvents: isReadOnly ? 'none' : 'auto' }}>
-                  <input type="date" value={newSolicitud.fecha} onChange={(e) => setNewSolicitud({...newSolicitud, fecha: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
-                  <select value={newSolicitud.tipo} onChange={(e) => setNewSolicitud({...newSolicitud, tipo: e.target.value, documentos: []})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
+                  <input type="date" value={newSolicitud.fecha} onChange={(e) => setNewSolicitud({...newSolicitud, fecha: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
+                  <select value={newSolicitud.tipo} onChange={(e) => setNewSolicitud({...newSolicitud, tipo: e.target.value, documentos: []})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }}>
                     <option value="">Tipo</option>
                     <option value="Anticipo">Anticipo</option>
                     <option value="Legalización">Legalización</option>
                     <option value="Reembolso">Reembolso</option>
                   </select>
                   {user.rol !== 'Responsable' && (
-                    <select value={newSolicitud.empresa} onChange={(e) => setNewSolicitud({...newSolicitud, empresa: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
+                    <select value={newSolicitud.empresa} onChange={(e) => setNewSolicitud({...newSolicitud, empresa: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }}>
                       {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
                     </select>
                   )}
                   {newSolicitud.tipo === 'Anticipo' && (
-                    <input type="number" placeholder={`Valor Solicitado (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
+                    <input type="number" placeholder={`Valor Solicitado (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
                   )}
                   {newSolicitud.tipo === 'Legalización' && (
-                    <input type="number" placeholder={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valorAnticipoOriginal} onChange={(e) => setNewSolicitud({...newSolicitud, valorAnticipoOriginal: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
+                    <input type="number" placeholder={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valorAnticipoOriginal} onChange={(e) => setNewSolicitud({...newSolicitud, valorAnticipoOriginal: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
                   )}
                 </div>
 
-                <input type="text" placeholder="Concepto" value={newSolicitud.detalle} onChange={(e) => setNewSolicitud({...newSolicitud, detalle: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
+                <input type="text" placeholder="Concepto" value={newSolicitud.detalle} onChange={(e) => setNewSolicitud({...newSolicitud, detalle: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', marginBottom: '1rem', boxSizing: 'border-box' }} />
 
                 {(newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso') && (
                   <>
-                    <div style={{ marginBottom: '1rem', backgroundColor: '#0f0f0f', padding: '1rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+                    <div style={{ marginBottom: '1rem', backgroundColor: '#F8F6F1', padding: '1rem', borderRadius: '4px', border: '1px solid #E6E0D2' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                         <h3 style={{ color: '#C4A747', margin: 0, fontSize: '1rem' }}>Ítems del Gasto</h3>
-                        <button onClick={handleAddDocumento} style={{ padding: '0.5rem 1rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>+ Agregar</button>
+                        <button onClick={handleAddDocumento} style={{ padding: '0.5rem 1rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>+ Agregar</button>
                       </div>
 
                       {newSolicitud.documentos.map((doc, idx) => (
-                        <div key={idx} style={{ backgroundColor: '#1a1a1a', padding: '1rem', marginBottom: '1rem', borderRadius: '3px', border: '1px solid #2a2a2a' }}>
+                        <div key={idx} style={{ backgroundColor: '#FFFFFF', padding: '1rem', marginBottom: '1rem', borderRadius: '3px', border: '1px solid #E6E0D2' }}>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr 1fr 1.6fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                            <input type="date" placeholder="Fecha del Gasto" value={doc.fecha || ''} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].fecha = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '3px', color: '#fff', boxSizing: 'border-box', fontSize: '0.8rem' }} />
-                            <input type="text" placeholder="Pagado a" value={doc.proveedor} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].proveedor = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '3px', color: '#fff', boxSizing: 'border-box', fontSize: '0.8rem' }} />
-                            <input type="text" placeholder="NIT" value={doc.nit} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].nit = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '3px', color: '#fff', boxSizing: 'border-box', fontSize: '0.8rem' }} />
-                            <input type="text" placeholder="Por concepto de" value={doc.descripcion} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].descripcion = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '3px', color: '#fff', boxSizing: 'border-box', fontSize: '0.8rem' }} />
+                            <input type="date" placeholder="Fecha del Gasto" value={doc.fecha || ''} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].fecha = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#221E15', boxSizing: 'border-box', fontSize: '0.8rem' }} />
+                            <input type="text" placeholder="Pagado a" value={doc.proveedor} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].proveedor = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#221E15', boxSizing: 'border-box', fontSize: '0.8rem' }} />
+                            <input type="text" placeholder="NIT" value={doc.nit} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].nit = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#221E15', boxSizing: 'border-box', fontSize: '0.8rem' }} />
+                            <input type="text" placeholder="Por concepto de" value={doc.descripcion} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].descripcion = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#221E15', boxSizing: 'border-box', fontSize: '0.8rem' }} />
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr auto', gap: '0.75rem' }}>
-                            <input type="number" placeholder="Valor pagado" value={doc.valor} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].valor = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '3px', color: '#fff', boxSizing: 'border-box', fontSize: '0.8rem' }} />
-                            <select value={doc.tipoSoporte || ''} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].tipoSoporte = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '3px', color: '#fff', boxSizing: 'border-box', fontSize: '0.8rem' }}>
+                            <input type="number" placeholder="Valor pagado" value={doc.valor} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].valor = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#221E15', boxSizing: 'border-box', fontSize: '0.8rem' }} />
+                            <select value={doc.tipoSoporte || ''} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].tipoSoporte = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#221E15', boxSizing: 'border-box', fontSize: '0.8rem' }}>
                               <option value="">Tipo de Soporte</option>
                               {tiposSoporte.map(t => <option key={t} value={t}>{t}</option>)}
                             </select>
-                            <button onClick={() => handleDeleteDocumento(idx)} style={{ padding: '0.75rem 1rem', backgroundColor: '#ff6b6b', color: '#0f0f0f', border: 'none', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>✕</button>
+                            <button onClick={() => handleDeleteDocumento(idx)} style={{ padding: '0.75rem 1rem', backgroundColor: '#CC4B4B', color: '#221E15', border: 'none', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>✕</button>
                           </div>
                         </div>
                       ))}
@@ -1402,20 +1402,20 @@ const App = () => {
                     </div>
 
                     {/* SOPORTES CONSOLIDADOS — se unen automáticamente en un solo PDF al guardar */}
-                    <div style={{ marginBottom: '1rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1rem' }}>
+                    <div style={{ marginBottom: '1rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem' }}>
                       <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>📎 Soportes (PDFs e imágenes — se unen en un solo PDF)</label>
-                      <input type="file" multiple accept="application/pdf,image/*" onChange={handleAddSoporteLegalizacion} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#a0a0a0', marginTop: '0.5rem', marginBottom: '1rem', boxSizing: 'border-box', cursor: 'pointer' }} />
+                      <input type="file" multiple accept="application/pdf,image/*" onChange={handleAddSoporteLegalizacion} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '1rem', boxSizing: 'border-box', cursor: 'pointer' }} />
 
                       {soportesLegalizacionTemp.length > 0 && (
                         <div style={{ marginTop: '1rem' }}>
-                          <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.8rem' }}>Archivos cargados: {soportesLegalizacionTemp.length} (se unirán en un solo PDF al guardar)</p>
+                          <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.8rem' }}>Archivos cargados: {soportesLegalizacionTemp.length} (se unirán en un solo PDF al guardar)</p>
                           {soportesLegalizacionTemp.map(soporte => (
-                            <div key={soporte.id} style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div key={soporte.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <div style={{ flex: 1 }}>
                                 <p style={{ color: '#C4A747', margin: '0 0 0.25rem 0', fontSize: '0.8rem', fontWeight: 'bold' }}>{soporte.nombre}</p>
-                                <p style={{ color: '#a0a0a0', margin: 0, fontSize: '0.75rem' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
+                                <p style={{ color: '#6B6458', margin: 0, fontSize: '0.75rem' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
                               </div>
-                              <button onClick={() => handleRemoveSoporteLegalizacion(soporte.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem', padding: '0.5rem' }}>🗑️</button>
+                              <button onClick={() => handleRemoveSoporteLegalizacion(soporte.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem', padding: '0.5rem' }}>🗑️</button>
                             </div>
                           ))}
                         </div>
@@ -1424,20 +1424,20 @@ const App = () => {
                   </>
                 )}
 
-                <button onClick={handleAddSolicitud} disabled={isReadOnly || generandoSoportesPDF} style={{ width: '100%', padding: '0.75rem', backgroundColor: isReadOnly ? '#666' : '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: isReadOnly || generandoSoportesPDF ? 'not-allowed' : 'pointer', opacity: isReadOnly || generandoSoportesPDF ? 0.5 : 1 }}>
+                <button onClick={handleAddSolicitud} disabled={isReadOnly || generandoSoportesPDF} style={{ width: '100%', padding: '0.75rem', backgroundColor: isReadOnly ? '#D8D2C2' : '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: isReadOnly || generandoSoportesPDF ? 'not-allowed' : 'pointer', opacity: isReadOnly || generandoSoportesPDF ? 0.5 : 1 }}>
                   {generandoSoportesPDF ? '⏳ Uniendo soportes en PDF...' : 'Guardar Solicitud'}
                 </button>
               </div>
               </div>
             )}
 
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
               <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>
                 📋 {user.rol === 'Responsable' ? 'Mis Solicitudes' : user.rol === 'Contadora' ? 'Solicitudes Auditadas' : 'Todas las Solicitudes'}
               </h2>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                  <thead style={{ backgroundColor: '#0f0f0f' }}>
+                  <thead style={{ backgroundColor: '#F8F6F1' }}>
                     <tr style={{ borderBottom: '2px solid #C4A747' }}>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
                       {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
@@ -1450,38 +1450,38 @@ const App = () => {
                   </thead>
                   <tbody>
                     {solicitudesUsuario.map(s => (
-                      <tr key={s.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                        <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{s.fecha}</td>
-                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{s.responsableNombre}</td>}
+                      <tr key={s.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                        <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.fecha}</td>
+                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.responsableNombre}</td>}
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
-                        <td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
-                        <td style={{ padding: '0.75rem', textAlign: 'center', color: s.documentos?.length > 0 ? '#51cf66' : '#7a7a7a' }}>{s.documentos?.length || 0}</td>
+                        <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
+                        <td style={{ padding: '0.75rem', textAlign: 'center', color: s.documentos?.length > 0 ? '#2F9E52' : '#8F8877' }}>{s.documentos?.length || 0}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                           {canApprove ? (
-                            <select value={s.estado} onChange={(e) => handleChangeEstado(s.id, e.target.value)} style={{ backgroundColor: getColorEstado(s.estado), color: '#0f0f0f', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
+                            <select value={s.estado} onChange={(e) => handleChangeEstado(s.id, e.target.value)} style={{ backgroundColor: getColorEstado(s.estado), color: '#221E15', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
                               {estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}
                             </select>
                           ) : (
-                            <span style={{ backgroundColor: getColorEstado(s.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{s.estado}</span>
+                            <span style={{ backgroundColor: getColorEstado(s.estado), color: '#221E15', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{s.estado}</span>
                           )}
                         </td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                           {(s.tipo === 'Legalización' || s.tipo === 'Reembolso') && s.documentos?.length > 0 && (
                             <>
                               {user.rol === 'Administrador' && (
-                                <button onClick={() => handleGenerarPDF(s)} disabled={generandoPDF === s.id} style={{ background: 'none', border: 'none', cursor: 'pointer', color: generandoPDF === s.id ? '#7a7a7a' : '#748ffc', fontSize: '1rem', marginRight: '0.5rem' }} title="PDF">
+                                <button onClick={() => handleGenerarPDF(s)} disabled={generandoPDF === s.id} style={{ background: 'none', border: 'none', cursor: 'pointer', color: generandoPDF === s.id ? '#8F8877' : '#6C63D1', fontSize: '1rem', marginRight: '0.5rem' }} title="PDF">
                                   {generandoPDF === s.id ? '⏳' : '📄'}
                                 </button>
                               )}
                               {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && (
                                 <>
-                                  <button onClick={() => handleGenerarExcel(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem', marginRight: '0.5rem' }} title="Excel">
+                                  <button onClick={() => handleGenerarExcel(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }} title="Excel">
                                     📊
                                   </button>
-                                  <button onClick={() => handleDescargarZIP(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem', marginRight: '0.5rem' }} title="ZIP">
+                                  <button onClick={() => handleDescargarZIP(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }} title="ZIP">
                                     📦
                                   </button>
-                                  <button onClick={() => handleDescargarArchivos(s)} disabled={!s.soportePDF} style={{ background: 'none', border: 'none', cursor: s.soportePDF ? 'pointer' : 'not-allowed', color: s.soportePDF ? '#51cf66' : '#7a7a7a', fontSize: '1rem' }} title="PDF de Soportes">
+                                  <button onClick={() => handleDescargarArchivos(s)} disabled={!s.soportePDF} style={{ background: 'none', border: 'none', cursor: s.soportePDF ? 'pointer' : 'not-allowed', color: s.soportePDF ? '#2F9E52' : '#8F8877', fontSize: '1rem' }} title="PDF de Soportes">
                                     ⬇️
                                   </button>
                                 </>
@@ -1489,7 +1489,7 @@ const App = () => {
                             </>
                           )}
                           {user.rol === 'Responsable' && (
-                            <button onClick={() => handleDeleteSolicitud(s.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem' }}>✕</button>
+                            <button onClick={() => handleDeleteSolicitud(s.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>✕</button>
                           )}
                         </td>
                       </tr>
@@ -1503,37 +1503,37 @@ const App = () => {
 
         {currentView === 'responsables' && (
           <div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
+            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
               <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Crear Nuevo Usuario</h2>
               
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', color: '#C4A747', fontSize: '0.85rem', marginBottom: '0.5rem', fontWeight: 'bold' }}>Tipo de Usuario</label>
-                  <select value={newUserType} onChange={(e) => setNewUserType(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
+                  <select value={newUserType} onChange={(e) => setNewUserType(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }}>
                     <option value="Colaborador">👥 Colaborador</option>
                     <option value="Gerente">📈 Gerente</option>
                   </select>
                 </div>
                 
-                <input type="text" placeholder="Nombre Completo" value={newResponsable.nombre} onChange={(e) => setNewResponsable({...newResponsable, nombre: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
-                <input type="email" placeholder="Email" value={newResponsable.email} onChange={(e) => setNewResponsable({...newResponsable, email: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
-                <input type="password" placeholder="Contraseña" value={newResponsable.password} onChange={(e) => setNewResponsable({...newResponsable, password: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
+                <input type="text" placeholder="Nombre Completo" value={newResponsable.nombre} onChange={(e) => setNewResponsable({...newResponsable, nombre: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
+                <input type="email" placeholder="Email" value={newResponsable.email} onChange={(e) => setNewResponsable({...newResponsable, email: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
+                <input type="password" placeholder="Contraseña" value={newResponsable.password} onChange={(e) => setNewResponsable({...newResponsable, password: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
                 
                 {newUserType === 'Colaborador' && (
-                  <select value={newResponsable.empresa} onChange={(e) => setNewResponsable({...newResponsable, empresa: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
+                  <select value={newResponsable.empresa} onChange={(e) => setNewResponsable({...newResponsable, empresa: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }}>
                     {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
                   </select>
                 )}
               </div>
 
-              <button onClick={handleAddResponsable} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Crear {newUserType}</button>
+              <button onClick={handleAddResponsable} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Crear {newUserType}</button>
             </div>
 
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
               <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>👥 Colaboradores ({responsables.length})</h2>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                  <thead style={{ backgroundColor: '#0f0f0f' }}>
+                  <thead style={{ backgroundColor: '#F8F6F1' }}>
                     <tr style={{ borderBottom: '2px solid #C4A747' }}>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Nombre</th>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Email</th>
@@ -1546,41 +1546,41 @@ const App = () => {
                     {responsables.map(r => {
                       const solicitudesColaborador = solicitudes.filter(s => s.responsableId === r.id).length;
                       return (
-                        <tr key={r.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                          <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>
+                        <tr key={r.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                          <td style={{ padding: '0.75rem', color: '#6B6458' }}>
                             {editingResponsable === r.id ? (
-                              <input type="text" value={r.nombre} onChange={(e) => handleUpdateResponsable(r.id, {nombre: e.target.value})} style={{ padding: '0.5rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', color: '#fff', borderRadius: '3px', boxSizing: 'border-box' }} />
+                              <input type="text" value={r.nombre} onChange={(e) => handleUpdateResponsable(r.id, {nombre: e.target.value})} style={{ padding: '0.5rem', backgroundColor: '#F8F6F1', border: '1px solid #C4A747', color: '#221E15', borderRadius: '3px', boxSizing: 'border-box' }} />
                             ) : (
                               r.nombre
                             )}
                           </td>
-                          <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>
+                          <td style={{ padding: '0.75rem', color: '#6B6458' }}>
                             {editingResponsable === r.id ? (
-                              <input type="email" value={r.email} onChange={(e) => handleUpdateResponsable(r.id, {email: e.target.value})} style={{ padding: '0.5rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', color: '#fff', borderRadius: '3px', boxSizing: 'border-box' }} />
+                              <input type="email" value={r.email} onChange={(e) => handleUpdateResponsable(r.id, {email: e.target.value})} style={{ padding: '0.5rem', backgroundColor: '#F8F6F1', border: '1px solid #C4A747', color: '#221E15', borderRadius: '3px', boxSizing: 'border-box' }} />
                             ) : (
                               r.email
                             )}
                           </td>
                           <td style={{ padding: '0.75rem', color: '#C4A747' }}>
                             {editingResponsable === r.id ? (
-                              <select value={r.empresa} onChange={(e) => handleUpdateResponsable(r.id, {empresa: e.target.value})} style={{ padding: '0.5rem', backgroundColor: '#0f0f0f', border: '1px solid #C4A747', color: '#fff', borderRadius: '3px' }}>
+                              <select value={r.empresa} onChange={(e) => handleUpdateResponsable(r.id, {empresa: e.target.value})} style={{ padding: '0.5rem', backgroundColor: '#F8F6F1', border: '1px solid #C4A747', color: '#221E15', borderRadius: '3px' }}>
                                 {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
                               </select>
                             ) : (
                               r.empresa
                             )}
                           </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'center', color: '#51cf66', fontWeight: 'bold' }}>{solicitudesColaborador}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center', color: '#2F9E52', fontWeight: 'bold' }}>{solicitudesColaborador}</td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                             {editingResponsable === r.id ? (
                               <>
-                                <button onClick={() => setEditingResponsable(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem', marginRight: '0.5rem' }}>✓</button>
-                                <button onClick={() => { setEditingResponsable(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem' }}>✕</button>
+                                <button onClick={() => setEditingResponsable(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }}>✓</button>
+                                <button onClick={() => { setEditingResponsable(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>✕</button>
                               </>
                             ) : (
                               <>
-                                <button onClick={() => setEditingResponsable(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#748ffc', fontSize: '1rem', marginRight: '0.5rem' }}>✏️</button>
-                                <button onClick={() => handleDeleteResponsable(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem' }}>🗑️</button>
+                                <button onClick={() => setEditingResponsable(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.5rem' }}>✏️</button>
+                                <button onClick={() => handleDeleteResponsable(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
                               </>
                             )}
                           </td>
@@ -1595,10 +1595,10 @@ const App = () => {
         )}
 
         {currentView === 'finanzas' && (user.rol === 'Gerente' || user.rol === 'Responsable') && (
-          <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', textAlign: 'center' }}>
-            <p style={{ color: '#ff6b6b', fontSize: '1.1rem', fontWeight: 'bold' }}>🔒 Acceso Restringido</p>
-            <p style={{ color: '#a0a0a0' }}>{user.rol === 'Gerente' ? 'Los Gerentes solo pueden ver el Dashboard.' : 'Los Colaboradores no tienen acceso al módulo de Finanzas.'}</p>
-            <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>Ir al Dashboard</button>
+          <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', textAlign: 'center', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
+            <p style={{ color: '#CC4B4B', fontSize: '1.1rem', fontWeight: 'bold' }}>🔒 Acceso Restringido</p>
+            <p style={{ color: '#6B6458' }}>{user.rol === 'Gerente' ? 'Los Gerentes solo pueden ver el Dashboard.' : 'Los Colaboradores no tienen acceso al módulo de Finanzas.'}</p>
+            <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>Ir al Dashboard</button>
           </div>
         )}
 
@@ -1606,29 +1606,29 @@ const App = () => {
           <div>
             {/* BOTÓN IMPORTAR (SOLO ADMIN) */}
             {user?.rol === 'Administrador' && (
-              <div style={{ backgroundColor: '#1a1a1a', padding: '1rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                <button onClick={() => setMostrarImportar(true)} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#4285F4', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>
+              <div style={{ backgroundColor: '#FFFFFF', padding: '1rem', borderRadius: '4px', border: '1px solid #E6E0D2', marginBottom: '2rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                <button onClick={() => setMostrarImportar(true)} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#3B72D9', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>
                   📥 Importar Histórico
                 </button>
-                <p style={{ color: '#a0a0a0', margin: 0, fontSize: '0.85rem' }}>Gastos en localStorage: {gastos.length}</p>
+                <p style={{ color: '#6B6458', margin: 0, fontSize: '0.85rem' }}>Gastos en localStorage: {gastos.length}</p>
               </div>
             )}
 
             {/* DASHBOARD FINANCIERO AVANZADO */}
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
+            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
               <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📈 Dashboard Financiero Avanzado</h2>
               
               {/* FILTRO DE FECHAS */}
-              <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem', marginBottom: '2rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem', marginBottom: '2rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
                 <div>
-                  <label style={{ display: 'block', color: '#a0a0a0', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Desde</label>
-                  <input type="date" value={filtroFechaInicio} onChange={(e) => setFiltroFechaInicio(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#a0a0a0', cursor: 'pointer' }} />
+                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Desde</label>
+                  <input type="date" value={filtroFechaInicio} onChange={(e) => setFiltroFechaInicio(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', cursor: 'pointer' }} />
                 </div>
                 <div>
-                  <label style={{ display: 'block', color: '#a0a0a0', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Hasta</label>
-                  <input type="date" value={filtroFechaFin} onChange={(e) => setFiltroFechaFin(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#a0a0a0', cursor: 'pointer' }} />
+                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Hasta</label>
+                  <input type="date" value={filtroFechaFin} onChange={(e) => setFiltroFechaFin(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', cursor: 'pointer' }} />
                 </div>
-                <button onClick={() => { setFiltroFechaInicio('2026-01-01'); setFiltroFechaFin(new Date().toISOString().split('T')[0]); }} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#2a2a2a', color: '#a0a0a0', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+                <button onClick={() => { setFiltroFechaInicio('2026-01-01'); setFiltroFechaFin(new Date().toISOString().split('T')[0]); }} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
                   🔄 Reiniciar
                 </button>
               </div>
@@ -1643,27 +1643,27 @@ const App = () => {
                 const balanceUSDFiltrado = ingresosUSDFiltrado - gastosUSDFiltrado;
                 return (
                   <>
-                    <h3 style={{ color: '#a0a0a0', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>Resumen en Pesos (COP) — todas las empresas excepto ARKO</h3>
+                    <h3 style={{ color: '#6B6458', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>Resumen en Pesos (COP) — todas las empresas excepto ARKO</h3>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-                      <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                        <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💰 Ingresos</p>
-                        <h3 style={{ color: '#51cf66', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(ingresosCOPFiltrado, 'COP')}</h3>
+                      <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
+                        <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💰 Ingresos</p>
+                        <h3 style={{ color: '#2F9E52', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(ingresosCOPFiltrado, 'COP')}</h3>
                       </div>
-                      <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                        <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💸 Gastos</p>
-                        <h3 style={{ color: '#ff6b6b', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(gastosCOPFiltrado, 'COP')}</h3>
+                      <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
+                        <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💸 Gastos</p>
+                        <h3 style={{ color: '#CC4B4B', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(gastosCOPFiltrado, 'COP')}</h3>
                       </div>
-                      <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                        <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>📊 Balance</p>
-                        <h3 style={{ color: balanceCOPFiltrado >= 0 ? '#51cf66' : '#ff6b6b', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(balanceCOPFiltrado, 'COP')}</h3>
+                      <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
+                        <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>📊 Balance</p>
+                        <h3 style={{ color: balanceCOPFiltrado >= 0 ? '#2F9E52' : '#CC4B4B', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(balanceCOPFiltrado, 'COP')}</h3>
                       </div>
                     </div>
 
                     {/* RESUMEN POR EMPRESA — Ingresos, Gastos y Balance de cada empresa individual (COP) */}
-                    <h3 style={{ color: '#a0a0a0', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>Resumen por Empresa (COP)</h3>
+                    <h3 style={{ color: '#6B6458', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>Resumen por Empresa (COP)</h3>
                     <div style={{ overflowX: 'auto', marginBottom: '2rem' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                        <thead style={{ backgroundColor: '#0f0f0f' }}>
+                        <thead style={{ backgroundColor: '#F8F6F1' }}>
                           <tr style={{ borderBottom: '2px solid #C4A747' }}>
                             <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
                             <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Ingresos</th>
@@ -1673,11 +1673,11 @@ const App = () => {
                         </thead>
                         <tbody>
                           {resumenPorEmpresaCOP.map(r => (
-                            <tr key={r.empresa} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                              <td style={{ padding: '0.75rem', color: '#fff', fontWeight: 'bold' }}>{r.empresa}</td>
-                              <td style={{ padding: '0.75rem', textAlign: 'right', color: '#51cf66' }}>{formatMoneyByMoneda(r.ingresos, 'COP')}</td>
-                              <td style={{ padding: '0.75rem', textAlign: 'right', color: '#ff6b6b' }}>{formatMoneyByMoneda(r.gastos, 'COP')}</td>
-                              <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: 'bold', color: r.balance >= 0 ? '#51cf66' : '#ff6b6b' }}>{formatMoneyByMoneda(r.balance, 'COP')}</td>
+                            <tr key={r.empresa} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                              <td style={{ padding: '0.75rem', color: '#221E15', fontWeight: 'bold' }}>{r.empresa}</td>
+                              <td style={{ padding: '0.75rem', textAlign: 'right', color: '#2F9E52' }}>{formatMoneyByMoneda(r.ingresos, 'COP')}</td>
+                              <td style={{ padding: '0.75rem', textAlign: 'right', color: '#CC4B4B' }}>{formatMoneyByMoneda(r.gastos, 'COP')}</td>
+                              <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: 'bold', color: r.balance >= 0 ? '#2F9E52' : '#CC4B4B' }}>{formatMoneyByMoneda(r.balance, 'COP')}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -1685,19 +1685,19 @@ const App = () => {
                     </div>
 
                     {/* CARDS RESUMEN — USD (solo ARKO) */}
-                    <h3 style={{ color: '#a0a0a0', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>💵 Resumen ARKO (USD)</h3>
+                    <h3 style={{ color: '#6B6458', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>💵 Resumen ARKO (USD)</h3>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-                      <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                        <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💰 Ingresos ARKO</p>
-                        <h3 style={{ color: '#51cf66', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(ingresosUSDFiltrado, 'USD')}</h3>
+                      <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
+                        <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💰 Ingresos ARKO</p>
+                        <h3 style={{ color: '#2F9E52', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(ingresosUSDFiltrado, 'USD')}</h3>
                       </div>
-                      <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                        <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💸 Gastos ARKO</p>
-                        <h3 style={{ color: '#ff6b6b', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(gastosUSDFiltrado, 'USD')}</h3>
+                      <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
+                        <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💸 Gastos ARKO</p>
+                        <h3 style={{ color: '#CC4B4B', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(gastosUSDFiltrado, 'USD')}</h3>
                       </div>
-                      <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                        <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>📊 Balance ARKO</p>
-                        <h3 style={{ color: balanceUSDFiltrado >= 0 ? '#51cf66' : '#ff6b6b', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(balanceUSDFiltrado, 'USD')}</h3>
+                      <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
+                        <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>📊 Balance ARKO</p>
+                        <h3 style={{ color: balanceUSDFiltrado >= 0 ? '#2F9E52' : '#CC4B4B', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(balanceUSDFiltrado, 'USD')}</h3>
                       </div>
                     </div>
                   </>
@@ -1706,12 +1706,12 @@ const App = () => {
 
               {/* GRÁFICO GASTOS VS INGRESOS POR MES */}
               {datosPorMes.length > 0 && (
-                <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem', marginBottom: '2rem' }}>
-                  <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>Gastos vs Ingresos por Mes <span style={{ color: '#a0a0a0', fontSize: '0.8rem', fontWeight: 'normal' }}>(COP — excluye ARKO/USD)</span></h3>
+                <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem', marginBottom: '2rem' }}>
+                  <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>Gastos vs Ingresos por Mes <span style={{ color: '#6B6458', fontSize: '0.8rem', fontWeight: 'normal' }}>(COP — excluye ARKO/USD)</span></h3>
                   <svg width="100%" height="300" viewBox="0 0 800 300" style={{ backgroundColor: 'transparent' }}>
                     {/* Grid */}
                     {[0, 1, 2, 3, 4].map(i => (
-                      <line key={`grid-${i}`} x1="60" y1={50 + i * 50} x2="750" y2={50 + i * 50} stroke="#2a2a2a" strokeWidth="1" strokeDasharray="5,5" />
+                      <line key={`grid-${i}`} x1="60" y1={50 + i * 50} x2="750" y2={50 + i * 50} stroke="#E6E0D2" strokeWidth="1" strokeDasharray="5,5" />
                     ))}
                     
                     {/* Barras */}
@@ -1725,22 +1725,22 @@ const App = () => {
                       return (
                         <g key={`mes-${idx}`}>
                           {/* Gasto */}
-                          <rect x={x} y={250 - gastosHeight} width={barWidth} height={gastosHeight} fill="#ff6b6b" opacity="0.8" />
+                          <rect x={x} y={250 - gastosHeight} width={barWidth} height={gastosHeight} fill="#CC4B4B" opacity="0.8" />
                           {/* Ingreso */}
-                          <rect x={x + barWidth + 5} y={250 - ingresosHeight} width={barWidth} height={ingresosHeight} fill="#51cf66" opacity="0.8" />
+                          <rect x={x + barWidth + 5} y={250 - ingresosHeight} width={barWidth} height={ingresosHeight} fill="#2F9E52" opacity="0.8" />
                           {/* Label */}
-                          <text x={x + barWidth} y="280" textAnchor="middle" fill="#a0a0a0" fontSize="12">{mes.mes.split('-')[1]}</text>
+                          <text x={x + barWidth} y="280" textAnchor="middle" fill="#6B6458" fontSize="12">{mes.mes.split('-')[1]}</text>
                         </g>
                       );
                     })}
                     
                     {/* Ejes */}
-                    <line x1="60" y1="50" x2="60" y2="250" stroke="#2a2a2a" strokeWidth="2" />
-                    <line x1="60" y1="250" x2="750" y2="250" stroke="#2a2a2a" strokeWidth="2" />
+                    <line x1="60" y1="50" x2="60" y2="250" stroke="#E6E0D2" strokeWidth="2" />
+                    <line x1="60" y1="250" x2="750" y2="250" stroke="#E6E0D2" strokeWidth="2" />
                   </svg>
                   <div style={{ display: 'flex', gap: '2rem', justifyContent: 'center', marginTop: '1rem', fontSize: '0.85rem' }}>
-                    <div><span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#ff6b6b', marginRight: '0.5rem' }}></span><span style={{ color: '#a0a0a0' }}>Gastos</span></div>
-                    <div><span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#51cf66', marginRight: '0.5rem' }}></span><span style={{ color: '#a0a0a0' }}>Ingresos</span></div>
+                    <div><span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#CC4B4B', marginRight: '0.5rem' }}></span><span style={{ color: '#6B6458' }}>Gastos</span></div>
+                    <div><span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#2F9E52', marginRight: '0.5rem' }}></span><span style={{ color: '#6B6458' }}>Ingresos</span></div>
                   </div>
                 </div>
               )}
@@ -1748,14 +1748,14 @@ const App = () => {
               {/* GRÁFICOS TOP CECOs Y TOP EMPRESAS */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem' }}>
                 {topCecos.length > 0 && (
-                  <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                    <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🏆 Top 5 CECOs <span style={{ color: '#a0a0a0', fontSize: '0.8rem', fontWeight: 'normal' }}>(COP — excluye ARKO/USD)</span></h3>
+                  <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
+                    <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🏆 Top 5 CECOs <span style={{ color: '#6B6458', fontSize: '0.8rem', fontWeight: 'normal' }}>(COP — excluye ARKO/USD)</span></h3>
                     <svg width="100%" height="250" viewBox="0 0 200 200" style={{ backgroundColor: 'transparent' }}>
                       {(() => {
                         const total = topCecos.reduce((sum, c) => sum + c.value, 0);
                         let angle = -90;
                         const cx = 100, cy = 100, r = 70;
-                        const COLORS = ['#C4A747', '#ff6b6b', '#51cf66', '#4285F4', '#ffd43b'];
+                        const COLORS = ['#C4A747', '#CC4B4B', '#2F9E52', '#3B72D9', '#D6A419'];
                         
                         return topCecos.map((ceco, idx) => {
                           const sliceAngle = (ceco.value / total) * 360;
@@ -1778,8 +1778,8 @@ const App = () => {
                     </svg>
                     <div style={{ marginTop: '1rem', fontSize: '0.8rem' }}>
                       {topCecos.map((ceco, idx) => (
-                        <div key={idx} style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>
-                          <span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: ['#C4A747', '#ff6b6b', '#51cf66', '#4285F4', '#ffd43b'][idx % 5], marginRight: '0.5rem' }}></span>
+                        <div key={idx} style={{ color: '#6B6458', marginBottom: '0.5rem' }}>
+                          <span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: ['#C4A747', '#CC4B4B', '#2F9E52', '#3B72D9', '#D6A419'][idx % 5], marginRight: '0.5rem' }}></span>
                           {ceco.name}: ${(ceco.value / 1000000).toFixed(1)}M
                         </div>
                       ))}
@@ -1788,14 +1788,14 @@ const App = () => {
                 )}
 
                 {topEmpresas.length > 0 && (
-                  <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem' }}>
-                    <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🏢 Top 5 Empresas <span style={{ color: '#a0a0a0', fontSize: '0.8rem', fontWeight: 'normal' }}>(COP — excluye ARKO/USD)</span></h3>
+                  <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
+                    <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🏢 Top 5 Empresas <span style={{ color: '#6B6458', fontSize: '0.8rem', fontWeight: 'normal' }}>(COP — excluye ARKO/USD)</span></h3>
                     <svg width="100%" height="250" viewBox="0 0 200 200" style={{ backgroundColor: 'transparent' }}>
                       {(() => {
                         const total = topEmpresas.reduce((sum, e) => sum + e.value, 0);
                         let angle = -90;
                         const cx = 100, cy = 100, r = 70;
-                        const COLORS = ['#C4A747', '#ff6b6b', '#51cf66', '#4285F4', '#ffd43b'];
+                        const COLORS = ['#C4A747', '#CC4B4B', '#2F9E52', '#3B72D9', '#D6A419'];
                         
                         return topEmpresas.map((empresa, idx) => {
                           const sliceAngle = (empresa.value / total) * 360;
@@ -1818,8 +1818,8 @@ const App = () => {
                     </svg>
                     <div style={{ marginTop: '1rem', fontSize: '0.8rem' }}>
                       {topEmpresas.map((empresa, idx) => (
-                        <div key={idx} style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>
-                          <span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: ['#C4A747', '#ff6b6b', '#51cf66', '#4285F4', '#ffd43b'][idx % 5], marginRight: '0.5rem' }}></span>
+                        <div key={idx} style={{ color: '#6B6458', marginBottom: '0.5rem' }}>
+                          <span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: ['#C4A747', '#CC4B4B', '#2F9E52', '#3B72D9', '#D6A419'][idx % 5], marginRight: '0.5rem' }}></span>
                           {empresa.name}: ${(empresa.value / 1000000).toFixed(1)}M
                         </div>
                       ))}
@@ -1830,11 +1830,11 @@ const App = () => {
 
               {/* CECOs POR EMPRESA — VALOR EJECUTADO TOTAL */}
               {cecosPorEmpresaCOP.length > 0 && (
-                <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem', marginTop: '2rem' }}>
-                  <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>📁 CECOs por Empresa <span style={{ color: '#a0a0a0', fontSize: '0.8rem', fontWeight: 'normal' }}>— Valor Ejecutado (COP — excluye ARKO/USD)</span></h3>
+                <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem', marginTop: '2rem' }}>
+                  <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>📁 CECOs por Empresa <span style={{ color: '#6B6458', fontSize: '0.8rem', fontWeight: 'normal' }}>— Valor Ejecutado (COP — excluye ARKO/USD)</span></h3>
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                      <thead style={{ backgroundColor: '#1a1a1a' }}>
+                      <thead style={{ backgroundColor: '#FFFFFF' }}>
                         <tr style={{ borderBottom: '2px solid #C4A747' }}>
                           <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
                           {empresasCOP.map(emp => (
@@ -1845,10 +1845,10 @@ const App = () => {
                       </thead>
                       <tbody>
                         {cecosPorEmpresaCOP.map(c => (
-                          <tr key={c.codigo} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                            <td style={{ padding: '0.75rem', color: '#fff', fontWeight: 'bold' }}>{c.nombre}</td>
+                          <tr key={c.codigo} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                            <td style={{ padding: '0.75rem', color: '#221E15', fontWeight: 'bold' }}>{c.nombre}</td>
                             {empresasCOP.map(emp => (
-                              <td key={emp} style={{ padding: '0.75rem', textAlign: 'right', color: c.porEmpresa[emp] > 0 ? '#ff6b6b' : '#5a5a5a' }}>
+                              <td key={emp} style={{ padding: '0.75rem', textAlign: 'right', color: c.porEmpresa[emp] > 0 ? '#CC4B4B' : '#AFA897' }}>
                                 {c.porEmpresa[emp] > 0 ? formatMoneyByMoneda(c.porEmpresa[emp], 'COP') : '—'}
                               </td>
                             ))}
@@ -1861,10 +1861,10 @@ const App = () => {
 
                   {cecosArkoUSD.length > 0 && (
                     <>
-                      <h3 style={{ color: '#C4A747', margin: '2rem 0 1rem 0' }}>📁 CECOs ARKO <span style={{ color: '#a0a0a0', fontSize: '0.8rem', fontWeight: 'normal' }}>— Valor Ejecutado (USD)</span></h3>
+                      <h3 style={{ color: '#C4A747', margin: '2rem 0 1rem 0' }}>📁 CECOs ARKO <span style={{ color: '#6B6458', fontSize: '0.8rem', fontWeight: 'normal' }}>— Valor Ejecutado (USD)</span></h3>
                       <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                          <thead style={{ backgroundColor: '#1a1a1a' }}>
+                          <thead style={{ backgroundColor: '#FFFFFF' }}>
                             <tr style={{ borderBottom: '2px solid #C4A747' }}>
                               <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
                               <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Total Ejecutado</th>
@@ -1872,9 +1872,9 @@ const App = () => {
                           </thead>
                           <tbody>
                             {cecosArkoUSD.map(c => (
-                              <tr key={c.codigo} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                                <td style={{ padding: '0.75rem', color: '#fff', fontWeight: 'bold' }}>{c.nombre}</td>
-                                <td style={{ padding: '0.75rem', textAlign: 'right', color: '#ff6b6b', fontWeight: 'bold' }}>{formatMoneyByMoneda(c.valor, 'USD')}</td>
+                              <tr key={c.codigo} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                                <td style={{ padding: '0.75rem', color: '#221E15', fontWeight: 'bold' }}>{c.nombre}</td>
+                                <td style={{ padding: '0.75rem', textAlign: 'right', color: '#CC4B4B', fontWeight: 'bold' }}>{formatMoneyByMoneda(c.valor, 'USD')}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -1888,13 +1888,13 @@ const App = () => {
 
             {/* NUEVA TRANSACCIÓN (SOLO ADMIN Y COORDINADORA) */}
             {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
+            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
               <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nuevo Gasto/Ingreso</h2>
               
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Tipo</label>
-                  <select value={newGasto.tipo} onChange={(e) => {setNewGasto({...newGasto, tipo: e.target.value}); setNewIngreso({...newIngreso, tipo: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                  <select value={newGasto.tipo} onChange={(e) => {setNewGasto({...newGasto, tipo: e.target.value}); setNewIngreso({...newIngreso, tipo: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }}>
                     <option value="Gasto">💸 Gasto</option>
                     <option value="Ingreso">💰 Ingreso</option>
                     <option value="Traslado">🔄 Traslado</option>
@@ -1902,14 +1902,14 @@ const App = () => {
                 </div>
                 <div>
                   <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Fecha</label>
-                  <input type="date" value={newGasto.fecha} onChange={(e) => {setNewGasto({...newGasto, fecha: e.target.value}); setNewIngreso({...newIngreso, fecha: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }} />
+                  <input type="date" value={newGasto.fecha} onChange={(e) => {setNewGasto({...newGasto, fecha: e.target.value}); setNewIngreso({...newIngreso, fecha: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }} />
                 </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Empresa</label>
-                  <select value={newGasto.empresa} onChange={(e) => {setNewGasto({...newGasto, empresa: e.target.value, cuenta: ''}); setNewIngreso({...newIngreso, empresa: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                  <select value={newGasto.empresa} onChange={(e) => {setNewGasto({...newGasto, empresa: e.target.value, cuenta: ''}); setNewIngreso({...newIngreso, empresa: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }}>
                     {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
                   </select>
                 </div>
@@ -1918,14 +1918,14 @@ const App = () => {
                   <>
                     <div>
                       <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta Salida</label>
-                      <select value={newGasto.cuentaSalida} onChange={(e) => setNewGasto({...newGasto, cuentaSalida: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                      <select value={newGasto.cuentaSalida} onChange={(e) => setNewGasto({...newGasto, cuentaSalida: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }}>
                         <option value="">Seleccionar</option>
                         {(cuentasPorEmpresa[newGasto.empresa] || []).map(cuenta => <option key={cuenta} value={cuenta}>{cuenta}</option>)}
                       </select>
                     </div>
                     <div>
                       <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta Destino</label>
-                      <select value={newGasto.cuentaDestino} onChange={(e) => setNewGasto({...newGasto, cuentaDestino: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                      <select value={newGasto.cuentaDestino} onChange={(e) => setNewGasto({...newGasto, cuentaDestino: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }}>
                         <option value="">Seleccionar</option>
                         {empresas.map(emp => (
                           <optgroup key={emp} label={emp}>
@@ -1939,14 +1939,14 @@ const App = () => {
                   <>
                     <div>
                       <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta</label>
-                      <select value={newGasto.cuenta} onChange={(e) => setNewGasto({...newGasto, cuenta: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                      <select value={newGasto.cuenta} onChange={(e) => setNewGasto({...newGasto, cuenta: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }}>
                         <option value="">Seleccionar</option>
                         {(cuentasPorEmpresa[newGasto.empresa] || []).map(cuenta => <option key={cuenta} value={cuenta}>{cuenta}</option>)}
                       </select>
                     </div>
                     <div>
                       <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Colaborador</label>
-                      <select value={newGasto.responsable} onChange={(e) => {setNewGasto({...newGasto, responsable: e.target.value}); setNewIngreso({...newIngreso, responsable: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                      <select value={newGasto.responsable} onChange={(e) => {setNewGasto({...newGasto, responsable: e.target.value}); setNewIngreso({...newIngreso, responsable: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }}>
                         <option value="">Seleccionar</option>
                         {responsables.map(r => <option key={r.id} value={r.nombre}>{r.nombre}</option>)}
                       </select>
@@ -1957,47 +1957,47 @@ const App = () => {
                 {newGasto.tipo === 'Gasto' && (
                   <div>
                     <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Centro de Costo</label>
-                    <select value={newGasto.ceco} onChange={(e) => setNewGasto({...newGasto, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                    <select value={newGasto.ceco} onChange={(e) => setNewGasto({...newGasto, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }}>
                       {cecos.map(c => <option key={c.codigo} value={c.codigo}>{c.nombre}</option>)}
                     </select>
                   </div>
                 )}
               </div>
 
-              <input type="text" placeholder="Detalle/Descripción" value={newGasto.detalle} onChange={(e) => {setNewGasto({...newGasto, detalle: e.target.value}); setNewIngreso({...newIngreso, detalle: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
+              <input type="text" placeholder="Detalle/Descripción" value={newGasto.detalle} onChange={(e) => {setNewGasto({...newGasto, detalle: e.target.value}); setNewIngreso({...newIngreso, detalle: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', marginBottom: '1rem', boxSizing: 'border-box' }} />
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <input type="number" placeholder="Valor" value={newGasto.valor} onChange={(e) => {setNewGasto({...newGasto, valor: e.target.value}); setNewIngreso({...newIngreso, valor: e.target.value});}} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
-                <select value={newGasto.categoria} onChange={(e) => {setNewGasto({...newGasto, categoria: e.target.value}); setNewIngreso({...newIngreso, categoria: e.target.value});}} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
+                <input type="number" placeholder="Valor" value={newGasto.valor} onChange={(e) => {setNewGasto({...newGasto, valor: e.target.value}); setNewIngreso({...newIngreso, valor: e.target.value});}} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
+                <select value={newGasto.categoria} onChange={(e) => {setNewGasto({...newGasto, categoria: e.target.value}); setNewIngreso({...newIngreso, categoria: e.target.value});}} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }}>
                   <option value="">Categoría</option>
                   {categorias.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                 </select>
               </div>
 
-              <input type="text" placeholder="Observaciones" value={newGasto.observaciones} onChange={(e) => {setNewGasto({...newGasto, observaciones: e.target.value}); setNewIngreso({...newIngreso, observaciones: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', marginBottom: '1rem', boxSizing: 'border-box' }} />
+              <input type="text" placeholder="Observaciones" value={newGasto.observaciones} onChange={(e) => {setNewGasto({...newGasto, observaciones: e.target.value}); setNewIngreso({...newIngreso, observaciones: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', marginBottom: '1rem', boxSizing: 'border-box' }} />
 
               {/* CARGA DE SOPORTES */}
-              <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1rem', marginBottom: '1rem' }}>
+              <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem', marginBottom: '1rem' }}>
                 <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>📎 Soportes (Archivos)</label>
-                <input type="file" multiple onChange={handleAddSoporte} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#a0a0a0', marginTop: '0.5rem', marginBottom: '1rem', boxSizing: 'border-box', cursor: 'pointer' }} />
+                <input type="file" multiple onChange={handleAddSoporte} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '1rem', boxSizing: 'border-box', cursor: 'pointer' }} />
                 
                 {soportesTemp.length > 0 && (
                   <div style={{ marginTop: '1rem' }}>
-                    <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.8rem' }}>Archivos cargados: {soportesTemp.length}</p>
+                    <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.8rem' }}>Archivos cargados: {soportesTemp.length}</p>
                     {soportesTemp.map(soporte => (
-                      <div key={soporte.id} style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div key={soporte.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ flex: 1 }}>
                           <p style={{ color: '#C4A747', margin: '0 0 0.25rem 0', fontSize: '0.8rem', fontWeight: 'bold' }}>{soporte.nombre}</p>
-                          <p style={{ color: '#a0a0a0', margin: 0, fontSize: '0.75rem' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
+                          <p style={{ color: '#6B6458', margin: 0, fontSize: '0.75rem' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
                         </div>
-                        <button onClick={() => handleRemoveSoporte(soporte.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem', padding: '0.5rem' }}>🗑️</button>
+                        <button onClick={() => handleRemoveSoporte(soporte.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem', padding: '0.5rem' }}>🗑️</button>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
 
-              <button onClick={newGasto.tipo === 'Gasto' ? handleAddGasto : (newGasto.tipo === 'Traslado' ? handleAddGasto : handleAddIngreso)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+              <button onClick={newGasto.tipo === 'Gasto' ? handleAddGasto : (newGasto.tipo === 'Traslado' ? handleAddGasto : handleAddIngreso)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
                 Registrar {newGasto.tipo === 'Traslado' ? 'Traslado' : (newGasto.tipo === 'Ingreso' ? 'Ingreso' : 'Gasto')}
               </button>
             </div>
@@ -2005,11 +2005,11 @@ const App = () => {
 
             {/* TABLA GASTOS */}
             {newGasto.tipo === 'Gasto' && (
-              <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
+              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
                 <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>💸 Gastos Registrados ({gastosUsuario.filter(g => g.tipo === 'Gasto').length})</h2>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                    <thead style={{ backgroundColor: '#0f0f0f' }}>
+                    <thead style={{ backgroundColor: '#F8F6F1' }}>
                       <tr style={{ borderBottom: '2px solid #C4A747' }}>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
                         {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
@@ -2025,33 +2025,33 @@ const App = () => {
                     </thead>
                     <tbody>
                       {gastosUsuario.filter(g => g.tipo === 'Gasto').map(g => (
-                        <tr key={g.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                          <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.fecha}</td>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.responsableNombre}</td>}
-                          <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.empresa}</td>
+                        <tr key={g.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.fecha}</td>
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.responsableNombre}</td>}
+                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.empresa}</td>
                           <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.ceco}</td>
-                          <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.cuenta}</td>
-                          <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{g.detalle}</td>
-                          <td style={{ padding: '0.75rem', color: '#ff6b6b', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(g.valor, g.empresa)}</td>
+                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.cuenta}</td>
+                          <td style={{ padding: '0.75rem', color: '#6B6458' }}>{g.detalle}</td>
+                          <td style={{ padding: '0.75rem', color: '#CC4B4B', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(g.valor, g.empresa)}</td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                             {g.soportes && g.soportes.length > 0 ? (
-                              <button onClick={() => handleViewSoportes(g.soportes)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem' }}>📎 {g.soportes.length}</button>
+                              <button onClick={() => handleViewSoportes(g.soportes)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }}>📎 {g.soportes.length}</button>
                             ) : (
-                              <span style={{ color: '#a0a0a0', fontSize: '0.8rem' }}>—</span>
+                              <span style={{ color: '#6B6458', fontSize: '0.8rem' }}>—</span>
                             )}
                           </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                             {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') ? (
-                              <select value={g.estado} onChange={(e) => handleUpdateGasto(g.id, 'estado', e.target.value)} style={{ backgroundColor: getColorEstado(g.estado), color: '#0f0f0f', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
+                              <select value={g.estado} onChange={(e) => handleUpdateGasto(g.id, 'estado', e.target.value)} style={{ backgroundColor: getColorEstado(g.estado), color: '#221E15', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
                                 {estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}
                               </select>
                             ) : (
-                              <span style={{ backgroundColor: getColorEstado(g.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.estado}</span>
+                              <span style={{ backgroundColor: getColorEstado(g.estado), color: '#221E15', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.estado}</span>
                             )}
                           </td>
                           {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
                             <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                              <button onClick={() => handleDeleteGasto(g.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem' }}>🗑️</button>
+                              <button onClick={() => handleDeleteGasto(g.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
                             </td>
                           )}
                         </tr>
@@ -2064,11 +2064,11 @@ const App = () => {
 
             {/* TABLA TRASLADOS */}
             {newGasto.tipo === 'Traslado' && (
-              <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
+              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
                 <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🔄 Traslados Registrados ({gastosUsuario.filter(g => g.tipo === 'Traslado').length})</h2>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                    <thead style={{ backgroundColor: '#0f0f0f' }}>
+                    <thead style={{ backgroundColor: '#F8F6F1' }}>
                       <tr style={{ borderBottom: '2px solid #C4A747' }}>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
                         {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
@@ -2083,32 +2083,32 @@ const App = () => {
                     </thead>
                     <tbody>
                       {gastosUsuario.filter(g => g.tipo === 'Traslado').map(g => (
-                        <tr key={g.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                          <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.fecha}</td>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{g.responsableNombre}</td>}
-                          <td style={{ padding: '0.75rem', color: '#51cf66', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.cuentaSalida}</td>
+                        <tr key={g.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.fecha}</td>
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.responsableNombre}</td>}
+                          <td style={{ padding: '0.75rem', color: '#2F9E52', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.cuentaSalida}</td>
                           <td style={{ padding: '0.75rem', color: '#C4A747', textAlign: 'center', fontWeight: 'bold' }}>→</td>
-                          <td style={{ padding: '0.75rem', color: '#ff6b6b', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.cuentaDestino}</td>
+                          <td style={{ padding: '0.75rem', color: '#CC4B4B', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.cuentaDestino}</td>
                           <td style={{ padding: '0.75rem', color: '#C4A747', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(g.valor, g.empresa)}</td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                             {g.soportes && g.soportes.length > 0 ? (
-                              <button onClick={() => handleViewSoportes(g.soportes)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem' }}>📎 {g.soportes.length}</button>
+                              <button onClick={() => handleViewSoportes(g.soportes)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }}>📎 {g.soportes.length}</button>
                             ) : (
-                              <span style={{ color: '#a0a0a0', fontSize: '0.8rem' }}>—</span>
+                              <span style={{ color: '#6B6458', fontSize: '0.8rem' }}>—</span>
                             )}
                           </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                             {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') ? (
-                              <select value={g.estado} onChange={(e) => handleUpdateGasto(g.id, 'estado', e.target.value)} style={{ backgroundColor: getColorEstado(g.estado), color: '#0f0f0f', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
+                              <select value={g.estado} onChange={(e) => handleUpdateGasto(g.id, 'estado', e.target.value)} style={{ backgroundColor: getColorEstado(g.estado), color: '#221E15', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
                                 {estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}
                               </select>
                             ) : (
-                              <span style={{ backgroundColor: getColorEstado(g.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.estado}</span>
+                              <span style={{ backgroundColor: getColorEstado(g.estado), color: '#221E15', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.estado}</span>
                             )}
                           </td>
                           {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
                             <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                              <button onClick={() => handleDeleteGasto(g.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem' }}>🗑️</button>
+                              <button onClick={() => handleDeleteGasto(g.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
                             </td>
                           )}
                         </tr>
@@ -2121,11 +2121,11 @@ const App = () => {
 
             {/* TABLA INGRESOS */}
             {newGasto.tipo === 'Ingreso' && (
-              <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
                 <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>💰 Ingresos Registrados ({ingresosUsuario.length})</h2>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                    <thead style={{ backgroundColor: '#0f0f0f' }}>
+                    <thead style={{ backgroundColor: '#F8F6F1' }}>
                       <tr style={{ borderBottom: '2px solid #C4A747' }}>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
                         {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
@@ -2140,26 +2140,26 @@ const App = () => {
                     </thead>
                     <tbody>
                       {ingresosUsuario.map(i => (
-                        <tr key={i.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                          <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.fecha}</td>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.responsableNombre}</td>}
-                          <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.empresa}</td>
-                          <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{i.cuenta}</td>
-                          <td style={{ padding: '0.75rem', color: '#a0a0a0' }}>{i.detalle}</td>
-                          <td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(i.valor, i.empresa)}</td>
+                        <tr key={i.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{i.fecha}</td>
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{i.responsableNombre}</td>}
+                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{i.empresa}</td>
+                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{i.cuenta}</td>
+                          <td style={{ padding: '0.75rem', color: '#6B6458' }}>{i.detalle}</td>
+                          <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(i.valor, i.empresa)}</td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                             {i.soportes && i.soportes.length > 0 ? (
-                              <button onClick={() => handleViewSoportes(i.soportes)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem' }}>📎 {i.soportes.length}</button>
+                              <button onClick={() => handleViewSoportes(i.soportes)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }}>📎 {i.soportes.length}</button>
                             ) : (
-                              <span style={{ color: '#a0a0a0', fontSize: '0.8rem' }}>—</span>
+                              <span style={{ color: '#6B6458', fontSize: '0.8rem' }}>—</span>
                             )}
                           </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            <span style={{ backgroundColor: getColorEstado(i.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{i.estado}</span>
+                            <span style={{ backgroundColor: getColorEstado(i.estado), color: '#221E15', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{i.estado}</span>
                           </td>
                           {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
                             <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                              <button onClick={() => handleDeleteIngreso(i.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem' }}>🗑️</button>
+                              <button onClick={() => handleDeleteIngreso(i.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
                             </td>
                           )}
                         </tr>
@@ -2174,52 +2174,52 @@ const App = () => {
 
         {currentView === 'cuentasCobro' && user.rol !== 'Gerente' && (
           <div>
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', marginBottom: '2rem' }}>
+            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
               <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nueva Cuenta de Cobro</h2>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                <input type="date" value={newCuentaCobro.fecha} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, fecha: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
-                <input type="text" placeholder="Número de Cuenta" value={newCuentaCobro.numero} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, numero: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
-                <select value={newCuentaCobro.responsable} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, responsable: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
+                <input type="date" value={newCuentaCobro.fecha} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, fecha: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
+                <input type="text" placeholder="Número de Cuenta" value={newCuentaCobro.numero} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, numero: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
+                <select value={newCuentaCobro.responsable} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, responsable: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }}>
                   <option value="">Colaborador</option>
                   {responsables.map(r => <option key={r.id} value={r.nombre}>{r.nombre}</option>)}
                 </select>
-                <select value={newCuentaCobro.empresa} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, empresa: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }}>
+                <select value={newCuentaCobro.empresa} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, empresa: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }}>
                   <option value="">Empresa</option>
                   {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
                 </select>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <input type="number" placeholder="Monto" value={newCuentaCobro.monto} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, monto: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
-                <input type="text" placeholder="Concepto" value={newCuentaCobro.concepto} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, concepto: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#fff', boxSizing: 'border-box' }} />
+                <input type="number" placeholder="Monto" value={newCuentaCobro.monto} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, monto: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
+                <input type="text" placeholder="Concepto" value={newCuentaCobro.concepto} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, concepto: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
               </div>
               {/* CARGA DE SOPORTES */}
-              <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1rem', marginBottom: '1rem' }}>
+              <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem', marginBottom: '1rem' }}>
                 <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>📎 Soportes (PDF u otros archivos)</label>
-                <input type="file" multiple onChange={handleAddSoporteCuentaCobro} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#a0a0a0', marginTop: '0.5rem', marginBottom: '1rem', boxSizing: 'border-box', cursor: 'pointer' }} />
+                <input type="file" multiple onChange={handleAddSoporteCuentaCobro} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '1rem', boxSizing: 'border-box', cursor: 'pointer' }} />
 
                 {soportesCuentaCobroTemp.length > 0 && (
                   <div style={{ marginTop: '1rem' }}>
-                    <p style={{ color: '#a0a0a0', margin: '0 0 0.5rem 0', fontSize: '0.8rem' }}>Archivos cargados: {soportesCuentaCobroTemp.length}</p>
+                    <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.8rem' }}>Archivos cargados: {soportesCuentaCobroTemp.length}</p>
                     {soportesCuentaCobroTemp.map(soporte => (
-                      <div key={soporte.id} style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div key={soporte.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ flex: 1 }}>
                           <p style={{ color: '#C4A747', margin: '0 0 0.25rem 0', fontSize: '0.8rem', fontWeight: 'bold' }}>{soporte.nombre}</p>
-                          <p style={{ color: '#a0a0a0', margin: 0, fontSize: '0.75rem' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
+                          <p style={{ color: '#6B6458', margin: 0, fontSize: '0.75rem' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
                         </div>
-                        <button onClick={() => handleRemoveSoporteCuentaCobro(soporte.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem', padding: '0.5rem' }}>🗑️</button>
+                        <button onClick={() => handleRemoveSoporteCuentaCobro(soporte.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem', padding: '0.5rem' }}>🗑️</button>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
-              <button onClick={handleAddCuentaCobro} disabled={isReadOnly} style={{ width: '100%', padding: '0.75rem', backgroundColor: isReadOnly ? '#666' : '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: isReadOnly ? 'not-allowed' : 'pointer', opacity: isReadOnly ? 0.5 : 1 }}>Crear Cuenta de Cobro</button>
+              <button onClick={handleAddCuentaCobro} disabled={isReadOnly} style={{ width: '100%', padding: '0.75rem', backgroundColor: isReadOnly ? '#D8D2C2' : '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: isReadOnly ? 'not-allowed' : 'pointer', opacity: isReadOnly ? 0.5 : 1 }}>Crear Cuenta de Cobro</button>
             </div>
 
-            <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a' }}>
+            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
               <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>💳 Cuentas de Cobro ({cuentasCobroUsuario.length})</h2>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                  <thead style={{ backgroundColor: '#0f0f0f' }}>
+                  <thead style={{ backgroundColor: '#F8F6F1' }}>
                     <tr style={{ borderBottom: '2px solid #C4A747' }}>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Número</th>
@@ -2232,29 +2232,29 @@ const App = () => {
                   </thead>
                   <tbody>
                     {cuentasCobroUsuario.map(c => (
-                      <tr key={c.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                        <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{c.fecha}</td>
+                      <tr key={c.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                        <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{c.fecha}</td>
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{c.numero}</td>
-                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{c.responsableNombre}</td>}
-                        <td style={{ padding: '0.75rem', color: '#a0a0a0', fontSize: '0.8rem' }}>{c.empresa}</td>
-                        <td style={{ padding: '0.75rem', color: '#51cf66', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(c.monto, c.empresa)}</td>
+                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{c.responsableNombre}</td>}
+                        <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{c.empresa}</td>
+                        <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(c.monto, c.empresa)}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                           {canApprove ? (
-                            <select value={c.estado} onChange={(e) => handleUpdateCuentaCobro(c.id, 'estado', e.target.value)} disabled={isReadOnly || !canApprove} style={{ backgroundColor: getColorEstado(c.estado), color: '#0f0f0f', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: isReadOnly || !canApprove ? 'not-allowed' : 'pointer', fontSize: '0.8rem', opacity: isReadOnly || !canApprove ? 0.6 : 1 }}>
+                            <select value={c.estado} onChange={(e) => handleUpdateCuentaCobro(c.id, 'estado', e.target.value)} disabled={isReadOnly || !canApprove} style={{ backgroundColor: getColorEstado(c.estado), color: '#221E15', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: isReadOnly || !canApprove ? 'not-allowed' : 'pointer', fontSize: '0.8rem', opacity: isReadOnly || !canApprove ? 0.6 : 1 }}>
                               {estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}
                             </select>
                           ) : (
-                            <span style={{ backgroundColor: getColorEstado(c.estado), color: '#0f0f0f', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{c.estado}</span>
+                            <span style={{ backgroundColor: getColorEstado(c.estado), color: '#221E15', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{c.estado}</span>
                           )}
                         </td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                           {c.soportes && c.soportes.length > 0 ? (
-                            <button onClick={() => handleViewSoportes(c.soportes)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#51cf66', fontSize: '1rem', marginRight: '0.5rem' }} title="Ver soportes">📎 {c.soportes.length}</button>
+                            <button onClick={() => handleViewSoportes(c.soportes)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }} title="Ver soportes">📎 {c.soportes.length}</button>
                           ) : (
-                            <span style={{ color: '#a0a0a0', fontSize: '0.8rem', marginRight: '0.5rem' }}>—</span>
+                            <span style={{ color: '#6B6458', fontSize: '0.8rem', marginRight: '0.5rem' }}>—</span>
                           )}
                           {user.rol === 'Administrador' && (
-                            <button onClick={() => handleDeleteCuentaCobro(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff6b6b', fontSize: '1rem' }} title="Eliminar">
+                            <button onClick={() => handleDeleteCuentaCobro(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }} title="Eliminar">
                               🗑️
                             </button>
                           )}
@@ -2264,7 +2264,7 @@ const App = () => {
                   </tbody>
                 </table>
                 {cuentasCobroUsuario.length === 0 && (
-                  <div style={{ padding: '2rem', textAlign: 'center', color: '#a0a0a0' }}>
+                  <div style={{ padding: '2rem', textAlign: 'center', color: '#6B6458' }}>
                     Sin cuentas de cobro registradas
                   </div>
                 )}
@@ -2274,24 +2274,24 @@ const App = () => {
         )}
 
         {currentView === 'cuentasCobro' && user.rol === 'Gerente' && (
-          <div style={{ backgroundColor: '#1a1a1a', padding: '2rem', borderRadius: '4px', border: '1px solid #2a2a2a', textAlign: 'center' }}>
-            <p style={{ color: '#ff6b6b', fontSize: '1.1rem', fontWeight: 'bold' }}>🔒 Acceso Restringido</p>
-            <p style={{ color: '#a0a0a0' }}>Los Gerentes solo pueden ver el Dashboard.</p>
-            <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>Ir al Dashboard</button>
+          <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', textAlign: 'center', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
+            <p style={{ color: '#CC4B4B', fontSize: '1.1rem', fontWeight: 'bold' }}>🔒 Acceso Restringido</p>
+            <p style={{ color: '#6B6458' }}>Los Gerentes solo pueden ver el Dashboard.</p>
+            <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>Ir al Dashboard</button>
           </div>
         )}
 
         {/* MODAL IMPORTAR HISTÓRICO */}
         {mostrarImportar && (
           <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
-            <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '2rem', maxWidth: '500px', width: '90%' }}>
+            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '500px', width: '90%', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
               <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📥 Importar Histórico de Gastos</h2>
               
-              <div style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1.5rem', marginBottom: '1.5rem' }}>
-                <p style={{ color: '#a0a0a0', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>
+              <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem', marginBottom: '1.5rem' }}>
+                <p style={{ color: '#6B6458', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>
                   ⚠️ Esto agregará todos los registros del archivo JSON al histórico.
                 </p>
-                <p style={{ color: '#a0a0a0', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>
+                <p style={{ color: '#6B6458', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>
                   Registros actuales: <strong style={{ color: '#C4A747' }}>{gastos.length}</strong>
                 </p>
                 
@@ -2300,17 +2300,17 @@ const App = () => {
                     type="file" 
                     accept=".json"
                     onChange={handleImportarGastos}
-                    style={{ width: '100%', padding: '0.75rem', backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', color: '#a0a0a0', cursor: 'pointer' }}
+                    style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', cursor: 'pointer' }}
                   />
                 </label>
                 
-                <p style={{ color: '#a0a0a0', margin: 0, fontSize: '0.8rem' }}>
+                <p style={{ color: '#6B6458', margin: 0, fontSize: '0.8rem' }}>
                   📄 Carga el archivo <code style={{ color: '#C4A747' }}>gastos_importar.json</code> generado desde DBAMHolding
                 </p>
               </div>
 
               <div style={{ display: 'flex', gap: '1rem' }}>
-                <button onClick={() => setMostrarImportar(false)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#2a2a2a', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+                <button onClick={() => setMostrarImportar(false)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
                   Cancelar
                 </button>
               </div>
@@ -2321,24 +2321,24 @@ const App = () => {
         {/* MODAL VER SOPORTES */}
         {verSoportes && (
           <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
-            <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '2rem', maxWidth: '500px', width: '90%', maxHeight: '80vh', overflowY: 'auto' }}>
+            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '500px', width: '90%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
               <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📎 Soportes</h2>
               
               {verSoportes.length === 0 ? (
-                <p style={{ color: '#a0a0a0', textAlign: 'center' }}>No hay soportes adjuntos</p>
+                <p style={{ color: '#6B6458', textAlign: 'center' }}>No hay soportes adjuntos</p>
               ) : (
                 verSoportes.map((soporte, idx) => (
-                  <div key={idx} style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: '4px', padding: '1rem', marginBottom: '1rem' }}>
+                  <div key={idx} style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem', marginBottom: '1rem' }}>
                     <p style={{ color: '#C4A747', fontWeight: 'bold', margin: '0 0 0.5rem 0' }}>📄 {soporte.nombre}</p>
-                    <p style={{ color: '#a0a0a0', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
-                    <button onClick={() => handleDownloadSoporte(soporte)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#0f0f0f', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>
+                    <p style={{ color: '#6B6458', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
+                    <button onClick={() => handleDownloadSoporte(soporte)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>
                       ⬇️ Descargar
                     </button>
                   </div>
                 ))
               )}
               
-              <button onClick={() => setVerSoportes(null)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#2a2a2a', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>
+              <button onClick={() => setVerSoportes(null)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>
                 Cerrar
               </button>
             </div>
