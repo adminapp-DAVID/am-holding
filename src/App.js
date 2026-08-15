@@ -23,19 +23,35 @@ const EmpresaLogo = ({ empresa, height = 20, style = {} }) => {
   return <img src={src} alt={empresa} style={{ height: `${height}px`, width: 'auto', maxWidth: `${height * 4.5}px`, objectFit: 'contain', verticalAlign: 'middle', ...style }} />;
 };
 
+// Quita tildes/acentos y pasa a minúsculas, para comparar nombres sin depender de que estén escritos idéntico.
+const normalizarTexto = (s) => (s || '').toString().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
 // PRESUPUESTO — sugiere el ítem de presupuesto más probable para un gasto, según empresa+CECO+texto.
-// La persona que registra el gasto siempre puede cambiar la sugerencia antes de guardar (sugerido + confirmado).
+// Compara por PALABRAS (no por texto exacto contiguo), porque el nombre del colaborador registrado
+// suele ser el nombre completo ("David Dario Andrade Hernández") mientras que el concepto de presupuesto
+// suele tener un nombre corto ("DAVID ANDRADE") — con comparación exacta esa coincidencia nunca se detecta.
+// La persona que registra el gasto siempre puede cambiar la sugerencia antes de guardar (sugerido + confirmado),
+// y también se puede vincular/desvincular manualmente después desde la tabla de Gastos en Finanzas.
 const getPresupuestoSugerido = (empresa, ceco, responsable, detalle, items) => {
   const candidatos = (items || []).filter(p => p.activo !== false && p.empresa === empresa && p.ceco === ceco);
   if (!candidatos.length) return '';
-  const texto = `${responsable || ''} ${detalle || ''}`.toLowerCase().trim();
-  if (!texto) return '';
-  const match = candidatos.find(p => {
-    const nombre = (p.nombre || '').toLowerCase().trim();
-    if (!nombre) return false;
-    return texto.includes(nombre) || (responsable && nombre.includes(responsable.toLowerCase().trim()));
+  const textoWords = normalizarTexto(`${responsable || ''} ${detalle || ''}`).split(/\s+/).filter(Boolean);
+  if (!textoWords.length) return '';
+  const textoSet = new Set(textoWords);
+
+  let mejor = null;
+  let mejorScore = 0;
+  candidatos.forEach(p => {
+    const nombreWords = normalizarTexto(p.nombre).split(/\s+/).filter(w => w.length > 2);
+    if (!nombreWords.length) return;
+    const coincidencias = nombreWords.filter(w => textoSet.has(w)).length;
+    const requerido = Math.min(2, nombreWords.length); // al menos 2 palabras en común (o todas, si el nombre tiene 1)
+    if (coincidencias >= requerido) {
+      const score = coincidencias / nombreWords.length;
+      if (score > mejorScore) { mejorScore = score; mejor = p; }
+    }
   });
-  return match ? match.id : '';
+  return mejor ? mejor.id : '';
 };
 
 const App = () => {
@@ -2230,6 +2246,7 @@ const App = () => {
                         <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
                         <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Soportes</th>
                         <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
+                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Presupuesto</th>
                         {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
                       </tr>
                     </thead>
@@ -2257,6 +2274,20 @@ const App = () => {
                               </select>
                             ) : (
                               <span style={{ backgroundColor: getColorEstado(g.estado), color: '#221E15', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.estado}</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') ? (() => {
+                              const candidatosVinculo = presupuestoItems.filter(p => p.empresa === g.empresa && p.ceco === g.ceco);
+                              if (!candidatosVinculo.length) return <span style={{ color: '#AFA897', fontSize: '0.75rem' }}>—</span>;
+                              return (
+                                <select value={g.presupuestoItemId || ''} onChange={(e) => handleUpdateGasto(g.id, 'presupuestoItemId', e.target.value || null)} style={{ padding: '0.35rem 0.5rem', backgroundColor: g.presupuestoItemId ? 'rgba(47,158,82,0.12)' : '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#221E15', fontSize: '0.75rem', maxWidth: '160px' }}>
+                                  <option value="">Sin vincular</option>
+                                  {candidatosVinculo.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                                </select>
+                              );
+                            })() : (
+                              g.presupuestoItemId ? <span style={{ color: '#2F9E52', fontSize: '0.75rem' }}>✅ Vinculado</span> : <span style={{ color: '#AFA897', fontSize: '0.75rem' }}>—</span>
                             )}
                           </td>
                           {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
