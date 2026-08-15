@@ -23,6 +23,19 @@ const EmpresaLogo = ({ empresa, height = 20, style = {} }) => {
   return <img src={src} alt={empresa} style={{ height: `${height}px`, width: 'auto', maxWidth: `${height * 4.5}px`, objectFit: 'contain', verticalAlign: 'middle', ...style }} />;
 };
 
+// Foto de perfil del colaborador — si no tiene foto cargada, muestra sus iniciales como avatar de respaldo.
+const ColaboradorAvatar = ({ foto, nombre, size = 32, style = {} }) => {
+  if (foto) {
+    return <img src={foto} alt={nombre || 'Colaborador'} style={{ width: `${size}px`, height: `${size}px`, borderRadius: '50%', objectFit: 'cover', border: '1px solid #E6E0D2', verticalAlign: 'middle', flexShrink: 0, ...style }} />;
+  }
+  const iniciales = (nombre || '?').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+  return (
+    <div style={{ width: `${size}px`, height: `${size}px`, minWidth: `${size}px`, borderRadius: '50%', backgroundColor: '#E6E0D2', color: '#6B6458', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: `${Math.max(10, size * 0.4)}px`, fontWeight: 'bold', verticalAlign: 'middle', flexShrink: 0, ...style }}>
+      {iniciales}
+    </div>
+  );
+};
+
 // Quita tildes/acentos y pasa a minúsculas, para comparar nombres sin depender de que estén escritos idéntico.
 const normalizarTexto = (s) => (s || '').toString().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
@@ -170,8 +183,9 @@ const App = () => {
   const [responsables, setResponsables] = useState(() => JSON.parse(localStorage.getItem('amResponsables') || JSON.stringify(responsablesData)));
   const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', valorAnticipoOriginal: '', detalle: '', empresa: 'AM SPORTS GROUP SAS', documentos: [] });
   const [generandoPDF, setGenerandoPDF] = useState(null);
-  const [editingResponsable, setEditingResponsable] = useState(null);
-  const [newResponsable, setNewResponsable] = useState({ nombre: '', email: '', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' });
+  const [editingResponsableId, setEditingResponsableId] = useState(null);
+  const responsableVacio = { nombre: '', email: '', password: 'pass123', empresa: 'AM SPORTS GROUP SAS', foto: '', cedula: '', telefono: '', fechaNacimiento: '', cargo: '', fechaIngreso: '', tipoVinculacion: '', contactoEmergenciaNombre: '', contactoEmergenciaTelefono: '', eps: '', arl: '', documentoCedula: null, documentoPasaporte: null };
+  const [newResponsable, setNewResponsable] = useState(responsableVacio);
   const [newUserType, setNewUserType] = useState('Colaborador');
   const [cuentasDeCobro, setCuentasDeCobro] = useState(() => JSON.parse(localStorage.getItem('amCuentasDeCobro') || '[]'));
   const [newCuentaCobro, setNewCuentaCobro] = useState({ fecha: new Date().toISOString().split('T')[0], numero: '', responsable: '', empresa: '', monto: '', concepto: '', estado: 'Pendiente' });
@@ -659,55 +673,86 @@ const App = () => {
   };
 
   // RESPONSABLES CRUD
-  const handleAddResponsable = () => {
+  // COLABORADORES / TALENTO HUMANO — un solo formulario sirve tanto para crear como para editar
+  // (editingResponsableId indica si se está editando un colaborador existente o creando uno nuevo).
+  const handleSaveResponsable = () => {
     if (!newResponsable.nombre || !newResponsable.email) {
       alert('Nombre y email son obligatorios');
       return;
     }
-    
-    const existe = responsables.some(r => r.email === newResponsable.email) || 
-                   usuariosAdmin.some(u => u.email === newResponsable.email);
-    if (existe) {
-      alert('Email ya existe');
+
+    const existeEmail = responsables.some(r => r.email === newResponsable.email && r.id !== editingResponsableId) ||
+                         usuariosAdmin.some(u => u.email === newResponsable.email);
+    if (existeEmail) {
+      alert('Ese email ya está en uso por otro usuario');
       return;
     }
 
-    if (newUserType === 'Colaborador') {
-      // Agregar como colaborador
-      const responsableNuevo = {
-        id: Math.max(...responsables.map(r => r.id || 0), 0) + 1,
-        ...newResponsable
-      };
-      setResponsables([...responsables, responsableNuevo]);
-      localStorage.setItem('amResponsables', JSON.stringify([...responsables, responsableNuevo]));
-      alert('✅ Colaborador agregado');
-    } else if (newUserType === 'Gerente') {
-      // Agregar como gerente
-      const gerenteNuevo = {
-        id: Math.max(...usuariosAdmin.map(u => u.id || 0), 0) + 1,
-        nombre: newResponsable.nombre,
-        email: newResponsable.email,
-        password: newResponsable.password,
-        rol: 'Gerente'
-      };
-      // Aquí no guardamos en localStorage porque usuariosAdmin es estático, pero en una versión real se guardaría
+    if (newUserType === 'Gerente' && !editingResponsableId) {
+      // Los Gerentes viven en usuariosAdmin, que es una lista estática en este prototipo (no persiste en localStorage).
       alert('⚠️ Gerente agregado (requiere reiniciar la app). En producción se guardaría en base de datos.');
+      setNewResponsable(responsableVacio);
+      return;
     }
-    
-    setNewResponsable({ nombre: '', email: '', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' });
+
+    if (editingResponsableId) {
+      const updated = responsables.map(r => r.id === editingResponsableId ? { ...r, ...newResponsable } : r);
+      setResponsables(updated);
+      localStorage.setItem('amResponsables', JSON.stringify(updated));
+      alert('✅ Colaborador actualizado');
+    } else {
+      const responsableNuevo = { id: Math.max(...responsables.map(r => r.id || 0), 0) + 1, ...newResponsable };
+      const updated = [...responsables, responsableNuevo];
+      setResponsables(updated);
+      localStorage.setItem('amResponsables', JSON.stringify(updated));
+      alert('✅ Colaborador agregado');
+    }
+
+    setEditingResponsableId(null);
+    setNewResponsable(responsableVacio);
   };
 
-  const handleUpdateResponsable = (id, datos) => {
-    setResponsables(responsables.map(r => r.id === id ? {...r, ...datos} : r));
-    localStorage.setItem('amResponsables', JSON.stringify(responsables.map(r => r.id === id ? {...r, ...datos} : r)));
-    setEditingResponsable(null);
+  const handleOpenEditResponsable = (r) => {
+    setNewUserType('Colaborador');
+    setEditingResponsableId(r.id);
+    setNewResponsable({ ...responsableVacio, ...r });
+  };
+
+  const handleCancelEditResponsable = () => {
+    setEditingResponsableId(null);
+    setNewResponsable(responsableVacio);
   };
 
   const handleDeleteResponsable = (id) => {
-    if (window.confirm('¿Eliminar responsable? (Las solicitudes se mantendrán)')) {
-      setResponsables(responsables.filter(r => r.id !== id));
-      localStorage.setItem('amResponsables', JSON.stringify(responsables.filter(r => r.id !== id)));
+    if (window.confirm('¿Eliminar colaborador? (Las solicitudes y gastos ya registrados se mantienen)')) {
+      const updated = responsables.filter(r => r.id !== id);
+      setResponsables(updated);
+      localStorage.setItem('amResponsables', JSON.stringify(updated));
+      if (editingResponsableId === id) handleCancelEditResponsable();
     }
+  };
+
+  // Foto de perfil y documentos (cédula/pasaporte) del colaborador — un solo archivo cada uno, igual patrón que los soportes.
+  const handleColaboradorFoto = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => setNewResponsable(prev => ({ ...prev, foto: event.target.result }));
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleColaboradorDocumento = (e, campo) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => setNewResponsable(prev => ({ ...prev, [campo]: { nombre: file.name, tipo: file.type, data: event.target.result } }));
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleColaboradorRemoveArchivo = (campo) => {
+    setNewResponsable(prev => ({ ...prev, [campo]: campo === 'foto' ? '' : null }));
   };
 
   // CUENTAS DE COBRO CRUD
@@ -1203,6 +1248,13 @@ const App = () => {
     }).filter(c => c.valorAnual > 0 || c.ejecutado > 0);
   })();
 
+  // COLABORADORES — cumpleaños del mes actual, ordenados por día
+  const cumpleanosEsteMes = responsables
+    .filter(r => r.fechaNacimiento)
+    .map(r => ({ ...r, diaCumple: parseInt(r.fechaNacimiento.substring(8, 10), 10), mesCumple: parseInt(r.fechaNacimiento.substring(5, 7), 10) }))
+    .filter(r => r.mesCumple === (new Date().getMonth() + 1))
+    .sort((a, b) => a.diaCumple - b.diaCumple);
+
   // PERMISOS POR ROL
   const canEdit = user?.rol && ['Administrador', 'Coordinadora Administrativa', 'Responsable'].includes(user.rol);
   const canApprove = user?.rol && ['Administrador', 'Coordinadora Administrativa'].includes(user.rol);
@@ -1492,7 +1544,7 @@ const App = () => {
                     {ultimasSolicitudes.map(s => (
                       <tr key={s.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.fecha}</td>
-                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.responsableNombre}</td>}
+                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === s.responsableNombre)?.foto} nombre={s.responsableNombre} size={22} />{s.responsableNombre}</div></td>}
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
                         <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
@@ -1656,7 +1708,7 @@ const App = () => {
                     {solicitudesUsuario.map(s => (
                       <tr key={s.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.fecha}</td>
-                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.responsableNombre}</td>}
+                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === s.responsableNombre)?.foto} nombre={s.responsableNombre} size={22} />{s.responsableNombre}</div></td>}
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
                         <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center', color: s.documentos?.length > 0 ? '#2F9E52' : '#8F8877' }}>{s.documentos?.length || 0}</td>
@@ -1705,98 +1757,214 @@ const App = () => {
           </div>
         )}
 
-        {currentView === 'responsables' && (
-          <div>
-            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Crear Nuevo Usuario</h2>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', color: '#C4A747', fontSize: '0.85rem', marginBottom: '0.5rem', fontWeight: 'bold' }}>Tipo de Usuario</label>
-                  <select value={newUserType} onChange={(e) => setNewUserType(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }}>
-                    <option value="Colaborador">👥 Colaborador</option>
-                    <option value="Gerente">📈 Gerente</option>
-                  </select>
+        {currentView === 'responsables' && (() => {
+          const inputStyle = { padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', width: '100%' };
+          const labelStyle = { display: 'block', color: '#C4A747', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 'bold' };
+          const archivoBadge = (archivo, campo) => archivo ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', fontSize: '0.8rem', color: '#2F9E52' }}>
+              <span>📎 {archivo.nombre}</span>
+              <button type="button" onClick={() => handleColaboradorRemoveArchivo(campo)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B' }}>✕</button>
+            </div>
+          ) : null;
+
+          return (
+            <div>
+              {/* CUMPLEAÑOS DEL MES */}
+              {cumpleanosEsteMes.length > 0 && (
+                <div style={{ backgroundColor: '#FFFFFF', padding: '1.5rem 2rem', borderRadius: '10px', border: '1px solid #E6E0D2', borderLeft: '4px solid #C4A747', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
+                  <h2 style={{ color: '#C4A747', margin: '0 0 1rem 0', fontSize: '1.1rem' }}>🎂 Cumpleaños de {nombresMeses[new Date().getMonth()]}</h2>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
+                    {cumpleanosEsteMes.map(r => (
+                      <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '20px', padding: '0.5rem 1rem 0.5rem 0.5rem' }}>
+                        <ColaboradorAvatar foto={r.foto} nombre={r.nombre} size={28} />
+                        <span style={{ color: '#221E15', fontSize: '0.85rem' }}>{r.nombre} — día {r.diaCumple}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                
-                <input type="text" placeholder="Nombre Completo" value={newResponsable.nombre} onChange={(e) => setNewResponsable({...newResponsable, nombre: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
-                <input type="email" placeholder="Email" value={newResponsable.email} onChange={(e) => setNewResponsable({...newResponsable, email: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
-                <input type="password" placeholder="Contraseña" value={newResponsable.password} onChange={(e) => setNewResponsable({...newResponsable, password: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
-                
+              )}
+
+              {/* FORMULARIO CREAR / EDITAR */}
+              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
+                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>{editingResponsableId ? '✏️ Editar Colaborador' : '➕ Crear Nuevo Usuario'}</h2>
+
+                <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Acceso al sistema</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                  <div>
+                    <label style={labelStyle}>Tipo de Usuario</label>
+                    <select value={newUserType} onChange={(e) => setNewUserType(e.target.value)} disabled={!!editingResponsableId} style={inputStyle}>
+                      <option value="Colaborador">👥 Colaborador</option>
+                      <option value="Gerente">📈 Gerente</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Nombre Completo</label>
+                    <input type="text" placeholder="Nombre Completo" value={newResponsable.nombre} onChange={(e) => setNewResponsable({...newResponsable, nombre: e.target.value})} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Email</label>
+                    <input type="email" placeholder="Email" value={newResponsable.email} onChange={(e) => setNewResponsable({...newResponsable, email: e.target.value})} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Contraseña</label>
+                    <input type="password" placeholder="Contraseña" value={newResponsable.password} onChange={(e) => setNewResponsable({...newResponsable, password: e.target.value})} style={inputStyle} />
+                  </div>
+                  {newUserType === 'Colaborador' && (
+                    <div>
+                      <label style={labelStyle}>Empresa</label>
+                      <select value={newResponsable.empresa} onChange={(e) => setNewResponsable({...newResponsable, empresa: e.target.value})} style={inputStyle}>
+                        {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                      </select>
+                    </div>
+                  )}
+                </div>
+
                 {newUserType === 'Colaborador' && (
-                  <select value={newResponsable.empresa} onChange={(e) => setNewResponsable({...newResponsable, empresa: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }}>
-                    {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
-                  </select>
+                  <>
+                    <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Datos personales</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'auto repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '2rem', alignItems: 'end' }}>
+                      <div style={{ textAlign: 'center' }}>
+                        <label style={labelStyle}>Foto</label>
+                        <ColaboradorAvatar foto={newResponsable.foto} nombre={newResponsable.nombre} size={64} style={{ marginBottom: '0.5rem' }} />
+                        <input type="file" accept="image/*" onChange={handleColaboradorFoto} style={{ fontSize: '0.75rem', maxWidth: '140px' }} />
+                        {newResponsable.foto && <button type="button" onClick={() => handleColaboradorRemoveArchivo('foto')} style={{ display: 'block', margin: '0.35rem auto 0', background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '0.75rem' }}>Quitar foto</button>}
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Cédula</label>
+                        <input type="text" placeholder="Número de cédula" value={newResponsable.cedula} onChange={(e) => setNewResponsable({...newResponsable, cedula: e.target.value})} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Teléfono</label>
+                        <input type="text" placeholder="Teléfono" value={newResponsable.telefono} onChange={(e) => setNewResponsable({...newResponsable, telefono: e.target.value})} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Fecha de Nacimiento</label>
+                        <input type="date" value={newResponsable.fechaNacimiento} onChange={(e) => setNewResponsable({...newResponsable, fechaNacimiento: e.target.value})} style={inputStyle} />
+                      </div>
+                    </div>
+
+                    <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Datos laborales</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                      <div>
+                        <label style={labelStyle}>Cargo / Puesto</label>
+                        <input type="text" placeholder="Ej: Coordinador Deportivo" value={newResponsable.cargo} onChange={(e) => setNewResponsable({...newResponsable, cargo: e.target.value})} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Fecha de Ingreso</label>
+                        <input type="date" value={newResponsable.fechaIngreso} onChange={(e) => setNewResponsable({...newResponsable, fechaIngreso: e.target.value})} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Tipo de Vinculación</label>
+                        <select value={newResponsable.tipoVinculacion} onChange={(e) => setNewResponsable({...newResponsable, tipoVinculacion: e.target.value})} style={inputStyle}>
+                          <option value="">Seleccionar</option>
+                          <option value="Nómina">Nómina</option>
+                          <option value="Prestación de Servicios">Prestación de Servicios</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Contacto de emergencia y salud</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                      <div>
+                        <label style={labelStyle}>Nombre Contacto de Emergencia</label>
+                        <input type="text" value={newResponsable.contactoEmergenciaNombre} onChange={(e) => setNewResponsable({...newResponsable, contactoEmergenciaNombre: e.target.value})} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Teléfono Contacto de Emergencia</label>
+                        <input type="text" value={newResponsable.contactoEmergenciaTelefono} onChange={(e) => setNewResponsable({...newResponsable, contactoEmergenciaTelefono: e.target.value})} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>EPS</label>
+                        <input type="text" value={newResponsable.eps} onChange={(e) => setNewResponsable({...newResponsable, eps: e.target.value})} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>ARL</label>
+                        <input type="text" value={newResponsable.arl} onChange={(e) => setNewResponsable({...newResponsable, arl: e.target.value})} style={inputStyle} />
+                      </div>
+                    </div>
+
+                    <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Documentos</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                      <div>
+                        <label style={labelStyle}>Cédula (PDF)</label>
+                        <input type="file" accept="application/pdf,image/*" onChange={(e) => handleColaboradorDocumento(e, 'documentoCedula')} style={{ fontSize: '0.8rem' }} />
+                        {archivoBadge(newResponsable.documentoCedula, 'documentoCedula')}
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Pasaporte (PDF)</label>
+                        <input type="file" accept="application/pdf,image/*" onChange={(e) => handleColaboradorDocumento(e, 'documentoPasaporte')} style={{ fontSize: '0.8rem' }} />
+                        {archivoBadge(newResponsable.documentoPasaporte, 'documentoPasaporte')}
+                      </div>
+                    </div>
+                  </>
                 )}
+
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <button onClick={handleSaveResponsable} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+                    {editingResponsableId ? 'Guardar Cambios' : `Crear ${newUserType}`}
+                  </button>
+                  {editingResponsableId && (
+                    <button onClick={handleCancelEditResponsable} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Cancelar</button>
+                  )}
+                </div>
               </div>
 
-              <button onClick={handleAddResponsable} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Crear {newUserType}</button>
-            </div>
-
-            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>👥 Colaboradores ({responsables.length})</h2>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                  <thead style={{ backgroundColor: '#F8F6F1' }}>
-                    <tr style={{ borderBottom: '2px solid #C4A747' }}>
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Nombre</th>
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Email</th>
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
-                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Solicitudes</th>
-                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {responsables.map(r => {
-                      const solicitudesColaborador = solicitudes.filter(s => s.responsableId === r.id).length;
-                      return (
-                        <tr key={r.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
-                          <td style={{ padding: '0.75rem', color: '#6B6458' }}>
-                            {editingResponsable === r.id ? (
-                              <input type="text" value={r.nombre} onChange={(e) => handleUpdateResponsable(r.id, {nombre: e.target.value})} style={{ padding: '0.5rem', backgroundColor: '#F8F6F1', border: '1px solid #C4A747', color: '#221E15', borderRadius: '3px', boxSizing: 'border-box' }} />
-                            ) : (
-                              r.nombre
-                            )}
-                          </td>
-                          <td style={{ padding: '0.75rem', color: '#6B6458' }}>
-                            {editingResponsable === r.id ? (
-                              <input type="email" value={r.email} onChange={(e) => handleUpdateResponsable(r.id, {email: e.target.value})} style={{ padding: '0.5rem', backgroundColor: '#F8F6F1', border: '1px solid #C4A747', color: '#221E15', borderRadius: '3px', boxSizing: 'border-box' }} />
-                            ) : (
-                              r.email
-                            )}
-                          </td>
-                          <td style={{ padding: '0.75rem', color: '#C4A747' }}>
-                            {editingResponsable === r.id ? (
-                              <select value={r.empresa} onChange={(e) => handleUpdateResponsable(r.id, {empresa: e.target.value})} style={{ padding: '0.5rem', backgroundColor: '#F8F6F1', border: '1px solid #C4A747', color: '#221E15', borderRadius: '3px' }}>
-                                {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
-                              </select>
-                            ) : (
-                              r.empresa
-                            )}
-                          </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'center', color: '#2F9E52', fontWeight: 'bold' }}>{solicitudesColaborador}</td>
-                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            {editingResponsable === r.id ? (
-                              <>
-                                <button onClick={() => setEditingResponsable(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }}>✓</button>
-                                <button onClick={() => { setEditingResponsable(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>✕</button>
-                              </>
-                            ) : (
-                              <>
-                                <button onClick={() => setEditingResponsable(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.5rem' }}>✏️</button>
-                                <button onClick={() => handleDeleteResponsable(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
-                              </>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              {/* TABLA DE COLABORADORES */}
+              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
+                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>👥 Colaboradores ({responsables.length})</h2>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                    <thead style={{ backgroundColor: '#F8F6F1' }}>
+                      <tr style={{ borderBottom: '2px solid #C4A747' }}>
+                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>
+                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cargo</th>
+                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
+                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Teléfono</th>
+                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cédula</th>
+                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>🎂</th>
+                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Docs</th>
+                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Solicitudes</th>
+                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {responsables.map(r => {
+                        const solicitudesColaborador = solicitudes.filter(s => s.responsableId === r.id).length;
+                        const numDocs = (r.documentoCedula ? 1 : 0) + (r.documentoPasaporte ? 1 : 0);
+                        return (
+                          <tr key={r.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                            <td style={{ padding: '0.75rem', color: '#221E15' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                <ColaboradorAvatar foto={r.foto} nombre={r.nombre} size={32} />
+                                <div>
+                                  <div>{r.nombre}</div>
+                                  <div style={{ color: '#8F8877', fontSize: '0.75rem' }}>{r.email}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td style={{ padding: '0.75rem', color: '#6B6458' }}>{r.cargo || '-'}</td>
+                            <td style={{ padding: '0.75rem', color: '#C4A747' }}>{r.empresa}</td>
+                            <td style={{ padding: '0.75rem', color: '#6B6458' }}>{r.telefono || '-'}</td>
+                            <td style={{ padding: '0.75rem', color: '#6B6458' }}>{r.cedula || '-'}</td>
+                            <td style={{ padding: '0.75rem', textAlign: 'center', color: '#6B6458', fontSize: '0.8rem' }}>{r.fechaNacimiento ? `${r.fechaNacimiento.substring(8,10)}/${r.fechaNacimiento.substring(5,7)}` : '-'}</td>
+                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                              {numDocs > 0 ? <span style={{ color: '#2F9E52' }}>📎 {numDocs}</span> : <span style={{ color: '#AFA897' }}>—</span>}
+                            </td>
+                            <td style={{ padding: '0.75rem', textAlign: 'center', color: '#2F9E52', fontWeight: 'bold' }}>{solicitudesColaborador}</td>
+                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                              <button onClick={() => handleOpenEditResponsable(r)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.5rem' }}>✏️</button>
+                              <button onClick={() => handleDeleteResponsable(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {currentView === 'finanzas' && (user.rol === 'Gerente' || user.rol === 'Responsable') && (
           <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', textAlign: 'center', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
@@ -2254,7 +2422,7 @@ const App = () => {
                       {gastosUsuario.filter(g => g.tipo === 'Gasto').map(g => (
                         <tr key={g.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.fecha}</td>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.responsableNombre}</td>}
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === g.responsableNombre)?.foto} nombre={g.responsableNombre} size={22} />{g.responsableNombre}</div></td>}
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><EmpresaLogo empresa={g.empresa} height={16} />{g.empresa}</div></td>
                           <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.ceco}</td>
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.cuenta}</td>
@@ -2326,7 +2494,7 @@ const App = () => {
                       {gastosUsuario.filter(g => g.tipo === 'Traslado').map(g => (
                         <tr key={g.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.fecha}</td>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.responsableNombre}</td>}
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === g.responsableNombre)?.foto} nombre={g.responsableNombre} size={22} />{g.responsableNombre}</div></td>}
                           <td style={{ padding: '0.75rem', color: '#2F9E52', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.cuentaSalida}</td>
                           <td style={{ padding: '0.75rem', color: '#C4A747', textAlign: 'center', fontWeight: 'bold' }}>→</td>
                           <td style={{ padding: '0.75rem', color: '#CC4B4B', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.cuentaDestino}</td>
@@ -2383,7 +2551,7 @@ const App = () => {
                       {ingresosUsuario.map(i => (
                         <tr key={i.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{i.fecha}</td>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{i.responsableNombre}</td>}
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === i.responsableNombre)?.foto} nombre={i.responsableNombre} size={22} />{i.responsableNombre}</div></td>}
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><EmpresaLogo empresa={i.empresa} height={16} />{i.empresa}</div></td>
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{i.cuenta}</td>
                           <td style={{ padding: '0.75rem', color: '#6B6458' }}>{i.detalle}</td>
@@ -2752,7 +2920,7 @@ const App = () => {
                       <tr key={c.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{c.fecha}</td>
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{c.numero}</td>
-                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{c.responsableNombre}</td>}
+                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === c.responsableNombre)?.foto} nombre={c.responsableNombre} size={22} />{c.responsableNombre}</div></td>}
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><EmpresaLogo empresa={c.empresa} height={16} />{c.empresa}</div></td>
                         <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(c.monto, c.empresa)}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
