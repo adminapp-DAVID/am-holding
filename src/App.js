@@ -23,6 +23,21 @@ const EmpresaLogo = ({ empresa, height = 20, style = {} }) => {
   return <img src={src} alt={empresa} style={{ height: `${height}px`, width: 'auto', maxWidth: `${height * 4.5}px`, objectFit: 'contain', verticalAlign: 'middle', ...style }} />;
 };
 
+// PRESUPUESTO — sugiere el ítem de presupuesto más probable para un gasto, según empresa+CECO+texto.
+// La persona que registra el gasto siempre puede cambiar la sugerencia antes de guardar (sugerido + confirmado).
+const getPresupuestoSugerido = (empresa, ceco, responsable, detalle, items) => {
+  const candidatos = (items || []).filter(p => p.activo !== false && p.empresa === empresa && p.ceco === ceco);
+  if (!candidatos.length) return '';
+  const texto = `${responsable || ''} ${detalle || ''}`.toLowerCase().trim();
+  if (!texto) return '';
+  const match = candidatos.find(p => {
+    const nombre = (p.nombre || '').toLowerCase().trim();
+    if (!nombre) return false;
+    return texto.includes(nombre) || (responsable && nombre.includes(responsable.toLowerCase().trim()));
+  });
+  return match ? match.id : '';
+};
+
 const App = () => {
   // MONEDA POR EMPRESA — ARKO opera en dólares, el resto de la holding en pesos colombianos
   // DEBE ir primero: se usa en cálculos que aparecen más abajo en el componente.
@@ -63,6 +78,52 @@ const App = () => {
   const estadosSolicitud = ['Pendiente', 'Aprobado', 'Pagado', 'Legalizado'];
   const tiposSolicitud = ['Anticipo', 'Legalización', 'Reembolso'];
   const tiposSoporte = ['Factura/Electrónica', 'Recibo/Entradas', 'Consignación', 'Cuenta de Cobro', 'Otro'];
+  const tiposPresupuesto = ['Nómina', 'Prestación de Servicio', 'Honorarios', 'Gasto de Representación', 'Arriendo', 'Servicios Públicos', 'Telecomunicaciones', 'Seguridad Social', 'Donación', 'Otro'];
+
+  // PRESUPUESTO — datos iniciales migrados del PDF "PRESUPUESTO PARA MIGRAR" (conceptos recurrentes mensuales).
+  // Quedan como punto de partida editable desde "Gestión de Conceptos"; no se incluyó CUBO (no es una de las 5 empresas
+  // del sistema todavía) ni los 2 ítems de CECO-008-TRS (Tarjeta BBVA / Capitalización — son traslados, no gasto recurrente)
+  // ni "Diezmo Comunidad" (el PDF no trae un valor). CECO-005-AM se mapeó a CECO-005-OT (Otros), el código más cercano
+  // que existe hoy en el sistema.
+  const presupuestoSeedData = [
+    { id: 1, empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-004-HR', nombre: 'ALEJANDRO MEJIA', tipo: 'Prestación de Servicio', valorMensual: 2628016, diaLimitePago: '16' },
+    { id: 2, empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-004-HR', nombre: 'ARNULFO BEITAR', tipo: 'Prestación de Servicio', valorMensual: 2190800, diaLimitePago: '16' },
+    { id: 3, empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-002-NM', nombre: 'CRISTIAN GIRALDO', tipo: 'Nómina', valorMensual: 3352609, diaLimitePago: '16' },
+    { id: 4, empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-004-HR', nombre: 'CRISTIAN TABARES', tipo: 'Prestación de Servicio', valorMensual: 2190800, diaLimitePago: '16' },
+    { id: 5, empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-004-HR', nombre: 'DAVID ANDRADE', tipo: 'Prestación de Servicio', valorMensual: 672105, diaLimitePago: '16' },
+    { id: 6, empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-004-HR', nombre: 'DANIEL DARIO RIOS', tipo: 'Prestación de Servicio', valorMensual: 702810, diaLimitePago: '16' },
+    { id: 7, empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-004-HR', nombre: 'JAMELL RAMOS', tipo: 'Prestación de Servicio', valorMensual: 3830360, diaLimitePago: '16' },
+    { id: 8, empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-004-HR', nombre: 'JOSE DAVID MARTINEZ', tipo: 'Prestación de Servicio', valorMensual: 1665300, diaLimitePago: '16' },
+    { id: 9, empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-002-NM', nombre: 'LUIS RIVAS', tipo: 'Nómina', valorMensual: 1859928, diaLimitePago: '16' },
+    { id: 10, empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-004-HR', nombre: 'SARA COBALEDA', tipo: 'Prestación de Servicio', valorMensual: 3678500, diaLimitePago: '16' },
+    { id: 11, empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-004-HR', nombre: 'WILFER ZAPATA', tipo: 'Prestación de Servicio', valorMensual: 1665300, diaLimitePago: '16' },
+    { id: 12, empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-004-HR', nombre: 'JULIAN STIVEN QUEVEDO', tipo: 'Gasto de Representación', valorMensual: 300000, diaLimitePago: '16' },
+
+    { id: 13, empresa: 'PRO INVESTMENTS GLOBAL SAS', ceco: 'CECO-004-HR', nombre: 'CAREN GARZÓN', tipo: 'Nómina', valorMensual: 2500000, diaLimitePago: '16' },
+    { id: 14, empresa: 'PRO INVESTMENTS GLOBAL SAS', ceco: 'CECO-004-HR', nombre: 'SANTIAGO ESPINOSA', tipo: 'Prestación de Servicio', valorMensual: 5500000, diaLimitePago: '16' },
+    { id: 15, empresa: 'PRO INVESTMENTS GLOBAL SAS', ceco: 'CECO-004-HR', nombre: 'SERGIO MEJIA', tipo: 'Prestación de Servicio', valorMensual: 1600000, diaLimitePago: '16' },
+    { id: 16, empresa: 'PRO INVESTMENTS GLOBAL SAS', ceco: 'CECO-004-HR', nombre: 'SARA COBALEDA', tipo: 'Prestación de Servicio', valorMensual: 3678500, diaLimitePago: '16' },
+
+    { id: 17, empresa: 'PRONOVA CAPITAL SAS', ceco: 'CECO-005-OT', nombre: 'ANDREI MARTINEZ', tipo: 'Prestación de Servicio', valorMensual: 20000000, diaLimitePago: '11' },
+    { id: 18, empresa: 'PRONOVA CAPITAL SAS', ceco: 'CECO-004-HR', nombre: 'LUIS RIVAS', tipo: 'Prestación de Servicio', valorMensual: 2186080, diaLimitePago: '16' },
+    { id: 19, empresa: 'PRONOVA CAPITAL SAS', ceco: 'CECO-003-GR', nombre: 'FLYPASS', tipo: 'Otro', valorMensual: 1000000, diaLimitePago: '11' },
+    { id: 20, empresa: 'PRONOVA CAPITAL SAS', ceco: 'CECO-001-GF', nombre: 'TIGO TORRE OASIS', tipo: 'Telecomunicaciones', valorMensual: 210000, diaLimitePago: '11' },
+    { id: 21, empresa: 'PRONOVA CAPITAL SAS', ceco: 'CECO-001-GF', nombre: 'TIGO OFICINA', tipo: 'Telecomunicaciones', valorMensual: 299974, diaLimitePago: '5' },
+    { id: 22, empresa: 'PRONOVA CAPITAL SAS', ceco: 'CECO-001-GF', nombre: 'SUB ARRIENDO OFICINA (PAGO A CUBO)', tipo: 'Arriendo', valorMensual: 6672309, diaLimitePago: '2' },
+    { id: 23, empresa: 'PRONOVA CAPITAL SAS', ceco: 'CECO-001-GF', nombre: 'EPM TORRE OASIS', tipo: 'Servicios Públicos', valorMensual: 304000, diaLimitePago: '16' },
+    { id: 24, empresa: 'PRONOVA CAPITAL SAS', ceco: 'CECO-003-GR', nombre: 'UNIVERSIDAD JOSE Y LERMA (Acompañamiento Jugadores)', tipo: 'Prestación de Servicio', valorMensual: 927000, diaLimitePago: '16' },
+    { id: 25, empresa: 'PRONOVA CAPITAL SAS', ceco: 'CECO-004-HR', nombre: 'DANIEL DARIO RIOS', tipo: 'Prestación de Servicio', valorMensual: 15000000, diaLimitePago: '' },
+
+    { id: 26, empresa: 'FOR SEVEN MEDIA SAS', ceco: 'CECO-004-HR', nombre: 'SANTIAGO TARQUINO', tipo: 'Prestación de Servicio', valorMensual: 6500000, diaLimitePago: '16' },
+    { id: 27, empresa: 'FOR SEVEN MEDIA SAS', ceco: 'CECO-004-HR', nombre: 'JUAN CAMILO DUARTE', tipo: 'Prestación de Servicio', valorMensual: 2102000, diaLimitePago: '16' },
+    { id: 28, empresa: 'FOR SEVEN MEDIA SAS', ceco: 'CECO-004-HR', nombre: 'FABIO ANDRES GALEANO', tipo: 'Prestación de Servicio', valorMensual: 2000000, diaLimitePago: '16' },
+    { id: 29, empresa: 'FOR SEVEN MEDIA SAS', ceco: 'CECO-004-HR', nombre: 'JERONIMO GIRALDO', tipo: 'Prestación de Servicio', valorMensual: 2000000, diaLimitePago: '16' },
+
+    { id: 30, empresa: 'ARKO', ceco: 'CECO-004-HR', nombre: 'TONY', tipo: 'Prestación de Servicio', valorMensual: 300, diaLimitePago: '16' },
+    { id: 31, empresa: 'ARKO', ceco: 'CECO-004-HR', nombre: 'ESTEBAN ESPINDOLA', tipo: 'Prestación de Servicio', valorMensual: 3200, diaLimitePago: '16' },
+    { id: 32, empresa: 'ARKO', ceco: 'CECO-004-HR', nombre: 'NESTOR OVIDIO', tipo: 'Prestación de Servicio', valorMensual: 155.10, diaLimitePago: '11' }
+  ].map(item => ({ ...item, activo: true }));
+  const nombresMeses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
   const cecos = [
     { codigo: 'CECO-001-GF', nombre: 'Gastos Fijos', tipo: 'ADMINISTRATIVOS' },
     { codigo: 'CECO-002-NM', nombre: 'Nómina', tipo: 'NOMINA' },
@@ -100,7 +161,7 @@ const App = () => {
   const [newCuentaCobro, setNewCuentaCobro] = useState({ fecha: new Date().toISOString().split('T')[0], numero: '', responsable: '', empresa: '', monto: '', concepto: '', estado: 'Pendiente' });
   const [gastos, setGastos] = useState(() => JSON.parse(localStorage.getItem('amGastos') || '[]'));
   const [ingresos, setIngresos] = useState(() => JSON.parse(localStorage.getItem('amIngresos') || '[]'));
-  const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', soportes: [] });
+  const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', soportes: [], presupuestoItemId: '' });
   const [newIngreso, setNewIngreso] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Ingreso', empresa: 'AM SPORTS GROUP SAS', responsable: '', detalle: '', valor: '', categoria: '', estado: 'Pagado', observaciones: '', linkSoporte: '', cuenta: '', soportes: [] });
   const [filtroFinanzas, setFiltroFinanzas] = useState({ mes: new Date().getMonth() + 1, empresa: 'Todos', tipo: 'Todos' });
   const [soportesTemp, setSoportesTemp] = useState([]);
@@ -112,6 +173,14 @@ const App = () => {
   const [archivoImportacion, setArchivoImportacion] = useState(null);
   const [filtroFechaInicio, setFiltroFechaInicio] = useState('2026-01-01');
   const [filtroFechaFin, setFiltroFechaFin] = useState(new Date().toISOString().split('T')[0]);
+
+  // PRESUPUESTO
+  const [presupuestoItems, setPresupuestoItems] = useState(() => JSON.parse(localStorage.getItem('amPresupuestoItems') || JSON.stringify(presupuestoSeedData)));
+  const [presupuestoAnual, setPresupuestoAnual] = useState(() => JSON.parse(localStorage.getItem('amPresupuestoAnual') || '[]'));
+  const [newPresupuestoItem, setNewPresupuestoItem] = useState({ empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-001-GF', nombre: '', tipo: 'Nómina', valorMensual: '', diaLimitePago: '', activo: true });
+  const [newPresupuestoAnual, setNewPresupuestoAnual] = useState({ empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-001-GF', anio: new Date().getFullYear(), valorAnual: '' });
+  const [presupuestoTab, setPresupuestoTab] = useState('mensual');
+  const [filtroPresupuesto, setFiltroPresupuesto] = useState({ empresa: 'AM SPORTS GROUP SAS', mes: new Date().getMonth() + 1, anio: new Date().getFullYear() });
 
   // URLs
   const DRIVE_UPLOAD_URL = 'https://script.google.com/macros/s/AKfycby-voRnepppydRFrkEc4CO4dCV7Ymhac-bU63FPZrtVui71vxc2j0dC3TQphu8XhmEW5Q/exec';
@@ -700,9 +769,14 @@ const App = () => {
       return;
     }
 
+    const presupuestoItemIdFinal = newGasto.tipo === 'Gasto'
+      ? (newGasto.presupuestoItemId || getPresupuestoSugerido(newGasto.empresa, newGasto.ceco, newGasto.responsable, newGasto.detalle, presupuestoItems))
+      : '';
+
     const nuevoGasto = {
       id: Date.now(),
       ...newGasto,
+      presupuestoItemId: presupuestoItemIdFinal || null,
       soportes: soportesTemp,
       responsableNombre: responsables.find(r => r.nombre === newGasto.responsable)?.nombre || newGasto.responsable
     };
@@ -725,7 +799,8 @@ const App = () => {
       linkSoporte: '',
       cuentaSalida: '',
       cuentaDestino: '',
-      soportes: []
+      soportes: [],
+      presupuestoItemId: ''
     });
     setSoportesTemp([]);
     alert('✅ Transacción agregada con soportes');
@@ -794,6 +869,62 @@ const App = () => {
       const updated = ingresos.filter(i => i.id !== id);
       setIngresos(updated);
       localStorage.setItem('amIngresos', JSON.stringify(updated));
+    }
+  };
+
+  // PRESUPUESTO — CRUD de conceptos recurrentes mensuales y techos anuales por CECO
+  const handleAddPresupuestoItem = () => {
+    if (!newPresupuestoItem.nombre || !newPresupuestoItem.valorMensual) {
+      alert('Nombre/Concepto y valor mensual son obligatorios');
+      return;
+    }
+    if (parseFloat(newPresupuestoItem.valorMensual) <= 0) {
+      alert('El valor mensual debe ser mayor a cero');
+      return;
+    }
+    const item = { id: Date.now(), ...newPresupuestoItem, activo: true };
+    const updated = [...presupuestoItems, item];
+    setPresupuestoItems(updated);
+    localStorage.setItem('amPresupuestoItems', JSON.stringify(updated));
+    setNewPresupuestoItem({ empresa: newPresupuestoItem.empresa, ceco: newPresupuestoItem.ceco, nombre: '', tipo: newPresupuestoItem.tipo, valorMensual: '', diaLimitePago: '', activo: true });
+  };
+
+  const handleUpdatePresupuestoItem = (id, campo, valor) => {
+    const updated = presupuestoItems.map(p => p.id === id ? { ...p, [campo]: valor } : p);
+    setPresupuestoItems(updated);
+    localStorage.setItem('amPresupuestoItems', JSON.stringify(updated));
+  };
+
+  const handleDeletePresupuestoItem = (id) => {
+    if (window.confirm('¿Eliminar este concepto de presupuesto? Los gastos ya vinculados a él no se borran.')) {
+      const updated = presupuestoItems.filter(p => p.id !== id);
+      setPresupuestoItems(updated);
+      localStorage.setItem('amPresupuestoItems', JSON.stringify(updated));
+    }
+  };
+
+  const handleAddPresupuestoAnual = () => {
+    if (!newPresupuestoAnual.valorAnual || parseFloat(newPresupuestoAnual.valorAnual) <= 0) {
+      alert('El valor anual es obligatorio y debe ser mayor a cero');
+      return;
+    }
+    const existente = presupuestoAnual.find(p => p.empresa === newPresupuestoAnual.empresa && p.ceco === newPresupuestoAnual.ceco && String(p.anio) === String(newPresupuestoAnual.anio));
+    let updated;
+    if (existente) {
+      updated = presupuestoAnual.map(p => p.id === existente.id ? { ...p, valorAnual: newPresupuestoAnual.valorAnual } : p);
+    } else {
+      updated = [...presupuestoAnual, { id: Date.now(), ...newPresupuestoAnual }];
+    }
+    setPresupuestoAnual(updated);
+    localStorage.setItem('amPresupuestoAnual', JSON.stringify(updated));
+    setNewPresupuestoAnual({ empresa: newPresupuestoAnual.empresa, ceco: newPresupuestoAnual.ceco, anio: newPresupuestoAnual.anio, valorAnual: '' });
+  };
+
+  const handleDeletePresupuestoAnual = (id) => {
+    if (window.confirm('¿Eliminar este techo anual?')) {
+      const updated = presupuestoAnual.filter(p => p.id !== id);
+      setPresupuestoAnual(updated);
+      localStorage.setItem('amPresupuestoAnual', JSON.stringify(updated));
     }
   };
 
@@ -1009,6 +1140,53 @@ const App = () => {
       .reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0)
   })).filter(c => c.valor > 0);
 
+  // ===== PRESUPUESTO =====
+  // Vista mensual: cada concepto recurrente activo de la empresa filtrada, cruzado contra los gastos
+  // ya registrados en Finanzas ese mes (vía presupuestoItemId) para saber qué está Pagado y qué Pendiente.
+  const presupuestoMensualDetalle = (() => {
+    const { empresa, mes, anio } = filtroPresupuesto;
+    const mesStr = `${anio}-${String(mes).padStart(2, '0')}`;
+    return presupuestoItems
+      .filter(p => p.activo !== false && p.empresa === empresa)
+      .map(item => {
+        const gastoVinculado = gastos.find(g => g.presupuestoItemId === item.id && g.fecha && g.fecha.substring(0, 7) === mesStr);
+        return {
+          ...item,
+          pagado: !!gastoVinculado,
+          valorPagadoReal: gastoVinculado ? (parseFloat(gastoVinculado.valor) || 0) : 0,
+          gastoId: gastoVinculado ? gastoVinculado.id : null
+        };
+      });
+  })();
+
+  const presupuestoMensualTotales = presupuestoMensualDetalle.reduce((acc, item) => {
+    const valor = parseFloat(item.valorMensual) || 0;
+    acc.totalPresupuestado += valor;
+    if (item.pagado) { acc.totalPagado += valor; acc.itemsPagados += 1; }
+    else { acc.totalPendiente += valor; acc.itemsPendientes += 1; }
+    return acc;
+  }, { totalPresupuestado: 0, totalPagado: 0, totalPendiente: 0, itemsPagados: 0, itemsPendientes: 0 });
+
+  // Vista anual: ejecución acumulada del año por CECO (empresa filtrada) contra el techo anual cargado manualmente.
+  const presupuestoAnualDetalle = (() => {
+    const { empresa, anio } = filtroPresupuesto;
+    return cecos.map(ceco => {
+      const techo = presupuestoAnual.find(p => p.empresa === empresa && p.ceco === ceco.codigo && String(p.anio) === String(anio));
+      const valorAnual = techo ? (parseFloat(techo.valorAnual) || 0) : 0;
+      const ejecutado = gastos
+        .filter(g => g.empresa === empresa && g.ceco === ceco.codigo && g.fecha && g.fecha.substring(0, 4) === String(anio))
+        .reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
+      return {
+        codigo: ceco.codigo,
+        nombre: ceco.nombre,
+        valorAnual,
+        ejecutado,
+        restante: valorAnual - ejecutado,
+        porcentaje: valorAnual > 0 ? (ejecutado / valorAnual) * 100 : null
+      };
+    }).filter(c => c.valorAnual > 0 || c.ejecutado > 0);
+  })();
+
   // PERMISOS POR ROL
   const canEdit = user?.rol && ['Administrador', 'Coordinadora Administrativa', 'Responsable'].includes(user.rol);
   const canApprove = user?.rol && ['Administrador', 'Coordinadora Administrativa'].includes(user.rol);
@@ -1185,7 +1363,10 @@ const App = () => {
           )}
 
           {user.rol !== 'Gerente' && user.rol !== 'Responsable' && (
-            <button onClick={() => setCurrentView('finanzas')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'finanzas' ? '#C4A747' : '#E6E0D2', color: currentView === 'finanzas' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💰 Finanzas</button>
+            <>
+              <button onClick={() => setCurrentView('finanzas')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'finanzas' ? '#C4A747' : '#E6E0D2', color: currentView === 'finanzas' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💰 Finanzas</button>
+              <button onClick={() => setCurrentView('presupuesto')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'presupuesto' ? '#C4A747' : '#E6E0D2', color: currentView === 'presupuesto' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📅 Presupuesto</button>
+            </>
           )}
           
           {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
@@ -1976,6 +2157,25 @@ const App = () => {
 
               <input type="text" placeholder="Detalle/Descripción" value={newGasto.detalle} onChange={(e) => {setNewGasto({...newGasto, detalle: e.target.value}); setNewIngreso({...newIngreso, detalle: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', marginBottom: '1rem', boxSizing: 'border-box' }} />
 
+              {newGasto.tipo === 'Gasto' && (() => {
+                const candidatosPresupuesto = presupuestoItems.filter(p => p.activo !== false && p.empresa === newGasto.empresa && p.ceco === newGasto.ceco);
+                if (!candidatosPresupuesto.length) return null;
+                const sugeridoId = getPresupuestoSugerido(newGasto.empresa, newGasto.ceco, newGasto.responsable, newGasto.detalle, presupuestoItems);
+                const valorSeleccionado = newGasto.presupuestoItemId || sugeridoId || '';
+                return (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Vincular a Presupuesto (opcional)</label>
+                    <select value={valorSeleccionado} onChange={(e) => setNewGasto({...newGasto, presupuestoItemId: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                      <option value="">Sin vincular</option>
+                      {candidatosPresupuesto.map(p => <option key={p.id} value={p.id}>{p.nombre} — {formatMoney(p.valorMensual, newGasto.empresa)}</option>)}
+                    </select>
+                    {valorSeleccionado && sugeridoId === valorSeleccionado && !newGasto.presupuestoItemId && (
+                      <p style={{ fontSize: '0.75rem', color: '#6B6458', margin: '0.35rem 0 0 0' }}>💡 Sugerido automáticamente — puedes cambiarlo.</p>
+                    )}
+                  </div>
+                );
+              })()}
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <input type="number" placeholder="Valor" value={newGasto.valor} onChange={(e) => {setNewGasto({...newGasto, valor: e.target.value}); setNewIngreso({...newIngreso, valor: e.target.value});}} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
                 <select value={newGasto.categoria} onChange={(e) => {setNewGasto({...newGasto, categoria: e.target.value}); setNewIngreso({...newIngreso, categoria: e.target.value});}} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }}>
@@ -2181,6 +2381,282 @@ const App = () => {
             )}
           </div>
         )}
+
+        {currentView === 'presupuesto' && (user.rol === 'Gerente' || user.rol === 'Responsable') && (
+          <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', textAlign: 'center', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
+            <h2 style={{ color: '#C4A747' }}>📅 Presupuesto</h2>
+            <p style={{ color: '#6B6458' }}>No tienes acceso a este módulo.</p>
+            <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>Ir al Dashboard</button>
+          </div>
+        )}
+
+        {currentView === 'presupuesto' && user.rol !== 'Gerente' && user.rol !== 'Responsable' && (() => {
+          const puedeEditarPresupuesto = user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa';
+          const inputStyle = { padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' };
+          const cardStyle = { backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '8px', padding: '1.25rem' };
+
+          return (
+            <div>
+              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
+                <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📅 Presupuesto</h2>
+
+                {/* FILTROS */}
+                <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem', marginBottom: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  <div>
+                    <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Empresa</label>
+                    <select value={filtroPresupuesto.empresa} onChange={(e) => setFiltroPresupuesto({...filtroPresupuesto, empresa: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF', minWidth: '220px' }}>
+                      {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Mes</label>
+                    <select value={filtroPresupuesto.mes} onChange={(e) => setFiltroPresupuesto({...filtroPresupuesto, mes: parseInt(e.target.value)})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
+                      {nombresMeses.map((nombre, idx) => <option key={idx} value={idx + 1}>{nombre}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Año</label>
+                    <input type="number" value={filtroPresupuesto.anio} onChange={(e) => setFiltroPresupuesto({...filtroPresupuesto, anio: parseInt(e.target.value) || filtroPresupuesto.anio})} style={{ ...inputStyle, backgroundColor: '#FFFFFF', width: '100px' }} />
+                  </div>
+                </div>
+
+                {/* TABS */}
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+                  <button onClick={() => setPresupuestoTab('mensual')} style={{ padding: '0.6rem 1.25rem', backgroundColor: presupuestoTab === 'mensual' ? '#C4A747' : '#E6E0D2', color: presupuestoTab === 'mensual' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>📆 Mensual: Pagado/Pendiente</button>
+                  <button onClick={() => setPresupuestoTab('anual')} style={{ padding: '0.6rem 1.25rem', backgroundColor: presupuestoTab === 'anual' ? '#C4A747' : '#E6E0D2', color: presupuestoTab === 'anual' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>📊 Ejecución Anual por CECO</button>
+                  <button onClick={() => setPresupuestoTab('gestion')} style={{ padding: '0.6rem 1.25rem', backgroundColor: presupuestoTab === 'gestion' ? '#C4A747' : '#E6E0D2', color: presupuestoTab === 'gestion' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>⚙️ Gestión de Conceptos</button>
+                </div>
+
+                {/* ===== TAB MENSUAL ===== */}
+                {presupuestoTab === 'mensual' && (
+                  presupuestoMensualDetalle.length === 0 ? (
+                    <p style={{ color: '#6B6458' }}>Aún no hay conceptos de presupuesto cargados para <strong>{filtroPresupuesto.empresa}</strong>. Ve a la pestaña "Gestión de Conceptos" para agregarlos.</p>
+                  ) : (
+                    <div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                        <div style={cardStyle}>
+                          <p style={{ color: '#6B6458', fontSize: '0.8rem', margin: '0 0 0.5rem 0' }}>Total Presupuestado</p>
+                          <h3 style={{ color: '#221E15', margin: 0 }}>{formatMoney(presupuestoMensualTotales.totalPresupuestado, filtroPresupuesto.empresa)}</h3>
+                        </div>
+                        <div style={{ ...cardStyle, borderLeft: '4px solid #2F9E52' }}>
+                          <p style={{ color: '#6B6458', fontSize: '0.8rem', margin: '0 0 0.5rem 0' }}>Pagado ({presupuestoMensualTotales.itemsPagados})</p>
+                          <h3 style={{ color: '#2F9E52', margin: 0 }}>{formatMoney(presupuestoMensualTotales.totalPagado, filtroPresupuesto.empresa)}</h3>
+                          <p style={{ color: '#6B6458', fontSize: '0.75rem', margin: '0.35rem 0 0 0' }}>{presupuestoMensualTotales.totalPresupuestado > 0 ? ((presupuestoMensualTotales.totalPagado / presupuestoMensualTotales.totalPresupuestado) * 100).toFixed(1) : '0.0'}%</p>
+                        </div>
+                        <div style={{ ...cardStyle, borderLeft: '4px solid #CC4B4B' }}>
+                          <p style={{ color: '#6B6458', fontSize: '0.8rem', margin: '0 0 0.5rem 0' }}>Pendiente ({presupuestoMensualTotales.itemsPendientes})</p>
+                          <h3 style={{ color: '#CC4B4B', margin: 0 }}>{formatMoney(presupuestoMensualTotales.totalPendiente, filtroPresupuesto.empresa)}</h3>
+                          <p style={{ color: '#6B6458', fontSize: '0.75rem', margin: '0.35rem 0 0 0' }}>{presupuestoMensualTotales.totalPresupuestado > 0 ? ((presupuestoMensualTotales.totalPendiente / presupuestoMensualTotales.totalPresupuestado) * 100).toFixed(1) : '0.0'}%</p>
+                        </div>
+                      </div>
+
+                      <div style={{ width: '100%', height: '10px', backgroundColor: '#E6E0D2', borderRadius: '6px', overflow: 'hidden', marginBottom: '1.5rem' }}>
+                        <div style={{ width: `${presupuestoMensualTotales.totalPresupuestado > 0 ? (presupuestoMensualTotales.totalPagado / presupuestoMensualTotales.totalPresupuestado) * 100 : 0}%`, height: '100%', backgroundColor: '#2F9E52' }} />
+                      </div>
+
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '2px solid #E6E0D2' }}>
+                              <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Concepto</th>
+                              <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
+                              <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
+                              <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor Mensual</th>
+                              <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Día Límite</th>
+                              <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {presupuestoMensualDetalle.map(item => (
+                              <tr key={item.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                                <td style={{ padding: '0.75rem', color: '#221E15' }}>{item.nombre}</td>
+                                <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{cecos.find(c => c.codigo === item.ceco)?.nombre || item.ceco}</td>
+                                <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{item.tipo}</td>
+                                <td style={{ padding: '0.75rem', textAlign: 'right', color: '#221E15' }}>{formatMoney(item.valorMensual, filtroPresupuesto.empresa)}</td>
+                                <td style={{ padding: '0.75rem', textAlign: 'center', color: '#6B6458' }}>{item.diaLimitePago || '-'}</td>
+                                <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                                  <span style={{ padding: '0.3rem 0.75rem', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold', backgroundColor: item.pagado ? 'rgba(47,158,82,0.12)' : 'rgba(204,75,75,0.12)', color: item.pagado ? '#2F9E52' : '#CC4B4B' }}>
+                                    {item.pagado ? '✅ Pagado' : '⏳ Pendiente'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )
+                )}
+
+                {/* ===== TAB ANUAL ===== */}
+                {presupuestoTab === 'anual' && (
+                  presupuestoAnualDetalle.length === 0 ? (
+                    <p style={{ color: '#6B6458' }}>Aún no hay techos anuales cargados para <strong>{filtroPresupuesto.empresa}</strong> en {filtroPresupuesto.anio}. Ve a la pestaña "Gestión de Conceptos" para agregarlos.</p>
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '2px solid #E6E0D2' }}>
+                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Presupuesto Anual</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Ejecutado</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Falta por Cubrir</th>
+                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747', width: '220px' }}>% Ejecutado</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {presupuestoAnualDetalle.map(c => {
+                            const pct = c.porcentaje === null ? 0 : Math.min(c.porcentaje, 100);
+                            const colorBarra = c.porcentaje === null ? '#AFA897' : c.porcentaje >= 100 ? '#CC4B4B' : c.porcentaje >= 80 ? '#D6A419' : '#2F9E52';
+                            return (
+                              <tr key={c.codigo} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                                <td style={{ padding: '0.75rem', color: '#221E15' }}>{c.nombre}</td>
+                                <td style={{ padding: '0.75rem', textAlign: 'right', color: '#221E15' }}>{c.valorAnual > 0 ? formatMoney(c.valorAnual, filtroPresupuesto.empresa) : '-'}</td>
+                                <td style={{ padding: '0.75rem', textAlign: 'right', color: '#6B6458' }}>{formatMoney(c.ejecutado, filtroPresupuesto.empresa)}</td>
+                                <td style={{ padding: '0.75rem', textAlign: 'right', color: c.restante < 0 ? '#CC4B4B' : '#221E15', fontWeight: c.restante < 0 ? 'bold' : 'normal' }}>{c.valorAnual > 0 ? formatMoney(c.restante, filtroPresupuesto.empresa) : '-'}</td>
+                                <td style={{ padding: '0.75rem' }}>
+                                  {c.porcentaje === null ? (
+                                    <span style={{ color: '#AFA897', fontSize: '0.8rem' }}>Sin techo cargado</span>
+                                  ) : (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                      <div style={{ flex: 1, height: '8px', backgroundColor: '#E6E0D2', borderRadius: '5px', overflow: 'hidden' }}>
+                                        <div style={{ width: `${pct}%`, height: '100%', backgroundColor: colorBarra }} />
+                                      </div>
+                                      <span style={{ color: colorBarra, fontSize: '0.8rem', fontWeight: 'bold', minWidth: '45px' }}>{c.porcentaje.toFixed(0)}%</span>
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                )}
+
+                {/* ===== TAB GESTIÓN ===== */}
+                {presupuestoTab === 'gestion' && (
+                  <div>
+                    <h3 style={{ color: '#221E15', marginBottom: '1rem' }}>Conceptos Recurrentes Mensuales</h3>
+
+                    {puedeEditarPresupuesto && (
+                      <div style={{ ...cardStyle, marginBottom: '1.5rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                          <select value={newPresupuestoItem.empresa} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, empresa: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
+                            {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                          </select>
+                          <select value={newPresupuestoItem.ceco} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, ceco: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
+                            {cecos.map(c => <option key={c.codigo} value={c.codigo}>{c.nombre}</option>)}
+                          </select>
+                          <select value={newPresupuestoItem.tipo} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, tipo: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
+                            {tiposPresupuesto.map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                          <input type="number" placeholder="Día límite de pago" value={newPresupuestoItem.diaLimitePago} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, diaLimitePago: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: '1rem' }}>
+                          <input type="text" placeholder="Nombre / Responsable / Concepto" value={newPresupuestoItem.nombre} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, nombre: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
+                          <input type="number" placeholder="Valor mensual" value={newPresupuestoItem.valorMensual} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, valorMensual: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
+                          <button onClick={handleAddPresupuestoItem} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>+ Agregar</button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ overflowX: 'auto', marginBottom: '2rem' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '2px solid #E6E0D2' }}>
+                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
+                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
+                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Concepto</th>
+                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor Mensual</th>
+                            <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Día Límite</th>
+                            <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Activo</th>
+                            {puedeEditarPresupuesto && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {presupuestoItems.length === 0 ? (
+                            <tr><td colSpan={puedeEditarPresupuesto ? 8 : 7} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin conceptos cargados todavía.</td></tr>
+                          ) : presupuestoItems.map(item => (
+                            <tr key={item.id} style={{ borderBottom: '1px solid #E6E0D2', opacity: item.activo === false ? 0.5 : 1 }}>
+                              <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{item.empresa}</td>
+                              <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{cecos.find(c => c.codigo === item.ceco)?.nombre || item.ceco}</td>
+                              <td style={{ padding: '0.75rem', color: '#221E15' }}>{item.nombre}</td>
+                              <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{item.tipo}</td>
+                              <td style={{ padding: '0.75rem', textAlign: 'right', color: '#221E15' }}>{formatMoney(item.valorMensual, item.empresa)}</td>
+                              <td style={{ padding: '0.75rem', textAlign: 'center', color: '#6B6458' }}>{item.diaLimitePago || '-'}</td>
+                              <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                                {puedeEditarPresupuesto ? (
+                                  <input type="checkbox" checked={item.activo !== false} onChange={(e) => handleUpdatePresupuestoItem(item.id, 'activo', e.target.checked)} />
+                                ) : (item.activo !== false ? 'Sí' : 'No')}
+                              </td>
+                              {puedeEditarPresupuesto && (
+                                <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                                  <button onClick={() => handleDeletePresupuestoItem(item.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
+                                </td>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <h3 style={{ color: '#221E15', marginBottom: '1rem' }}>Techos Anuales por CECO</h3>
+
+                    {puedeEditarPresupuesto && (
+                      <div style={{ ...cardStyle, marginBottom: '1.5rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1.5fr 1fr 1fr auto', gap: '1rem' }}>
+                          <select value={newPresupuestoAnual.empresa} onChange={(e) => setNewPresupuestoAnual({...newPresupuestoAnual, empresa: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
+                            {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                          </select>
+                          <select value={newPresupuestoAnual.ceco} onChange={(e) => setNewPresupuestoAnual({...newPresupuestoAnual, ceco: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
+                            {cecos.map(c => <option key={c.codigo} value={c.codigo}>{c.nombre}</option>)}
+                          </select>
+                          <input type="number" placeholder="Año" value={newPresupuestoAnual.anio} onChange={(e) => setNewPresupuestoAnual({...newPresupuestoAnual, anio: parseInt(e.target.value) || newPresupuestoAnual.anio})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
+                          <input type="number" placeholder="Valor anual" value={newPresupuestoAnual.valorAnual} onChange={(e) => setNewPresupuestoAnual({...newPresupuestoAnual, valorAnual: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
+                          <button onClick={handleAddPresupuestoAnual} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>+ Guardar</button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '2px solid #E6E0D2' }}>
+                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
+                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
+                            <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Año</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor Anual</th>
+                            {puedeEditarPresupuesto && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {presupuestoAnual.length === 0 ? (
+                            <tr><td colSpan={puedeEditarPresupuesto ? 5 : 4} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin techos anuales cargados todavía.</td></tr>
+                          ) : presupuestoAnual.map(p => (
+                            <tr key={p.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                              <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{p.empresa}</td>
+                              <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{cecos.find(c => c.codigo === p.ceco)?.nombre || p.ceco}</td>
+                              <td style={{ padding: '0.75rem', textAlign: 'center', color: '#221E15' }}>{p.anio}</td>
+                              <td style={{ padding: '0.75rem', textAlign: 'right', color: '#221E15' }}>{formatMoney(p.valorAnual, p.empresa)}</td>
+                              {puedeEditarPresupuesto && (
+                                <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                                  <button onClick={() => handleDeletePresupuestoAnual(p.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
+                                </td>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {currentView === 'cuentasCobro' && user.rol !== 'Gerente' && (
           <div>
