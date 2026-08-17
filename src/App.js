@@ -1319,7 +1319,7 @@ const App = () => {
   // PERMISOS POR ROL
   const canEdit = user?.rol && ['Administrador', 'Coordinadora Administrativa', 'Responsable'].includes(user.rol);
   const canApprove = user?.rol && ['Administrador', 'Coordinadora Administrativa'].includes(user.rol);
-  const isReadOnly = user?.rol === 'Contadora';
+  const isReadOnly = user?.rol === 'Contadora' || user?.rol === 'Gerente';
   
   // Color estado
   const getColorEstado = (estado) => {
@@ -1484,14 +1484,10 @@ const App = () => {
         <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'dashboard' ? '#C4A747' : '#E6E0D2', color: currentView === 'dashboard' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📊 Dashboard</button>
           
-          {user.rol !== 'Gerente' && (
-            <>
-              <button onClick={() => setCurrentView('solicitudes')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'solicitudes' ? '#C4A747' : '#E6E0D2', color: currentView === 'solicitudes' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📋 Solicitudes</button>
-              <button onClick={() => setCurrentView('cuentasCobro')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'cuentasCobro' ? '#C4A747' : '#E6E0D2', color: currentView === 'cuentasCobro' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💳 Cuentas de Cobro</button>
-            </>
-          )}
+          <button onClick={() => setCurrentView('solicitudes')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'solicitudes' ? '#C4A747' : '#E6E0D2', color: currentView === 'solicitudes' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📋 Solicitudes</button>
+          <button onClick={() => setCurrentView('cuentasCobro')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'cuentasCobro' ? '#C4A747' : '#E6E0D2', color: currentView === 'cuentasCobro' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💳 Cuentas de Cobro</button>
 
-          {user.rol !== 'Gerente' && user.rol !== 'Responsable' && (
+          {user.rol !== 'Responsable' && (
             <>
               <button onClick={() => setCurrentView('finanzas')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'finanzas' ? '#C4A747' : '#E6E0D2', color: currentView === 'finanzas' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💰 Finanzas</button>
               <button onClick={() => setCurrentView('presupuesto')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'presupuesto' ? '#C4A747' : '#E6E0D2', color: currentView === 'presupuesto' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📅 Presupuesto</button>
@@ -1595,7 +1591,7 @@ const App = () => {
                   <thead>
                     <tr style={{ borderBottom: '2px solid #C4A747' }}>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                      {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
+                      {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
                       <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th>
                       <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
@@ -1605,7 +1601,7 @@ const App = () => {
                     {ultimasSolicitudes.map(s => (
                       <tr key={s.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.fecha}</td>
-                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === s.responsableNombre)?.foto} nombre={s.responsableNombre} size={22} />{s.responsableNombre}</div></td>}
+                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === s.responsableNombre)?.foto} nombre={s.responsableNombre} size={22} />{s.responsableNombre}</div></td>}
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
                         <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
@@ -1643,21 +1639,14 @@ const App = () => {
 
         {currentView === 'solicitudes' && (
           <div>
-            {user.rol === 'Gerente' ? (
-              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', textAlign: 'center', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <p style={{ color: '#CC4B4B', fontSize: '1.1rem', fontWeight: 'bold' }}>🔒 Acceso Restringido</p>
-                <p style={{ color: '#6B6458' }}>Los Gerentes solo pueden ver el Dashboard.</p>
-                <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>Ir al Dashboard</button>
-              </div>
-            ) : (
-              <div>
+            <div>
               <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
                 <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nueva Solicitud</h2>
-                
+
                 {isReadOnly && (
                   <div style={{ backgroundColor: '#FFF4F4', border: '1px solid #CC4B4B', borderRadius: '4px', padding: '1rem', marginBottom: '1rem', color: '#B0102B' }}>
                     <p style={{ margin: 0, fontWeight: 'bold' }}>🔒 Modo Solo Lectura</p>
-                    <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem' }}>Los Contadores no pueden crear ni editar solicitudes. Solo pueden ver y descargar.</p>
+                    <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem' }}>{user.rol === 'Gerente' ? 'Los Gerentes pueden ver y descargar, pero no crear ni editar solicitudes.' : 'Los Contadores no pueden crear ni editar solicitudes. Solo pueden ver y descargar.'}</p>
                   </div>
                 )}
                 
@@ -1746,7 +1735,6 @@ const App = () => {
                 </button>
               </div>
               </div>
-            )}
 
             <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
               <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>
@@ -1757,7 +1745,7 @@ const App = () => {
                   <thead style={{ backgroundColor: '#F8F6F1' }}>
                     <tr style={{ borderBottom: '2px solid #C4A747' }}>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                      {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
+                      {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
                       <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
                       <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Docs</th>
@@ -1769,7 +1757,7 @@ const App = () => {
                     {solicitudesUsuario.map(s => (
                       <tr key={s.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.fecha}</td>
-                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === s.responsableNombre)?.foto} nombre={s.responsableNombre} size={22} />{s.responsableNombre}</div></td>}
+                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === s.responsableNombre)?.foto} nombre={s.responsableNombre} size={22} />{s.responsableNombre}</div></td>}
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
                         <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center', color: s.documentos?.length > 0 ? '#2F9E52' : '#8F8877' }}>{s.documentos?.length || 0}</td>
@@ -1790,7 +1778,7 @@ const App = () => {
                                   {generandoPDF === s.id ? '⏳' : '📄'}
                                 </button>
                               )}
-                              {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && (
+                              {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente') && (
                                 <>
                                   <button onClick={() => handleGenerarExcel(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }} title="Excel">
                                     📊
@@ -2053,15 +2041,15 @@ const App = () => {
           );
         })()}
 
-        {currentView === 'finanzas' && (user.rol === 'Gerente' || user.rol === 'Responsable') && (
+        {currentView === 'finanzas' && user.rol === 'Responsable' && (
           <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', textAlign: 'center', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
             <p style={{ color: '#CC4B4B', fontSize: '1.1rem', fontWeight: 'bold' }}>🔒 Acceso Restringido</p>
-            <p style={{ color: '#6B6458' }}>{user.rol === 'Gerente' ? 'Los Gerentes solo pueden ver el Dashboard.' : 'Los Colaboradores no tienen acceso al módulo de Finanzas.'}</p>
+            <p style={{ color: '#6B6458' }}>Los Colaboradores no tienen acceso al módulo de Finanzas.</p>
             <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>Ir al Dashboard</button>
           </div>
         )}
 
-        {currentView === 'finanzas' && user.rol !== 'Gerente' && user.rol !== 'Responsable' && (
+        {currentView === 'finanzas' && user.rol !== 'Responsable' && (
           <div>
             {/* BOTÓN IMPORTAR (SOLO ADMIN) */}
             {user?.rol === 'Administrador' && (
@@ -2493,7 +2481,7 @@ const App = () => {
                     <thead style={{ backgroundColor: '#F8F6F1' }}>
                       <tr style={{ borderBottom: '2px solid #C4A747' }}>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
+                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta</th>
@@ -2509,7 +2497,7 @@ const App = () => {
                       {gastosUsuario.filter(g => g.tipo === 'Gasto').map(g => (
                         <tr key={g.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.fecha}</td>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === g.responsableNombre)?.foto} nombre={g.responsableNombre} size={22} />{g.responsableNombre}</div></td>}
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === g.responsableNombre)?.foto} nombre={g.responsableNombre} size={22} />{g.responsableNombre}</div></td>}
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><EmpresaLogo empresa={g.empresa} height={16} />{g.empresa}</div></td>
                           <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.ceco}</td>
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.cuenta}</td>
@@ -2567,7 +2555,7 @@ const App = () => {
                     <thead style={{ backgroundColor: '#F8F6F1' }}>
                       <tr style={{ borderBottom: '2px solid #C4A747' }}>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
+                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta Salida</th>
                         <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>→</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta Destino</th>
@@ -2581,7 +2569,7 @@ const App = () => {
                       {gastosUsuario.filter(g => g.tipo === 'Traslado').map(g => (
                         <tr key={g.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.fecha}</td>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === g.responsableNombre)?.foto} nombre={g.responsableNombre} size={22} />{g.responsableNombre}</div></td>}
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === g.responsableNombre)?.foto} nombre={g.responsableNombre} size={22} />{g.responsableNombre}</div></td>}
                           <td style={{ padding: '0.75rem', color: '#2F9E52', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.cuentaSalida}</td>
                           <td style={{ padding: '0.75rem', color: '#C4A747', textAlign: 'center', fontWeight: 'bold' }}>→</td>
                           <td style={{ padding: '0.75rem', color: '#CC4B4B', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.cuentaDestino}</td>
@@ -2624,7 +2612,7 @@ const App = () => {
                     <thead style={{ backgroundColor: '#F8F6F1' }}>
                       <tr style={{ borderBottom: '2px solid #C4A747' }}>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
+                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Detalle</th>
@@ -2638,7 +2626,7 @@ const App = () => {
                       {ingresosUsuario.map(i => (
                         <tr key={i.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{i.fecha}</td>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === i.responsableNombre)?.foto} nombre={i.responsableNombre} size={22} />{i.responsableNombre}</div></td>}
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === i.responsableNombre)?.foto} nombre={i.responsableNombre} size={22} />{i.responsableNombre}</div></td>}
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><EmpresaLogo empresa={i.empresa} height={16} />{i.empresa}</div></td>
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{i.cuenta}</td>
                           <td style={{ padding: '0.75rem', color: '#6B6458' }}>{i.detalle}</td>
@@ -2668,7 +2656,7 @@ const App = () => {
           </div>
         )}
 
-        {currentView === 'presupuesto' && (user.rol === 'Gerente' || user.rol === 'Responsable') && (
+        {currentView === 'presupuesto' && user.rol === 'Responsable' && (
           <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', textAlign: 'center', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
             <h2 style={{ color: '#C4A747' }}>📅 Presupuesto</h2>
             <p style={{ color: '#6B6458' }}>No tienes acceso a este módulo.</p>
@@ -2676,7 +2664,7 @@ const App = () => {
           </div>
         )}
 
-        {currentView === 'presupuesto' && user.rol !== 'Gerente' && user.rol !== 'Responsable' && (() => {
+        {currentView === 'presupuesto' && user.rol !== 'Responsable' && (() => {
           const puedeEditarPresupuesto = user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa';
           const inputStyle = { padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' };
           const cardStyle = { backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '8px', padding: '1.25rem' };
@@ -2944,7 +2932,7 @@ const App = () => {
           );
         })()}
 
-        {currentView === 'cuentasCobro' && user.rol !== 'Gerente' && (
+        {currentView === 'cuentasCobro' && (
           <div>
             <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
               <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nueva Cuenta de Cobro</h2>
@@ -2995,7 +2983,7 @@ const App = () => {
                     <tr style={{ borderBottom: '2px solid #C4A747' }}>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Número</th>
-                      {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
+                      {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
                       <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th>
                       <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
@@ -3007,7 +2995,7 @@ const App = () => {
                       <tr key={c.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{c.fecha}</td>
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{c.numero}</td>
-                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === c.responsableNombre)?.foto} nombre={c.responsableNombre} size={22} />{c.responsableNombre}</div></td>}
+                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === c.responsableNombre)?.foto} nombre={c.responsableNombre} size={22} />{c.responsableNombre}</div></td>}
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><EmpresaLogo empresa={c.empresa} height={16} />{c.empresa}</div></td>
                         <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(c.monto, c.empresa)}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
@@ -3042,14 +3030,6 @@ const App = () => {
                 )}
               </div>
             </div>
-          </div>
-        )}
-
-        {currentView === 'cuentasCobro' && user.rol === 'Gerente' && (
-          <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', textAlign: 'center', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-            <p style={{ color: '#CC4B4B', fontSize: '1.1rem', fontWeight: 'bold' }}>🔒 Acceso Restringido</p>
-            <p style={{ color: '#6B6458' }}>Los Gerentes solo pueden ver el Dashboard.</p>
-            <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>Ir al Dashboard</button>
           </div>
         )}
 
