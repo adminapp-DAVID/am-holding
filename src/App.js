@@ -95,13 +95,17 @@ const App = () => {
     { id: 10, nombre: 'Nestor Ovidio', email: 'nestor@amholding.com', password: 'pass123', empresa: 'ARKO' }
   ];
 
-  const usuariosAdmin = [
+  // Semilla de personal administrativo — antes era una lista fija en el código (no se podían crear cuentas
+  // de Administrador/Contadora/Coordinadora/Gerente desde la interfaz). Ahora vive en localStorage y es editable
+  // desde el módulo Colaboradores, igual que los Colaboradores/Responsables.
+  const usuariosAdminSeed = [
     { id: 999, nombre: 'Admin', email: 'admin@amholding.com', password: 'admin123', rol: 'Administrador' },
     { id: 998, nombre: 'Contadora', email: 'contadora@amholding.com', password: 'pass123', rol: 'Contadora' },
     { id: 997, nombre: 'Gerente - Operaciones', email: 'gerente.ops@amholding.com', password: 'pass123', rol: 'Gerente' },
     { id: 996, nombre: 'Gerente - Finanzas', email: 'gerente.fin@amholding.com', password: 'pass123', rol: 'Gerente' },
     { id: 995, nombre: 'Caren Paola Garzón Márquez', email: 'caren@amholding.com', password: 'pass123', rol: 'Coordinadora Administrativa' }
   ];
+  const rolesSensibles = ['Administrador', 'Contadora', 'Coordinadora Administrativa'];
 
   const empresas = ['AM SPORTS GROUP SAS', 'PRO INVESTMENTS GLOBAL SAS', 'PRONOVA CAPITAL SAS', 'FOR SEVEN MEDIA SAS', 'ARKO'];
   const estadosSolicitud = ['Pendiente', 'Aprobado', 'Pagado', 'Legalizado'];
@@ -181,6 +185,8 @@ const App = () => {
   const [currentView, setCurrentView] = useState('dashboard');
   const [solicitudes, setSolicitudes] = useState(() => JSON.parse(localStorage.getItem('amSolicitudes') || '[]'));
   const [responsables, setResponsables] = useState(() => JSON.parse(localStorage.getItem('amResponsables') || JSON.stringify(responsablesData)));
+  const [usuariosAdmin, setUsuariosAdmin] = useState(() => JSON.parse(localStorage.getItem('amUsuariosAdmin') || JSON.stringify(usuariosAdminSeed)));
+  const [editingResponsableOrigen, setEditingResponsableOrigen] = useState('responsables'); // 'responsables' | 'admin' — de qué lista viene el registro que se está editando
   const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', valorAnticipoOriginal: '', detalle: '', empresa: 'AM SPORTS GROUP SAS', documentos: [] });
   const [generandoPDF, setGenerandoPDF] = useState(null);
   const [editingResponsableId, setEditingResponsableId] = useState(null);
@@ -675,59 +681,114 @@ const App = () => {
   // RESPONSABLES CRUD
   // COLABORADORES / TALENTO HUMANO — un solo formulario sirve tanto para crear como para editar
   // (editingResponsableId indica si se está editando un colaborador existente o creando uno nuevo).
+  // El perfil/rol elegido decide en qué lista queda el usuario: Colaborador -> responsables (rol Responsable
+  // implícito); cualquier otro perfil -> usuariosAdmin, con su rol explícito. Solo el Administrador puede
+  // asignar los perfiles sensibles (Administrador/Contadora/Coordinadora Administrativa) — se valida también
+  // aquí, no solo ocultando la opción en el desplegable, por si acaso.
   const handleSaveResponsable = () => {
     if (!newResponsable.nombre || !newResponsable.email) {
       alert('Nombre y email son obligatorios');
       return;
     }
 
-    const existeEmail = responsables.some(r => r.email === newResponsable.email && r.id !== editingResponsableId) ||
-                         usuariosAdmin.some(u => u.email === newResponsable.email);
+    if (rolesSensibles.includes(newUserType) && user?.rol !== 'Administrador') {
+      alert('Solo el Administrador puede asignar este perfil');
+      return;
+    }
+
+    const existeEmail = responsables.some(r => r.email === newResponsable.email && !(editingResponsableOrigen === 'responsables' && r.id === editingResponsableId)) ||
+                         usuariosAdmin.some(u => u.email === newResponsable.email && !(editingResponsableOrigen === 'admin' && u.id === editingResponsableId));
     if (existeEmail) {
       alert('Ese email ya está en uso por otro usuario');
       return;
     }
 
-    if (newUserType === 'Gerente' && !editingResponsableId) {
-      // Los Gerentes viven en usuariosAdmin, que es una lista estática en este prototipo (no persiste en localStorage).
-      alert('⚠️ Gerente agregado (requiere reiniciar la app). En producción se guardaría en base de datos.');
-      setNewResponsable(responsableVacio);
-      return;
-    }
+    const esColaborador = newUserType === 'Colaborador';
 
-    if (editingResponsableId) {
+    if (editingResponsableId && editingResponsableOrigen === 'responsables' && esColaborador) {
       const updated = responsables.map(r => r.id === editingResponsableId ? { ...r, ...newResponsable } : r);
       setResponsables(updated);
       localStorage.setItem('amResponsables', JSON.stringify(updated));
       alert('✅ Colaborador actualizado');
-    } else {
+    } else if (editingResponsableId && editingResponsableOrigen === 'admin' && !esColaborador) {
+      const updated = usuariosAdmin.map(u => u.id === editingResponsableId ? { ...u, ...newResponsable, rol: newUserType } : u);
+      setUsuariosAdmin(updated);
+      localStorage.setItem('amUsuariosAdmin', JSON.stringify(updated));
+      alert('✅ Usuario actualizado');
+    } else if (editingResponsableId) {
+      // Cambió de perfil (ej. de Colaborador a Gerente): se borra del origen y se crea en el destino.
+      if (editingResponsableOrigen === 'responsables') {
+        const updatedResponsables = responsables.filter(r => r.id !== editingResponsableId);
+        setResponsables(updatedResponsables);
+        localStorage.setItem('amResponsables', JSON.stringify(updatedResponsables));
+        const nuevo = { id: Math.max(...usuariosAdmin.map(u => u.id || 0), 0) + 1, ...newResponsable, rol: newUserType };
+        const updatedAdmin = [...usuariosAdmin, nuevo];
+        setUsuariosAdmin(updatedAdmin);
+        localStorage.setItem('amUsuariosAdmin', JSON.stringify(updatedAdmin));
+      } else {
+        const updatedAdmin = usuariosAdmin.filter(u => u.id !== editingResponsableId);
+        setUsuariosAdmin(updatedAdmin);
+        localStorage.setItem('amUsuariosAdmin', JSON.stringify(updatedAdmin));
+        const nuevo = { id: Math.max(...responsables.map(r => r.id || 0), 0) + 1, ...newResponsable };
+        const updatedResponsables = [...responsables, nuevo];
+        setResponsables(updatedResponsables);
+        localStorage.setItem('amResponsables', JSON.stringify(updatedResponsables));
+      }
+      alert('✅ Usuario actualizado (cambió de perfil)');
+    } else if (esColaborador) {
       const responsableNuevo = { id: Math.max(...responsables.map(r => r.id || 0), 0) + 1, ...newResponsable };
       const updated = [...responsables, responsableNuevo];
       setResponsables(updated);
       localStorage.setItem('amResponsables', JSON.stringify(updated));
       alert('✅ Colaborador agregado');
+    } else {
+      const usuarioNuevo = { id: Math.max(...usuariosAdmin.map(u => u.id || 0), 0) + 1, ...newResponsable, rol: newUserType };
+      const updated = [...usuariosAdmin, usuarioNuevo];
+      setUsuariosAdmin(updated);
+      localStorage.setItem('amUsuariosAdmin', JSON.stringify(updated));
+      alert(`✅ ${newUserType} agregado`);
     }
 
     setEditingResponsableId(null);
+    setEditingResponsableOrigen('responsables');
     setNewResponsable(responsableVacio);
   };
 
-  const handleOpenEditResponsable = (r) => {
-    setNewUserType('Colaborador');
+  const handleOpenEditResponsable = (r, origen) => {
+    if (origen === 'admin' && rolesSensibles.includes(r.rol) && user?.rol !== 'Administrador') {
+      alert('Solo el Administrador puede editar este usuario');
+      return;
+    }
+    setNewUserType(origen === 'admin' ? r.rol : 'Colaborador');
     setEditingResponsableId(r.id);
+    setEditingResponsableOrigen(origen);
     setNewResponsable({ ...responsableVacio, ...r });
   };
 
   const handleCancelEditResponsable = () => {
     setEditingResponsableId(null);
+    setEditingResponsableOrigen('responsables');
     setNewResponsable(responsableVacio);
   };
 
-  const handleDeleteResponsable = (id) => {
-    if (window.confirm('¿Eliminar colaborador? (Las solicitudes y gastos ya registrados se mantienen)')) {
-      const updated = responsables.filter(r => r.id !== id);
-      setResponsables(updated);
-      localStorage.setItem('amResponsables', JSON.stringify(updated));
+  const handleDeleteResponsable = (id, origen) => {
+    if (origen === 'admin') {
+      const target = usuariosAdmin.find(u => u.id === id);
+      if (target && rolesSensibles.includes(target.rol) && user?.rol !== 'Administrador') {
+        alert('Solo el Administrador puede eliminar este usuario');
+        return;
+      }
+    }
+    if (window.confirm('¿Eliminar usuario? (Las solicitudes y gastos ya registrados se mantienen)')) {
+      if (origen === 'admin') {
+        const updated = usuariosAdmin.filter(u => u.id !== id);
+        setUsuariosAdmin(updated);
+        localStorage.setItem('amUsuariosAdmin', JSON.stringify(updated));
+      } else {
+        const updated = responsables.filter(r => r.id !== id);
+        setResponsables(updated);
+        localStorage.setItem('amResponsables', JSON.stringify(updated));
+      }
       if (editingResponsableId === id) handleCancelEditResponsable();
     }
   };
@@ -1767,6 +1828,12 @@ const App = () => {
             </div>
           ) : null;
 
+          const listaUsuarios = [
+            ...responsables.map(r => ({ ...r, rol: 'Colaborador', origen: 'responsables' })),
+            ...usuariosAdmin.map(u => ({ ...u, origen: 'admin' }))
+          ];
+          const rolIcono = { 'Colaborador': '👥', 'Gerente': '📈', 'Coordinadora Administrativa': '🗂️', 'Contadora': '🧮', 'Administrador': '🔑' };
+
           return (
             <div>
               {/* CUMPLEAÑOS DEL MES */}
@@ -1786,16 +1853,26 @@ const App = () => {
 
               {/* FORMULARIO CREAR / EDITAR */}
               <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>{editingResponsableId ? '✏️ Editar Colaborador' : '➕ Crear Nuevo Usuario'}</h2>
+                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>{editingResponsableId ? '✏️ Editar Usuario' : '➕ Crear Nuevo Usuario'}</h2>
 
                 <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Acceso al sistema</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
                   <div>
-                    <label style={labelStyle}>Tipo de Usuario</label>
+                    <label style={labelStyle}>Rol / Perfil</label>
                     <select value={newUserType} onChange={(e) => setNewUserType(e.target.value)} disabled={!!editingResponsableId} style={inputStyle}>
                       <option value="Colaborador">👥 Colaborador</option>
                       <option value="Gerente">📈 Gerente</option>
+                      {user?.rol === 'Administrador' && (
+                        <>
+                          <option value="Coordinadora Administrativa">🗂️ Coordinadora Administrativa</option>
+                          <option value="Contadora">🧮 Contadora</option>
+                          <option value="Administrador">🔑 Administrador</option>
+                        </>
+                      )}
                     </select>
+                    {rolesSensibles.includes(newUserType) && user?.rol !== 'Administrador' && (
+                      <div style={{ color: '#CC4B4B', fontSize: '0.75rem', marginTop: '0.3rem' }}>Solo el Administrador puede asignar este perfil</div>
+                    )}
                   </div>
                   <div>
                     <label style={labelStyle}>Nombre Completo</label>
@@ -1809,7 +1886,7 @@ const App = () => {
                     <label style={labelStyle}>Contraseña</label>
                     <input type="password" placeholder="Contraseña" value={newResponsable.password} onChange={(e) => setNewResponsable({...newResponsable, password: e.target.value})} style={inputStyle} />
                   </div>
-                  {newUserType === 'Colaborador' && (
+                  {(newUserType === 'Colaborador' || newUserType === 'Gerente') && (
                     <div>
                       <label style={labelStyle}>Empresa</label>
                       <select value={newResponsable.empresa} onChange={(e) => setNewResponsable({...newResponsable, empresa: e.target.value})} style={inputStyle}>
@@ -1909,14 +1986,15 @@ const App = () => {
                 </div>
               </div>
 
-              {/* TABLA DE COLABORADORES */}
+              {/* TABLA DE USUARIOS */}
               <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>👥 Colaboradores ({responsables.length})</h2>
+                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>👥 Usuarios ({listaUsuarios.length})</h2>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                     <thead style={{ backgroundColor: '#F8F6F1' }}>
                       <tr style={{ borderBottom: '2px solid #C4A747' }}>
-                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>
+                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Usuario</th>
+                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Rol</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cargo</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
                         <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Teléfono</th>
@@ -1928,11 +2006,13 @@ const App = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {responsables.map(r => {
-                        const solicitudesColaborador = solicitudes.filter(s => s.responsableId === r.id).length;
+                      {listaUsuarios.map(r => {
+                        const solicitudesColaborador = solicitudes.filter(s => s.responsableId === r.id && r.origen === 'responsables').length;
                         const numDocs = (r.documentoCedula ? 1 : 0) + (r.documentoPasaporte ? 1 : 0);
+                        const esSensible = rolesSensibles.includes(r.rol);
+                        const puedeGestionar = !esSensible || user?.rol === 'Administrador';
                         return (
-                          <tr key={r.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                          <tr key={`${r.origen}-${r.id}`} style={{ borderBottom: '1px solid #E6E0D2' }}>
                             <td style={{ padding: '0.75rem', color: '#221E15' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                                 <ColaboradorAvatar foto={r.foto} nombre={r.nombre} size={32} />
@@ -1942,18 +2022,25 @@ const App = () => {
                                 </div>
                               </div>
                             </td>
+                            <td style={{ padding: '0.75rem', color: '#6B6458' }}>{rolIcono[r.rol] || ''} {r.rol}</td>
                             <td style={{ padding: '0.75rem', color: '#6B6458' }}>{r.cargo || '-'}</td>
-                            <td style={{ padding: '0.75rem', color: '#C4A747' }}>{r.empresa}</td>
+                            <td style={{ padding: '0.75rem', color: '#C4A747' }}>{r.empresa || '-'}</td>
                             <td style={{ padding: '0.75rem', color: '#6B6458' }}>{r.telefono || '-'}</td>
                             <td style={{ padding: '0.75rem', color: '#6B6458' }}>{r.cedula || '-'}</td>
                             <td style={{ padding: '0.75rem', textAlign: 'center', color: '#6B6458', fontSize: '0.8rem' }}>{r.fechaNacimiento ? `${r.fechaNacimiento.substring(8,10)}/${r.fechaNacimiento.substring(5,7)}` : '-'}</td>
                             <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                               {numDocs > 0 ? <span style={{ color: '#2F9E52' }}>📎 {numDocs}</span> : <span style={{ color: '#AFA897' }}>—</span>}
                             </td>
-                            <td style={{ padding: '0.75rem', textAlign: 'center', color: '#2F9E52', fontWeight: 'bold' }}>{solicitudesColaborador}</td>
+                            <td style={{ padding: '0.75rem', textAlign: 'center', color: '#2F9E52', fontWeight: 'bold' }}>{r.origen === 'responsables' ? solicitudesColaborador : '-'}</td>
                             <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                              <button onClick={() => handleOpenEditResponsable(r)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.5rem' }}>✏️</button>
-                              <button onClick={() => handleDeleteResponsable(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
+                              {puedeGestionar ? (
+                                <>
+                                  <button onClick={() => handleOpenEditResponsable(r, r.origen)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.5rem' }}>✏️</button>
+                                  <button onClick={() => handleDeleteResponsable(r.id, r.origen)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
+                                </>
+                              ) : (
+                                <span style={{ color: '#AFA897', fontSize: '0.8rem' }}>🔒</span>
+                              )}
                             </td>
                           </tr>
                         );
