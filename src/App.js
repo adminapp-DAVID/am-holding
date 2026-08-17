@@ -8,13 +8,15 @@ import logoAmHolding from './assets/logos/logo-am-holding.png';
 import logoNoss from './assets/logos/logo-noss.png';
 import logoProGlobal from './assets/logos/logo-pro-global.png';
 import logoForSeven from './assets/logos/logo-for-seven.png';
+import logoPronova from './assets/logos/logo-pronova.png';
 
-// Logo por empresa. Para sumar PRONOVA CAPITAL SAS o ARKO, sube el PNG a src/assets/logos/,
+// Logo por empresa. Para sumar ARKO, sube el archivo a src/assets/logos/,
 // agrega su import arriba y una línea aquí con el nombre exacto de la empresa.
 const EMPRESA_LOGOS = {
   'AM SPORTS GROUP SAS': logoNoss,
   'PRO INVESTMENTS GLOBAL SAS': logoProGlobal,
   'FOR SEVEN MEDIA SAS': logoForSeven,
+  'PRONOVA CAPITAL SAS': logoPronova,
 };
 
 const EmpresaLogo = ({ empresa, height = 20, style = {} }) => {
