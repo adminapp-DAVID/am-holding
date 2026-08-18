@@ -86,28 +86,6 @@ const App = () => {
   const formatMoney = (valor, empresa) => formatMoneyByMoneda(valor, getMoneda(empresa));
 
   // Data - DEBE ir primero
-  const responsablesData = [
-    { id: 1, nombre: 'Cristian Alejandro Giraldo Carvajal', email: 'cristian@amholding.com', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' },
-    { id: 2, nombre: 'David Dario Andrade Hernández', email: 'david@amholding.com', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' },
-    { id: 3, nombre: 'José David Martínez', email: 'jose@amholding.com', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' },
-    { id: 4, nombre: 'Luis Rodrigo Rivas Arboleda', email: 'luis@amholding.com', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' },
-    { id: 5, nombre: 'Cristian Camilo Tabares Arango', email: 'tabares@amholding.com', password: 'pass123', empresa: 'AM SPORTS GROUP SAS' },
-    { id: 6, nombre: 'Sergio Alejandro Mejía Valencia', email: 'sergio@amholding.com', password: 'pass123', empresa: 'PRO INVESTMENTS GLOBAL SAS' },
-    { id: 8, nombre: 'Andrei Martinez Orjuela', email: 'andrei@amholding.com', password: 'pass123', empresa: 'PRONOVA CAPITAL SAS' },
-    { id: 9, nombre: 'Daniel Santiago Tarquino', email: 'daniel@amholding.com', password: 'pass123', empresa: 'FOR SEVEN MEDIA SAS' },
-    { id: 10, nombre: 'Nestor Ovidio', email: 'nestor@amholding.com', password: 'pass123', empresa: 'ARKO' }
-  ];
-
-  // Semilla de personal administrativo — antes era una lista fija en el código (no se podían crear cuentas
-  // de Administrador/Contadora/Coordinadora/Gerente desde la interfaz). Ahora vive en localStorage y es editable
-  // desde el módulo Colaboradores, igual que los Colaboradores/Responsables.
-  const usuariosAdminSeed = [
-    { id: 999, nombre: 'Admin', email: 'admin@amholding.com', password: 'admin123', rol: 'Administrador' },
-    { id: 998, nombre: 'Contadora', email: 'contadora@amholding.com', password: 'pass123', rol: 'Contadora' },
-    { id: 997, nombre: 'Gerente - Operaciones', email: 'gerente.ops@amholding.com', password: 'pass123', rol: 'Gerente' },
-    { id: 996, nombre: 'Gerente - Finanzas', email: 'gerente.fin@amholding.com', password: 'pass123', rol: 'Gerente' },
-    { id: 995, nombre: 'Caren Paola Garzón Márquez', email: 'caren@amholding.com', password: 'pass123', rol: 'Coordinadora Administrativa' }
-  ];
   const rolesSensibles = ['Administrador', 'Contadora', 'Coordinadora Administrativa'];
 
   const empresas = ['AM SPORTS GROUP SAS', 'PRO INVESTMENTS GLOBAL SAS', 'PRONOVA CAPITAL SAS', 'FOR SEVEN MEDIA SAS', 'ARKO'];
@@ -188,13 +166,19 @@ const App = () => {
   const [loggingIn, setLoggingIn] = useState(false);
   const [currentView, setCurrentView] = useState('dashboard');
   const [solicitudes, setSolicitudes] = useState(() => JSON.parse(localStorage.getItem('amSolicitudes') || '[]'));
-  const [responsables, setResponsables] = useState(() => JSON.parse(localStorage.getItem('amResponsables') || JSON.stringify(responsablesData)));
-  const [usuariosAdmin, setUsuariosAdmin] = useState(() => JSON.parse(localStorage.getItem('amUsuariosAdmin') || JSON.stringify(usuariosAdminSeed)));
+  // Usuarios — ya no vive en localStorage: se trae de la tabla public.usuarios de Supabase
+  // (cargarUsuarios/usuarioDBToLocal más abajo). responsables/usuariosAdmin son vistas
+  // derivadas de esa misma lista según el rol real, para no tener que tocar el resto del
+  // código que ya las usa (dropdowns, cumpleaños, ranking del dashboard, etc.).
+  const [usuariosDB, setUsuariosDB] = useState([]);
+  const [cargandoUsuarios, setCargandoUsuarios] = useState(true);
+  const responsables = usuariosDB.filter(u => u.rol === 'Responsable');
+  const usuariosAdmin = usuariosDB.filter(u => u.rol !== 'Responsable');
   const [editingResponsableOrigen, setEditingResponsableOrigen] = useState('responsables'); // 'responsables' | 'admin' — de qué lista viene el registro que se está editando
   const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', valorAnticipoOriginal: '', detalle: '', empresa: 'AM SPORTS GROUP SAS', documentos: [] });
   const [generandoPDF, setGenerandoPDF] = useState(null);
   const [editingResponsableId, setEditingResponsableId] = useState(null);
-  const responsableVacio = { nombre: '', email: '', password: 'pass123', empresa: 'AM SPORTS GROUP SAS', foto: '', cedula: '', telefono: '', fechaNacimiento: '', cargo: '', fechaIngreso: '', tipoVinculacion: '', contactoEmergenciaNombre: '', contactoEmergenciaTelefono: '', eps: '', arl: '', documentoCedula: null, documentoPasaporte: null };
+  const responsableVacio = { nombre: '', email: '', empresa: 'AM SPORTS GROUP SAS', foto: '', cedula: '', telefono: '', fechaNacimiento: '', cargo: '', fechaIngreso: '', tipoVinculacion: '', contactoEmergenciaNombre: '', contactoEmergenciaTelefono: '', eps: '', arl: '', documentoCedula: null, documentoPasaporte: null };
   const [newResponsable, setNewResponsable] = useState(responsableVacio);
   const [newUserType, setNewUserType] = useState('Colaborador');
   const [cuentasDeCobro, setCuentasDeCobro] = useState(() => JSON.parse(localStorage.getItem('amCuentasDeCobro') || '[]'));
@@ -397,6 +381,60 @@ const App = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Convierte una fila de public.usuarios (snake_case, empresa_id) al mismo formato
+  // camelCase que usaba el resto de la app cuando los datos vivían en localStorage.
+  // foto/documentoCedula/documentoPasaporte: por ahora foto sí se guarda (cabe bien como
+  // texto), pero los documentos (PDF de cédula/pasaporte) quedan pendientes de la Fase de
+  // Archivos — ya existen las columnas *_path (pensadas para Storage), pero mientras no
+  // conectemos los buckets, esos dos campos se muestran vacíos aquí.
+  const usuarioDBToLocal = (row) => ({
+    id: row.id,
+    nombre: row.nombre,
+    email: row.email,
+    rol: row.rol,
+    empresa: row.empresas?.nombre || '',
+    cargo: row.cargo || '',
+    foto: row.foto_url || '',
+    cedula: row.cedula || '',
+    telefono: row.telefono || '',
+    fechaNacimiento: row.fecha_nacimiento || '',
+    fechaIngreso: row.fecha_ingreso || '',
+    tipoVinculacion: row.tipo_vinculacion || '',
+    contactoEmergenciaNombre: row.contacto_emergencia_nombre || '',
+    contactoEmergenciaTelefono: row.contacto_emergencia_telefono || '',
+    eps: row.eps || '',
+    arl: row.arl || '',
+    documentoCedula: null,
+    documentoPasaporte: null
+  });
+
+  const cargarUsuarios = async () => {
+    setCargandoUsuarios(true);
+    const { data, error } = await supabase
+      .from('usuarios')
+      .select('id, nombre, email, rol, cargo, foto_url, cedula, telefono, fecha_nacimiento, fecha_ingreso, tipo_vinculacion, contacto_emergencia_nombre, contacto_emergencia_telefono, eps, arl, empresas ( nombre )')
+      .order('nombre');
+
+    if (error) {
+      console.error('Error cargando usuarios:', error);
+      setCargandoUsuarios(false);
+      return;
+    }
+
+    setUsuariosDB(data.map(usuarioDBToLocal));
+    setCargandoUsuarios(false);
+  };
+
+  // Trae el listado de usuarios apenas hay sesión activa (login o restauración de sesión).
+  useEffect(() => {
+    if (user) {
+      cargarUsuarios();
+    } else {
+      setUsuariosDB([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // Upload a Drive — ahora sube el PDF único de soportes consolidado, en vez de un archivo por documento
   const handleUploadArchivesToDrive = async (solicitud) => {
@@ -759,77 +797,74 @@ const App = () => {
     }
   };
 
-  // RESPONSABLES CRUD
-  // COLABORADORES / TALENTO HUMANO — un solo formulario sirve tanto para crear como para editar
-  // (editingResponsableId indica si se está editando un colaborador existente o creando uno nuevo).
-  // El perfil/rol elegido decide en qué lista queda el usuario: Colaborador -> responsables (rol Responsable
-  // implícito); cualquier otro perfil -> usuariosAdmin, con su rol explícito. Solo el Administrador puede
-  // asignar los perfiles sensibles (Administrador/Contadora/Coordinadora Administrativa) — se valida también
-  // aquí, no solo ocultando la opción en el desplegable, por si acaso.
-  const handleSaveResponsable = () => {
+  // USUARIOS CRUD (conectado a Supabase — tabla public.usuarios)
+  // COLABORADORES / TALENTO HUMANO — este formulario ya SOLO EDITA personas que ya
+  // tienen cuenta de acceso (creada a mano en Supabase → Authentication, como hasta
+  // ahora). Crear una persona nueva sigue siendo un paso manual fuera de la app
+  // (decisión del usuario): primero su cuenta en Authentication, luego vincularla
+  // con un pequeño INSERT en usuarios — la app no crea cuentas de Authentication
+  // porque eso requiere una llave que nunca debe vivir en el navegador.
+  // El rol no se puede cambiar desde acá (el <select> queda deshabilitado mientras
+  // se edita) para no complicar a qué "vista" (responsables/usuariosAdmin) pertenece.
+  const handleSaveResponsable = async () => {
+    if (!editingResponsableId) return;
+
     if (!newResponsable.nombre || !newResponsable.email) {
       alert('Nombre y email son obligatorios');
       return;
     }
 
     if (rolesSensibles.includes(newUserType) && user?.rol !== 'Administrador') {
-      alert('Solo el Administrador puede asignar este perfil');
+      alert('Solo el Administrador puede editar este perfil');
       return;
     }
 
-    const existeEmail = responsables.some(r => r.email === newResponsable.email && !(editingResponsableOrigen === 'responsables' && r.id === editingResponsableId)) ||
-                         usuariosAdmin.some(u => u.email === newResponsable.email && !(editingResponsableOrigen === 'admin' && u.id === editingResponsableId));
+    const existeEmail = usuariosDB.some(u => u.email === newResponsable.email && u.id !== editingResponsableId);
     if (existeEmail) {
       alert('Ese email ya está en uso por otro usuario');
       return;
     }
 
-    const esColaborador = newUserType === 'Colaborador';
-
-    if (editingResponsableId && editingResponsableOrigen === 'responsables' && esColaborador) {
-      const updated = responsables.map(r => r.id === editingResponsableId ? { ...r, ...newResponsable } : r);
-      setResponsables(updated);
-      localStorage.setItem('amResponsables', JSON.stringify(updated));
-      alert('✅ Colaborador actualizado');
-    } else if (editingResponsableId && editingResponsableOrigen === 'admin' && !esColaborador) {
-      const updated = usuariosAdmin.map(u => u.id === editingResponsableId ? { ...u, ...newResponsable, rol: newUserType } : u);
-      setUsuariosAdmin(updated);
-      localStorage.setItem('amUsuariosAdmin', JSON.stringify(updated));
-      alert('✅ Usuario actualizado');
-    } else if (editingResponsableId) {
-      // Cambió de perfil (ej. de Colaborador a Gerente): se borra del origen y se crea en el destino.
-      if (editingResponsableOrigen === 'responsables') {
-        const updatedResponsables = responsables.filter(r => r.id !== editingResponsableId);
-        setResponsables(updatedResponsables);
-        localStorage.setItem('amResponsables', JSON.stringify(updatedResponsables));
-        const nuevo = { id: Math.max(...usuariosAdmin.map(u => u.id || 0), 0) + 1, ...newResponsable, rol: newUserType };
-        const updatedAdmin = [...usuariosAdmin, nuevo];
-        setUsuariosAdmin(updatedAdmin);
-        localStorage.setItem('amUsuariosAdmin', JSON.stringify(updatedAdmin));
-      } else {
-        const updatedAdmin = usuariosAdmin.filter(u => u.id !== editingResponsableId);
-        setUsuariosAdmin(updatedAdmin);
-        localStorage.setItem('amUsuariosAdmin', JSON.stringify(updatedAdmin));
-        const nuevo = { id: Math.max(...responsables.map(r => r.id || 0), 0) + 1, ...newResponsable };
-        const updatedResponsables = [...responsables, nuevo];
-        setResponsables(updatedResponsables);
-        localStorage.setItem('amResponsables', JSON.stringify(updatedResponsables));
+    let empresaId = null;
+    if (newResponsable.empresa) {
+      const { data: empresaRow, error: empresaError } = await supabase
+        .from('empresas')
+        .select('id')
+        .eq('nombre', newResponsable.empresa)
+        .single();
+      if (empresaError) {
+        console.error('Error buscando empresa:', empresaError);
       }
-      alert('✅ Usuario actualizado (cambió de perfil)');
-    } else if (esColaborador) {
-      const responsableNuevo = { id: Math.max(...responsables.map(r => r.id || 0), 0) + 1, ...newResponsable };
-      const updated = [...responsables, responsableNuevo];
-      setResponsables(updated);
-      localStorage.setItem('amResponsables', JSON.stringify(updated));
-      alert('✅ Colaborador agregado');
-    } else {
-      const usuarioNuevo = { id: Math.max(...usuariosAdmin.map(u => u.id || 0), 0) + 1, ...newResponsable, rol: newUserType };
-      const updated = [...usuariosAdmin, usuarioNuevo];
-      setUsuariosAdmin(updated);
-      localStorage.setItem('amUsuariosAdmin', JSON.stringify(updated));
-      alert(`✅ ${newUserType} agregado`);
+      empresaId = empresaRow?.id || null;
     }
 
+    const { error } = await supabase
+      .from('usuarios')
+      .update({
+        nombre: newResponsable.nombre,
+        cargo: newResponsable.cargo || null,
+        empresa_id: empresaId,
+        foto_url: newResponsable.foto || null,
+        cedula: newResponsable.cedula || null,
+        telefono: newResponsable.telefono || null,
+        fecha_nacimiento: newResponsable.fechaNacimiento || null,
+        fecha_ingreso: newResponsable.fechaIngreso || null,
+        tipo_vinculacion: newResponsable.tipoVinculacion || null,
+        contacto_emergencia_nombre: newResponsable.contactoEmergenciaNombre || null,
+        contacto_emergencia_telefono: newResponsable.contactoEmergenciaTelefono || null,
+        eps: newResponsable.eps || null,
+        arl: newResponsable.arl || null
+      })
+      .eq('id', editingResponsableId);
+
+    if (error) {
+      console.error('Error guardando usuario:', error);
+      alert('❌ No se pudo guardar: ' + error.message);
+      return;
+    }
+
+    alert('✅ Usuario actualizado');
+    await cargarUsuarios();
     setEditingResponsableId(null);
     setEditingResponsableOrigen('responsables');
     setNewResponsable(responsableVacio);
@@ -852,7 +887,7 @@ const App = () => {
     setNewResponsable(responsableVacio);
   };
 
-  const handleDeleteResponsable = (id, origen) => {
+  const handleDeleteResponsable = async (id, origen) => {
     if (origen === 'admin') {
       const target = usuariosAdmin.find(u => u.id === id);
       if (target && rolesSensibles.includes(target.rol) && user?.rol !== 'Administrador') {
@@ -860,18 +895,19 @@ const App = () => {
         return;
       }
     }
-    if (window.confirm('¿Eliminar usuario? (Las solicitudes y gastos ya registrados se mantienen)')) {
-      if (origen === 'admin') {
-        const updated = usuariosAdmin.filter(u => u.id !== id);
-        setUsuariosAdmin(updated);
-        localStorage.setItem('amUsuariosAdmin', JSON.stringify(updated));
-      } else {
-        const updated = responsables.filter(r => r.id !== id);
-        setResponsables(updated);
-        localStorage.setItem('amResponsables', JSON.stringify(updated));
-      }
-      if (editingResponsableId === id) handleCancelEditResponsable();
+    if (!window.confirm('¿Eliminar usuario? Su cuenta de acceso (Authentication) NO se borra, pero al quedar sin perfil ya no podrá entrar al sistema. Las solicitudes y gastos ya registrados se mantienen.')) {
+      return;
     }
+
+    const { error } = await supabase.from('usuarios').delete().eq('id', id);
+    if (error) {
+      console.error('Error eliminando usuario:', error);
+      alert('❌ No se pudo eliminar: ' + error.message);
+      return;
+    }
+
+    await cargarUsuarios();
+    if (editingResponsableId === id) handleCancelEditResponsable();
   };
 
   // Foto de perfil y documentos (cédula/pasaporte) del colaborador — un solo archivo cada uno, igual patrón que los soportes.
@@ -1895,28 +1931,36 @@ const App = () => {
                 </div>
               )}
 
-              {/* FORMULARIO CREAR / EDITAR */}
+              {/* Sin nadie en edición: instrucciones para sumar una persona nueva (sigue siendo manual, por decisión) */}
+              {!editingResponsableId && (
+                <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
+                  <h2 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>➕ Agregar una persona nueva</h2>
+                  <p style={{ color: '#6B6458', margin: '0 0 0.75rem 0', fontSize: '0.9rem' }}>Por ahora esto se hace en 2 pasos fuera de la app (así quedó decidido, para no manejar llaves sensibles desde el navegador):</p>
+                  <ol style={{ color: '#6B6458', fontSize: '0.9rem', margin: 0, paddingLeft: '1.2rem' }}>
+                    <li style={{ marginBottom: '0.4rem' }}>Crea su cuenta en Supabase → <strong>Authentication → Users</strong> (con "Auto Confirm User" marcado), igual que hiciste con las cuentas actuales.</li>
+                    <li>Pide el pequeño SQL para vincularla a <code>usuarios</code> con su nombre, rol y empresa — o edítalo tú mismo siguiendo el patrón de <code>vincular_usuarios_reales.sql</code>.</li>
+                  </ol>
+                  <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '0.75rem 0 0 0' }}>Para editar a alguien que ya tiene cuenta, usa el ✏️ en la tabla de abajo.</p>
+                </div>
+              )}
+
+              {/* FORMULARIO EDITAR */}
+              {editingResponsableId && (
               <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>{editingResponsableId ? '✏️ Editar Usuario' : '➕ Crear Nuevo Usuario'}</h2>
+                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>✏️ Editar Usuario</h2>
 
                 <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Acceso al sistema</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
                   <div>
                     <label style={labelStyle}>Rol / Perfil</label>
-                    <select value={newUserType} onChange={(e) => setNewUserType(e.target.value)} disabled={!!editingResponsableId} style={inputStyle}>
+                    <select value={newUserType} onChange={(e) => setNewUserType(e.target.value)} disabled style={inputStyle}>
                       <option value="Colaborador">👥 Colaborador</option>
                       <option value="Gerente">📈 Gerente</option>
-                      {user?.rol === 'Administrador' && (
-                        <>
-                          <option value="Coordinadora Administrativa">🗂️ Coordinadora Administrativa</option>
-                          <option value="Contadora">🧮 Contadora</option>
-                          <option value="Administrador">🔑 Administrador</option>
-                        </>
-                      )}
+                      <option value="Coordinadora Administrativa">🗂️ Coordinadora Administrativa</option>
+                      <option value="Contadora">🧮 Contadora</option>
+                      <option value="Administrador">🔑 Administrador</option>
                     </select>
-                    {rolesSensibles.includes(newUserType) && user?.rol !== 'Administrador' && (
-                      <div style={{ color: '#CC4B4B', fontSize: '0.75rem', marginTop: '0.3rem' }}>Solo el Administrador puede asignar este perfil</div>
-                    )}
+                    <div style={{ color: '#8F8877', fontSize: '0.75rem', marginTop: '0.3rem' }}>El rol no se cambia desde aquí — avísame si alguien necesita otro perfil.</div>
                   </div>
                   <div>
                     <label style={labelStyle}>Nombre Completo</label>
@@ -1924,11 +1968,8 @@ const App = () => {
                   </div>
                   <div>
                     <label style={labelStyle}>Email</label>
-                    <input type="email" placeholder="Email" value={newResponsable.email} onChange={(e) => setNewResponsable({...newResponsable, email: e.target.value})} style={inputStyle} />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Contraseña</label>
-                    <input type="password" placeholder="Contraseña" value={newResponsable.password} onChange={(e) => setNewResponsable({...newResponsable, password: e.target.value})} style={inputStyle} />
+                    <input type="email" placeholder="Email" value={newResponsable.email} disabled style={{ ...inputStyle, backgroundColor: '#EFEBE0', color: '#8F8877' }} />
+                    <div style={{ color: '#8F8877', fontSize: '0.75rem', marginTop: '0.3rem' }}>Es el email de acceso — se cambia desde Authentication en Supabase, aquí es solo informativo.</div>
                   </div>
                   {(newUserType === 'Colaborador' || newUserType === 'Gerente') && (
                     <div>
@@ -2005,34 +2046,23 @@ const App = () => {
                     </div>
 
                     <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Documentos</h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-                      <div>
-                        <label style={labelStyle}>Cédula (PDF)</label>
-                        <input type="file" accept="application/pdf,image/*" onChange={(e) => handleColaboradorDocumento(e, 'documentoCedula')} style={{ fontSize: '0.8rem' }} />
-                        {archivoBadge(newResponsable.documentoCedula, 'documentoCedula')}
-                      </div>
-                      <div>
-                        <label style={labelStyle}>Pasaporte (PDF)</label>
-                        <input type="file" accept="application/pdf,image/*" onChange={(e) => handleColaboradorDocumento(e, 'documentoPasaporte')} style={{ fontSize: '0.8rem' }} />
-                        {archivoBadge(newResponsable.documentoPasaporte, 'documentoPasaporte')}
-                      </div>
-                    </div>
+                    <p style={{ color: '#8F8877', fontSize: '0.85rem', margin: '0 0 1rem 0' }}>📎 La carga de cédula/pasaporte se conecta en la próxima fase (Archivos) — por ahora no se guarda desde aquí.</p>
                   </>
                 )}
 
                 <div style={{ display: 'flex', gap: '1rem' }}>
                   <button onClick={handleSaveResponsable} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
-                    {editingResponsableId ? 'Guardar Cambios' : `Crear ${newUserType}`}
+                    Guardar Cambios
                   </button>
-                  {editingResponsableId && (
-                    <button onClick={handleCancelEditResponsable} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Cancelar</button>
-                  )}
+                  <button onClick={handleCancelEditResponsable} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Cancelar</button>
                 </div>
               </div>
+              )}
 
               {/* TABLA DE USUARIOS */}
               <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
                 <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>👥 Usuarios ({listaUsuarios.length})</h2>
+                {cargandoUsuarios && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando usuarios...</p>}
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                     <thead style={{ backgroundColor: '#F8F6F1' }}>
