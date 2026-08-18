@@ -9,6 +9,7 @@ import logoNoss from './assets/logos/logo-noss.png';
 import logoProGlobal from './assets/logos/logo-pro-global.png';
 import logoForSeven from './assets/logos/logo-for-seven.png';
 import logoPronova from './assets/logos/logo-pronova.png';
+import { supabase } from './supabaseClient';
 
 // Logo por empresa. Para sumar ARKO, sube el archivo a src/assets/logos/,
 // agrega su import arriba y una línea aquí con el nombre exacto de la empresa.
@@ -182,8 +183,9 @@ const App = () => {
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loginMode, setLoginMode] = useState('responsable');
-  const [selectedProfile, setSelectedProfile] = useState(null);
+  const [authChecking, setAuthChecking] = useState(true); // true mientras se revisa si ya hay una sesión activa de Supabase
+  const [loginError, setLoginError] = useState('');
+  const [loggingIn, setLoggingIn] = useState(false);
   const [currentView, setCurrentView] = useState('dashboard');
   const [solicitudes, setSolicitudes] = useState(() => JSON.parse(localStorage.getItem('amSolicitudes') || '[]'));
   const [responsables, setResponsables] = useState(() => JSON.parse(localStorage.getItem('amResponsables') || JSON.stringify(responsablesData)));
@@ -295,29 +297,106 @@ const App = () => {
     };
   };
 
-  // Funciones Login
-  const handleLogin = () => {
-    // Buscar primero en usuariosAdmin (admin, contadora, coordinadora, gerentes)
-    // para que un email duplicado por error en Colaboradores nunca le quite el rol administrativo
-    const found = usuariosAdmin.find(u => u.email === email && u.password === password);
-    if (found) {
-      setUser(found);
-      setEmail('');
-      setPassword('');
-      return;
+  // Funciones Login (Supabase Auth)
+
+  // Trae el perfil de public.usuarios (rol, empresa, datos de Talento Humano)
+  // para el usuario de Authentication ya logueado, y arma el objeto `user`
+  // que el resto de la app espera.
+  const cargarPerfilUsuario = async (authUser) => {
+    const { data: perfil, error } = await supabase
+      .from('usuarios')
+      .select('id, nombre, email, rol, cargo, foto_url, cedula, telefono, empresas ( nombre )')
+      .eq('auth_user_id', authUser.id)
+      .single();
+
+    if (error || !perfil) {
+      console.warn('No se encontró perfil en usuarios para', authUser.email, error);
+      return null;
     }
 
-    // Buscar en responsables (colaboradores)
-    const foundResponsable = responsables.find(u => u.email === email && u.password === password);
-    if (foundResponsable) {
-      setUser({ ...foundResponsable, rol: 'Responsable' });
-      setEmail('');
-      setPassword('');
-      return;
-    }
-
-    alert('Email o contraseña incorrecto');
+    return {
+      id: perfil.id,
+      nombre: perfil.nombre,
+      email: perfil.email,
+      rol: perfil.rol,
+      empresa: perfil.empresas?.nombre || '',
+      cargo: perfil.cargo || '',
+      foto: perfil.foto_url || '',
+      cedula: perfil.cedula || '',
+      telefono: perfil.telefono || ''
+    };
   };
+
+  const handleLogin = async () => {
+    if (!email || !password) {
+      setLoginError('Ingresa tu email y contraseña');
+      return;
+    }
+    setLoginError('');
+    setLoggingIn(true);
+    try {
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      if (authError || !authData?.user) {
+        setLoginError('Email o contraseña incorrecto');
+        return;
+      }
+
+      const perfil = await cargarPerfilUsuario(authData.user);
+      if (!perfil) {
+        setLoginError('Tu cuenta no tiene un perfil asignado en el sistema todavía. Contacta al administrador.');
+        await supabase.auth.signOut();
+        return;
+      }
+
+      setUser(perfil);
+      setEmail('');
+      setPassword('');
+    } catch (err) {
+      console.error('Error de login:', err);
+      setLoginError('Hubo un error al iniciar sesión. Intenta de nuevo.');
+    } finally {
+      setLoggingIn(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
+
+  // Al cargar la app: revisa si ya hay una sesión activa (evita tener que
+  // loguearse otra vez al refrescar la página) y escucha cambios de sesión.
+  useEffect(() => {
+    let activo = true;
+
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        const perfil = await cargarPerfilUsuario(session.user);
+        if (activo) {
+          setUser(perfil);
+          setAuthChecking(false);
+        }
+      } else if (activo) {
+        setAuthChecking(false);
+      }
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!activo) return;
+      if (session?.user) {
+        const perfil = await cargarPerfilUsuario(session.user);
+        setUser(perfil);
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => {
+      activo = false;
+      listener?.subscription?.unsubscribe();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Upload a Drive — ahora sube el PDF único de soportes consolidado, en vez de un archivo por documento
   const handleUploadArchivesToDrive = async (solicitud) => {
@@ -1418,6 +1497,16 @@ const App = () => {
     });
   };
 
+  // Mientras se revisa si ya hay una sesión de Supabase activa, no mostramos
+  // ni el login ni la app (evita el parpadeo del formulario de login).
+  if (authChecking) {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: '#F8F6F1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <img src={logoAmHolding} alt="AM HOLDING" style={{ height: '64px', width: 'auto', objectFit: 'contain', opacity: 0.6 }} />
+      </div>
+    );
+  }
+
   // LOGIN
   if (!user) {
     return (
@@ -1426,47 +1515,12 @@ const App = () => {
           <img src={logoAmHolding} alt="AM HOLDING" style={{ height: '64px', width: 'auto', maxWidth: '100%', objectFit: 'contain' }} />
           <p style={{ color: '#6B6458', margin: '1.25rem 0 2rem 0' }}>Gestión Financiera/Contable</p>
 
-          <div style={{ marginBottom: '2rem' }}>
-            <label style={{ display: 'block', color: '#6B6458', fontSize: '0.9rem', marginBottom: '0.75rem', fontWeight: 'bold' }}>Seleccionar Perfil</label>
-            <select 
-              value={selectedProfile || ''} 
-              onChange={(e) => {
-                const profile = e.target.value;
-                setSelectedProfile(profile);
-                if (profile) {
-                  const allUsers = [...responsablesData, ...usuariosAdmin];
-                  const user = allUsers.find(u => u.email === profile);
-                  if (user) setEmail(user.email);
-                }
-              }}
-              style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '1rem', boxSizing: 'border-box', borderRadius: '4px', cursor: 'pointer' }}
-            >
-              <option value="">-- Elige un perfil --</option>
-              
-              <optgroup label="👥 COLABORADORES">
-                {responsablesData.map(r => (
-                  <option key={r.id} value={r.email}>{r.nombre}</option>
-                ))}
-              </optgroup>
-              
-              <optgroup label="📊 OPERATIVO">
-                {usuariosAdmin.filter(u => ['Coordinadora Administrativa', 'Contadora', 'Administrador'].includes(u.rol)).map(u => (
-                  <option key={u.id} value={u.email}>{u.nombre} ({u.rol})</option>
-                ))}
-              </optgroup>
-              
-              <optgroup label="📈 GERENTES">
-                {usuariosAdmin.filter(u => u.rol === 'Gerente').map(u => (
-                  <option key={u.id} value={u.email}>{u.nombre}</option>
-                ))}
-              </optgroup>
-            </select>
-            <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: 0 }}>Selecciona tu usuario para auto-llenar el email</p>
-          </div>
-
           <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '1rem', boxSizing: 'border-box', borderRadius: '4px' }} />
-          <input type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleLogin()} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '2rem', boxSizing: 'border-box', borderRadius: '4px' }} />
-          <button onClick={handleLogin} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Entrar</button>
+          <input type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleLogin()} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '1rem', boxSizing: 'border-box', borderRadius: '4px' }} />
+          {loginError && (
+            <p style={{ color: '#CC4B4B', fontSize: '0.85rem', margin: '0 0 1rem 0' }}>{loginError}</p>
+          )}
+          <button onClick={handleLogin} disabled={loggingIn} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: loggingIn ? 'default' : 'pointer', opacity: loggingIn ? 0.7 : 1 }}>{loggingIn ? 'Entrando...' : 'Entrar'}</button>
         </div>
       </div>
     );
@@ -1478,7 +1532,7 @@ const App = () => {
       <header style={{ backgroundColor: '#FFFFFF', borderBottom: '1px solid #E6E0D2', padding: '1.5rem', boxShadow: '0 1px 3px rgba(34,30,21,0.04)', position: 'sticky', top: 0, zIndex: 100 }}>
         <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div><img src={logoAmHolding} alt="AM HOLDING" style={{ height: '32px', width: 'auto', objectFit: 'contain', display: 'block' }} /><p style={{ fontSize: '0.85rem', color: '#6B6458', margin: '0.5rem 0 0 0' }}>{user.nombre} ({user.rol})</p></div>
-          <button onClick={() => setUser(null)} style={{ backgroundColor: '#C4A747', color: '#221E15', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 2px 6px rgba(196,167,71,0.35)' }}>Salir</button>
+          <button onClick={handleLogout} style={{ backgroundColor: '#C4A747', color: '#221E15', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 2px 6px rgba(196,167,71,0.35)' }}>Salir</button>
         </div>
       </header>
 
