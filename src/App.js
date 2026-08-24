@@ -70,6 +70,41 @@ const getPresupuestoSugerido = (empresa, ceco, responsable, detalle, items) => {
   return mejor ? mejor.id : '';
 };
 
+// DEDUCCIONES — cuánto de una deducción (préstamo u otro descuento) aplica en un mes puntual, calculado
+// siempre a partir de fechaInicio/valorCuota/saldoTotal (nunca se guarda un historial de "ya se aplicó
+// este mes"): así el valor es siempre consistente sin importar cuándo se consulte, y no hay riesgo de
+// duplicar o saltarse una cuota. mesesTranscurridos = 0 en el mes de fechaInicio (primera cuota).
+const mesesTranscurridos = (fechaInicio, anio, mes) => {
+  if (!fechaInicio) return -1;
+  const inicio = new Date(fechaInicio + 'T00:00:00');
+  return (anio - inicio.getFullYear()) * 12 + (mes - (inicio.getMonth() + 1));
+};
+
+// Cuánto se descuenta ESE mes específico. Para 'Préstamo' deja de aplicar automáticamente en cuanto el
+// saldo llega a 0 (la última cuota puede ser menor si el saldo restante es menor que la cuota fija).
+const getCuotaAplicada = (deduccion, anio, mes) => {
+  if (deduccion.activo === false) return 0;
+  const transcurridos = mesesTranscurridos(deduccion.fechaInicio, anio, mes);
+  if (transcurridos < 0) return 0;
+  const cuota = parseFloat(deduccion.valorCuota) || 0;
+  if (deduccion.tipo === 'Préstamo') {
+    const saldoAntesDeEsteMe = (parseFloat(deduccion.saldoTotal) || 0) - cuota * transcurridos;
+    if (saldoAntesDeEsteMe <= 0) return 0;
+    return Math.min(cuota, saldoAntesDeEsteMe);
+  }
+  return cuota; // 'Otro' — recurrente todos los meses mientras esté activo
+};
+
+// Saldo que le queda al préstamo DESPUÉS de aplicar la cuota de ese mes (null si no es un préstamo).
+const getSaldoPendienteEnMes = (deduccion, anio, mes) => {
+  if (deduccion.tipo !== 'Préstamo') return null;
+  const transcurridos = mesesTranscurridos(deduccion.fechaInicio, anio, mes);
+  if (transcurridos < 0) return parseFloat(deduccion.saldoTotal) || 0;
+  const cuota = parseFloat(deduccion.valorCuota) || 0;
+  const saldoDespues = (parseFloat(deduccion.saldoTotal) || 0) - cuota * (transcurridos + 1);
+  return Math.max(0, saldoDespues);
+};
+
 const App = () => {
   // MONEDA POR EMPRESA — ARKO opera en dólares, el resto de la holding en pesos colombianos
   // DEBE ir primero: se usa en cálculos que aparecen más abajo en el componente.
@@ -201,6 +236,17 @@ const App = () => {
   // PRESUPUESTO
   const [presupuestoItems, setPresupuestoItems] = useState(() => JSON.parse(localStorage.getItem('amPresupuestoItems') || JSON.stringify(presupuestoSeedData)));
   const [presupuestoAnual, setPresupuestoAnual] = useState(() => JSON.parse(localStorage.getItem('amPresupuestoAnual') || '[]'));
+  // Ajustes al valor esperado de UN mes puntual (no cambia el valor base recurrente del concepto).
+  // Cada registro: { id, presupuestoItemId, anio, mes, valor }.
+  const [presupuestoOverrides, setPresupuestoOverrides] = useState(() => JSON.parse(localStorage.getItem('amPresupuestoOverrides') || '[]'));
+  // Deducciones (préstamos u otros descuentos) aplicadas al valor mensual de un concepto de Nómina/Prestación
+  // de Servicio. 'Préstamo' calcula su propio saldo pendiente mes a mes (sin tabla de historial, de forma
+  // determinística a partir de fechaInicio/valorCuota/saldoTotal — ver mesesTranscurridos/getCuotaAplicada
+  // más abajo); 'Otro' es un descuento recurrente fijo que se aplica todos los meses mientras esté activo.
+  const [deducciones, setDeducciones] = useState(() => JSON.parse(localStorage.getItem('amDeducciones') || '[]'));
+  const deduccionVacia = { presupuestoItemId: '', tipo: 'Préstamo', valorCuota: '', saldoTotal: '', fechaInicio: new Date().toISOString().split('T')[0], observaciones: '', activo: true };
+  const [newDeduccion, setNewDeduccion] = useState(deduccionVacia);
+  const [editingDeduccionId, setEditingDeduccionId] = useState(null);
   const [newPresupuestoItem, setNewPresupuestoItem] = useState({ empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-001-GF', nombre: '', tipo: 'Nómina', valorMensual: '', diaLimitePago: '', activo: true });
   const [newPresupuestoAnual, setNewPresupuestoAnual] = useState({ empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-001-GF', anio: new Date().getFullYear(), valorAnual: '' });
   const [presupuestoTab, setPresupuestoTab] = useState('mensual');
@@ -1167,6 +1213,90 @@ const App = () => {
     }
   };
 
+  // Ajustar el valor esperado de UN concepto para el mes que se está viendo en el filtro (sin tocar
+  // el valor base recurrente). Dejar el campo vacío quita el ajuste y vuelve a usar el valor base.
+  const handleEditarValorMes = (item) => {
+    const { anio, mes } = filtroPresupuesto;
+    const actual = getValorEsperado(item.id, anio, mes);
+    const input = window.prompt(
+      `Valor esperado de "${item.nombre}" para ${mes}/${anio}.\nDeja vacío para volver al valor base (${formatMoney(item.valorMensual, item.empresa)}).`,
+      actual
+    );
+    if (input === null) return; // canceló
+
+    const sinOverride = presupuestoOverrides.filter(o => !(o.presupuestoItemId === item.id && o.anio === anio && o.mes === mes));
+    if (input.trim() === '') {
+      setPresupuestoOverrides(sinOverride);
+      localStorage.setItem('amPresupuestoOverrides', JSON.stringify(sinOverride));
+      return;
+    }
+    const valor = parseFloat(input);
+    if (isNaN(valor) || valor <= 0) {
+      alert('Valor inválido');
+      return;
+    }
+    const updated = [...sinOverride, { id: Date.now(), presupuestoItemId: item.id, anio, mes, valor }];
+    setPresupuestoOverrides(updated);
+    localStorage.setItem('amPresupuestoOverrides', JSON.stringify(updated));
+  };
+
+  // DEDUCCIONES — CRUD. Ligadas a un concepto de presupuesto (presupuestoItemId) para calcular, en la
+  // vista Mensual, el Neto a Pagar = valor esperado del mes − deducciones activas ese mes.
+  const handleAddDeduccion = () => {
+    if (!newDeduccion.presupuestoItemId) {
+      alert('Selecciona a qué concepto (persona) aplica la deducción');
+      return;
+    }
+    if (!newDeduccion.valorCuota || parseFloat(newDeduccion.valorCuota) <= 0) {
+      alert('La cuota debe ser mayor a cero');
+      return;
+    }
+    if (newDeduccion.tipo === 'Préstamo' && (!newDeduccion.saldoTotal || parseFloat(newDeduccion.saldoTotal) <= 0)) {
+      alert('Ingresa el saldo total del préstamo');
+      return;
+    }
+
+    if (editingDeduccionId) {
+      const updated = deducciones.map(d => d.id === editingDeduccionId ? { ...d, ...newDeduccion } : d);
+      setDeducciones(updated);
+      localStorage.setItem('amDeducciones', JSON.stringify(updated));
+      alert('✅ Deducción actualizada');
+    } else {
+      const nueva = { id: Date.now(), ...newDeduccion, activo: true };
+      const updated = [...deducciones, nueva];
+      setDeducciones(updated);
+      localStorage.setItem('amDeducciones', JSON.stringify(updated));
+      alert('✅ Deducción agregada');
+    }
+    setEditingDeduccionId(null);
+    setNewDeduccion(deduccionVacia);
+  };
+
+  const handleEditDeduccion = (d) => {
+    setEditingDeduccionId(d.id);
+    setNewDeduccion({ presupuestoItemId: d.presupuestoItemId, tipo: d.tipo, valorCuota: d.valorCuota, saldoTotal: d.saldoTotal || '', fechaInicio: d.fechaInicio, observaciones: d.observaciones || '', activo: d.activo !== false });
+  };
+
+  const handleCancelEditDeduccion = () => {
+    setEditingDeduccionId(null);
+    setNewDeduccion(deduccionVacia);
+  };
+
+  const handleToggleDeduccionActivo = (id) => {
+    const updated = deducciones.map(d => d.id === id ? { ...d, activo: d.activo === false } : d);
+    setDeducciones(updated);
+    localStorage.setItem('amDeducciones', JSON.stringify(updated));
+  };
+
+  const handleDeleteDeduccion = (id) => {
+    if (window.confirm('¿Eliminar esta deducción?')) {
+      const updated = deducciones.filter(d => d.id !== id);
+      setDeducciones(updated);
+      localStorage.setItem('amDeducciones', JSON.stringify(updated));
+      if (editingDeduccionId === id) handleCancelEditDeduccion();
+    }
+  };
+
   // MANEJO DE SOPORTES (ARCHIVOS)
   const handleAddSoporte = (e) => {
     const files = Array.from(e.target.files);
@@ -1380,8 +1510,18 @@ const App = () => {
   })).filter(c => c.valor > 0);
 
   // ===== PRESUPUESTO =====
+  // Valor esperado de un concepto en un mes puntual: usa el ajuste manual de ese mes si existe
+  // (presupuestoOverrides), o si no el valor base recurrente del concepto.
+  const getValorEsperado = (presupuestoItemId, anio, mes) => {
+    const override = presupuestoOverrides.find(o => o.presupuestoItemId === presupuestoItemId && o.anio === anio && o.mes === mes);
+    if (override) return override.valor;
+    const item = presupuestoItems.find(p => p.id === presupuestoItemId);
+    return item ? (parseFloat(item.valorMensual) || 0) : 0;
+  };
+
   // Vista mensual: cada concepto recurrente activo de la empresa filtrada, cruzado contra los gastos
-  // ya registrados en Finanzas ese mes (vía presupuestoItemId) para saber qué está Pagado y qué Pendiente.
+  // ya registrados en Finanzas ese mes (vía presupuestoItemId) para saber qué está Pagado y qué Pendiente,
+  // más las deducciones (préstamos/otros descuentos) vigentes ese mes para calcular el Neto a Pagar.
   const presupuestoMensualDetalle = (() => {
     const { empresa, mes, anio } = filtroPresupuesto;
     const mesStr = `${anio}-${String(mes).padStart(2, '0')}`;
@@ -1389,8 +1529,17 @@ const App = () => {
       .filter(p => p.activo !== false && p.empresa === empresa)
       .map(item => {
         const gastoVinculado = gastos.find(g => g.presupuestoItemId === item.id && g.fecha && g.fecha.substring(0, 7) === mesStr);
+        const valorEsperado = getValorEsperado(item.id, anio, mes);
+        const ajustado = valorEsperado !== (parseFloat(item.valorMensual) || 0);
+        const deduccionesDelItem = deducciones.filter(d => d.presupuestoItemId === item.id);
+        const totalDeducciones = deduccionesDelItem.reduce((sum, d) => sum + getCuotaAplicada(d, anio, mes), 0);
         return {
           ...item,
+          valorEsperado,
+          ajustado,
+          deducciones: deduccionesDelItem.map(d => ({ ...d, cuotaAplicada: getCuotaAplicada(d, anio, mes), saldoPendiente: getSaldoPendienteEnMes(d, anio, mes) })),
+          totalDeducciones,
+          netoAPagar: valorEsperado - totalDeducciones,
           pagado: !!gastoVinculado,
           valorPagadoReal: gastoVinculado ? (parseFloat(gastoVinculado.valor) || 0) : 0,
           gastoId: gastoVinculado ? gastoVinculado.id : null
@@ -1399,12 +1548,13 @@ const App = () => {
   })();
 
   const presupuestoMensualTotales = presupuestoMensualDetalle.reduce((acc, item) => {
-    const valor = parseFloat(item.valorMensual) || 0;
-    acc.totalPresupuestado += valor;
-    if (item.pagado) { acc.totalPagado += valor; acc.itemsPagados += 1; }
-    else { acc.totalPendiente += valor; acc.itemsPendientes += 1; }
+    acc.totalPresupuestado += item.valorEsperado;
+    acc.totalDeducciones += item.totalDeducciones;
+    acc.totalNeto += item.netoAPagar;
+    if (item.pagado) { acc.totalPagado += item.valorEsperado; acc.itemsPagados += 1; }
+    else { acc.totalPendiente += item.valorEsperado; acc.itemsPendientes += 1; }
     return acc;
-  }, { totalPresupuestado: 0, totalPagado: 0, totalPendiente: 0, itemsPagados: 0, itemsPendientes: 0 });
+  }, { totalPresupuestado: 0, totalPagado: 0, totalPendiente: 0, totalDeducciones: 0, totalNeto: 0, itemsPagados: 0, itemsPendientes: 0 });
 
   // Vista anual: ejecución acumulada del año por CECO (empresa filtrada) contra el techo anual cargado manualmente.
   const presupuestoAnualDetalle = (() => {
@@ -2785,6 +2935,7 @@ const App = () => {
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
                   <button onClick={() => setPresupuestoTab('mensual')} style={{ padding: '0.6rem 1.25rem', backgroundColor: presupuestoTab === 'mensual' ? '#C4A747' : '#E6E0D2', color: presupuestoTab === 'mensual' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>📆 Mensual: Pagado/Pendiente</button>
                   <button onClick={() => setPresupuestoTab('anual')} style={{ padding: '0.6rem 1.25rem', backgroundColor: presupuestoTab === 'anual' ? '#C4A747' : '#E6E0D2', color: presupuestoTab === 'anual' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>📊 Ejecución Anual por CECO</button>
+                  <button onClick={() => setPresupuestoTab('deducciones')} style={{ padding: '0.6rem 1.25rem', backgroundColor: presupuestoTab === 'deducciones' ? '#C4A747' : '#E6E0D2', color: presupuestoTab === 'deducciones' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>💵 Deducciones</button>
                   <button onClick={() => setPresupuestoTab('gestion')} style={{ padding: '0.6rem 1.25rem', backgroundColor: presupuestoTab === 'gestion' ? '#C4A747' : '#E6E0D2', color: presupuestoTab === 'gestion' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>⚙️ Gestión de Conceptos</button>
                 </div>
 
@@ -2809,6 +2960,13 @@ const App = () => {
                           <h3 style={{ color: '#CC4B4B', margin: 0 }}>{formatMoney(presupuestoMensualTotales.totalPendiente, filtroPresupuesto.empresa)}</h3>
                           <p style={{ color: '#6B6458', fontSize: '0.75rem', margin: '0.35rem 0 0 0' }}>{presupuestoMensualTotales.totalPresupuestado > 0 ? ((presupuestoMensualTotales.totalPendiente / presupuestoMensualTotales.totalPresupuestado) * 100).toFixed(1) : '0.0'}%</p>
                         </div>
+                        {presupuestoMensualTotales.totalDeducciones > 0 && (
+                          <div style={{ ...cardStyle, borderLeft: '4px solid #3B72D9' }}>
+                            <p style={{ color: '#6B6458', fontSize: '0.8rem', margin: '0 0 0.5rem 0' }}>Neto a Pagar</p>
+                            <h3 style={{ color: '#3B72D9', margin: 0 }}>{formatMoney(presupuestoMensualTotales.totalNeto, filtroPresupuesto.empresa)}</h3>
+                            <p style={{ color: '#6B6458', fontSize: '0.75rem', margin: '0.35rem 0 0 0' }}>−{formatMoney(presupuestoMensualTotales.totalDeducciones, filtroPresupuesto.empresa)} en deducciones</p>
+                          </div>
+                        )}
                       </div>
 
                       <div style={{ width: '100%', height: '10px', backgroundColor: '#E6E0D2', borderRadius: '6px', overflow: 'hidden', marginBottom: '1.5rem' }}>
@@ -2822,7 +2980,9 @@ const App = () => {
                               <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Concepto</th>
                               <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
                               <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
-                              <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor Mensual</th>
+                              <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor del Mes</th>
+                              <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Deducciones</th>
+                              <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Neto a Pagar</th>
                               <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Día Límite</th>
                               <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
                             </tr>
@@ -2833,7 +2993,21 @@ const App = () => {
                                 <td style={{ padding: '0.75rem', color: '#221E15' }}>{item.nombre}</td>
                                 <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{cecos.find(c => c.codigo === item.ceco)?.nombre || item.ceco}</td>
                                 <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{item.tipo}</td>
-                                <td style={{ padding: '0.75rem', textAlign: 'right', color: '#221E15' }}>{formatMoney(item.valorMensual, filtroPresupuesto.empresa)}</td>
+                                <td style={{ padding: '0.75rem', textAlign: 'right', color: '#221E15' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.4rem' }}>
+                                    {item.ajustado && <span title={`Valor base: ${formatMoney(item.valorMensual, item.empresa)}`} style={{ fontSize: '0.7rem', color: '#3B72D9' }}>✏️ ajustado</span>}
+                                    {formatMoney(item.valorEsperado, filtroPresupuesto.empresa)}
+                                    {puedeEditarPresupuesto && (
+                                      <button onClick={() => handleEditarValorMes(item)} title="Ajustar el valor de este mes" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '0.85rem' }}>✏️</button>
+                                    )}
+                                  </div>
+                                </td>
+                                <td style={{ padding: '0.75rem', textAlign: 'right', color: item.totalDeducciones > 0 ? '#CC4B4B' : '#AFA897' }}>
+                                  {item.totalDeducciones > 0 ? `−${formatMoney(item.totalDeducciones, filtroPresupuesto.empresa)}` : '—'}
+                                </td>
+                                <td style={{ padding: '0.75rem', textAlign: 'right', color: '#221E15', fontWeight: item.totalDeducciones > 0 ? 'bold' : 'normal' }}>
+                                  {formatMoney(item.netoAPagar, filtroPresupuesto.empresa)}
+                                </td>
                                 <td style={{ padding: '0.75rem', textAlign: 'center', color: '#6B6458' }}>{item.diaLimitePago || '-'}</td>
                                 <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                                   <span style={{ padding: '0.3rem 0.75rem', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold', backgroundColor: item.pagado ? 'rgba(47,158,82,0.12)' : 'rgba(204,75,75,0.12)', color: item.pagado ? '#2F9E52' : '#CC4B4B' }}>
@@ -2848,6 +3022,103 @@ const App = () => {
                     </div>
                   )
                 )}
+
+                {/* ===== TAB DEDUCCIONES ===== */}
+                {presupuestoTab === 'deducciones' && (() => {
+                  const deduccionesEmpresa = deducciones.filter(d => presupuestoItems.find(p => p.id === d.presupuestoItemId)?.empresa === filtroPresupuesto.empresa);
+                  return (
+                  <div>
+                    <h3 style={{ color: '#221E15', margin: '0 0 0.5rem 0' }}>Deducciones — Préstamos y Otros Descuentos</h3>
+                    <p style={{ color: '#6B6458', fontSize: '0.85rem', marginBottom: '1.5rem' }}>Se restan del valor del mes del concepto seleccionado y se ven reflejadas como "Neto a Pagar" en la pestaña Mensual. Un préstamo deja de descontarse automáticamente en cuanto su saldo llega a $0 — no hace falta desactivarlo a mano.</p>
+
+                    {puedeEditarPresupuesto && (
+                      <div style={{ ...cardStyle, marginBottom: '1.5rem' }}>
+                        <h4 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>{editingDeduccionId ? '✏️ Editar Deducción' : '➕ Nueva Deducción'}</h4>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                          <select value={newDeduccion.presupuestoItemId} onChange={(e) => setNewDeduccion({...newDeduccion, presupuestoItemId: e.target.value ? parseInt(e.target.value) : ''})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
+                            <option value="">-- Selecciona persona/concepto --</option>
+                            {presupuestoItems.filter(p => p.empresa === filtroPresupuesto.empresa).map(p => (
+                              <option key={p.id} value={p.id}>{p.nombre}</option>
+                            ))}
+                          </select>
+                          <select value={newDeduccion.tipo} onChange={(e) => setNewDeduccion({...newDeduccion, tipo: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
+                            <option value="Préstamo">Préstamo</option>
+                            <option value="Otro">Otro descuento (recurrente)</option>
+                          </select>
+                          <div>
+                            <label style={{ display: 'block', color: '#6B6458', fontSize: '0.75rem', marginBottom: '0.3rem' }}>Empieza a descontar desde</label>
+                            <input type="date" value={newDeduccion.fechaInicio} onChange={(e) => setNewDeduccion({...newDeduccion, fechaInicio: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
+                          </div>
+                          <input type="number" placeholder="Valor de la cuota mensual" value={newDeduccion.valorCuota} onChange={(e) => setNewDeduccion({...newDeduccion, valorCuota: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
+                          {newDeduccion.tipo === 'Préstamo' && (
+                            <input type="number" placeholder="Saldo total del préstamo" value={newDeduccion.saldoTotal} onChange={(e) => setNewDeduccion({...newDeduccion, saldoTotal: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
+                          )}
+                        </div>
+                        <input type="text" placeholder="Observaciones (opcional)" value={newDeduccion.observaciones} onChange={(e) => setNewDeduccion({...newDeduccion, observaciones: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF', width: '100%', boxSizing: 'border-box', marginBottom: '1rem' }} />
+                        <div style={{ display: 'flex', gap: '1rem' }}>
+                          <button onClick={handleAddDeduccion} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+                            {editingDeduccionId ? 'Guardar Cambios' : '+ Agregar Deducción'}
+                          </button>
+                          {editingDeduccionId && (
+                            <button onClick={handleCancelEditDeduccion} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Cancelar</button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '2px solid #E6E0D2' }}>
+                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Persona / Concepto</th>
+                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Cuota Mensual</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Saldo Total</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Saldo Pendiente ({filtroPresupuesto.mes}/{filtroPresupuesto.anio})</th>
+                            <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
+                            {puedeEditarPresupuesto && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {deduccionesEmpresa.length === 0 ? (
+                            <tr><td colSpan={puedeEditarPresupuesto ? 7 : 6} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin deducciones cargadas para {filtroPresupuesto.empresa}.</td></tr>
+                          ) : deduccionesEmpresa.map(d => {
+                            const item = presupuestoItems.find(p => p.id === d.presupuestoItemId);
+                            const saldoPendiente = getSaldoPendienteEnMes(d, filtroPresupuesto.anio, filtroPresupuesto.mes);
+                            const transcurridos = mesesTranscurridos(d.fechaInicio, filtroPresupuesto.anio, filtroPresupuesto.mes);
+                            const pagado = d.tipo === 'Préstamo' && transcurridos >= 0 && saldoPendiente === 0;
+                            return (
+                              <tr key={d.id} style={{ borderBottom: '1px solid #E6E0D2', opacity: d.activo === false ? 0.5 : 1 }}>
+                                <td style={{ padding: '0.75rem', color: '#221E15' }}>{item?.nombre || '(concepto eliminado)'}</td>
+                                <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{d.tipo}</td>
+                                <td style={{ padding: '0.75rem', textAlign: 'right', color: '#221E15' }}>{formatMoney(d.valorCuota, filtroPresupuesto.empresa)}</td>
+                                <td style={{ padding: '0.75rem', textAlign: 'right', color: '#6B6458' }}>{d.tipo === 'Préstamo' ? formatMoney(d.saldoTotal, filtroPresupuesto.empresa) : '-'}</td>
+                                <td style={{ padding: '0.75rem', textAlign: 'right', color: pagado ? '#2F9E52' : '#221E15', fontWeight: 'bold' }}>{d.tipo === 'Préstamo' ? formatMoney(saldoPendiente, filtroPresupuesto.empresa) : '-'}</td>
+                                <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                                  {d.activo === false ? (
+                                    <span style={{ color: '#AFA897', fontSize: '0.8rem' }}>Inactiva</span>
+                                  ) : pagado ? (
+                                    <span style={{ color: '#2F9E52', fontSize: '0.8rem', fontWeight: 'bold' }}>✅ Pagado</span>
+                                  ) : (
+                                    <span style={{ color: '#3B72D9', fontSize: '0.8rem', fontWeight: 'bold' }}>Activa</span>
+                                  )}
+                                </td>
+                                {puedeEditarPresupuesto && (
+                                  <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                                    <button onClick={() => handleEditDeduccion(d)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.5rem' }}>✏️</button>
+                                    <button onClick={() => handleToggleDeduccionActivo(d.id)} title={d.activo === false ? 'Reactivar' : 'Desactivar'} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#D6A419', fontSize: '1rem', marginRight: '0.5rem' }}>{d.activo === false ? '▶️' : '⏸️'}</button>
+                                    <button onClick={() => handleDeleteDeduccion(d.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  );
+                })()}
 
                 {/* ===== TAB ANUAL ===== */}
                 {presupuestoTab === 'anual' && (
