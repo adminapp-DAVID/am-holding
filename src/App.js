@@ -220,7 +220,7 @@ const App = () => {
   const [newCuentaCobro, setNewCuentaCobro] = useState({ fecha: new Date().toISOString().split('T')[0], numero: '', responsable: '', empresa: '', monto: '', concepto: '', estado: 'Pendiente' });
   const [gastos, setGastos] = useState(() => JSON.parse(localStorage.getItem('amGastos') || '[]'));
   const [ingresos, setIngresos] = useState(() => JSON.parse(localStorage.getItem('amIngresos') || '[]'));
-  const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', soportes: [], presupuestoItemId: '' });
+  const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', soportes: [], presupuestoItemId: '', aplicarDeduccion: true });
   const [newIngreso, setNewIngreso] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Ingreso', empresa: 'AM SPORTS GROUP SAS', responsable: '', detalle: '', valor: '', categoria: '', estado: 'Pagado', observaciones: '', linkSoporte: '', cuenta: '', soportes: [] });
   const [filtroFinanzas, setFiltroFinanzas] = useState({ mes: new Date().getMonth() + 1, empresa: 'Todos', tipo: 'Todos' });
   const [soportesTemp, setSoportesTemp] = useState([]);
@@ -1058,9 +1058,33 @@ const App = () => {
       ? (newGasto.presupuestoItemId || getPresupuestoSugerido(newGasto.empresa, newGasto.ceco, newGasto.responsable, newGasto.detalle, presupuestoItems))
       : '';
 
+    // Si el gasto queda vinculado a un concepto de Presupuesto con deducciones activas ese mes
+    // (préstamo u otro descuento), el valor bruto ingresado se convierte en Neto a Pagar: el
+    // "Valor" que queda guardado (y que alimenta Ejecutado/Dashboard/Presupuesto) es el neto real.
+    let valorFinal = newGasto.valor;
+    let valorBrutoFinal = null;
+    let deduccionAplicadaFinal = null;
+    if (newGasto.tipo === 'Gasto' && presupuestoItemIdFinal && newGasto.aplicarDeduccion !== false) {
+      const [anioGasto, mesGasto] = (newGasto.fecha || '').split('-').map(n => parseInt(n));
+      if (anioGasto && mesGasto) {
+        const totalDeduccion = deducciones
+          .filter(d => d.presupuestoItemId === presupuestoItemIdFinal)
+          .reduce((sum, d) => sum + getCuotaAplicada(d, anioGasto, mesGasto), 0);
+        if (totalDeduccion > 0) {
+          const bruto = parseFloat(newGasto.valor) || 0;
+          valorBrutoFinal = bruto;
+          deduccionAplicadaFinal = totalDeduccion;
+          valorFinal = Math.max(0, bruto - totalDeduccion);
+        }
+      }
+    }
+
     const nuevoGasto = {
       id: Date.now(),
       ...newGasto,
+      valor: valorFinal,
+      valorBruto: valorBrutoFinal,
+      deduccionAplicada: deduccionAplicadaFinal,
       presupuestoItemId: presupuestoItemIdFinal || null,
       soportes: soportesTemp,
       responsableNombre: responsables.find(r => r.nombre === newGasto.responsable)?.nombre || newGasto.responsable
@@ -1085,7 +1109,8 @@ const App = () => {
       cuentaSalida: '',
       cuentaDestino: '',
       soportes: [],
-      presupuestoItemId: ''
+      presupuestoItemId: '',
+      aplicarDeduccion: true
     });
     setSoportesTemp([]);
     alert('✅ Transacción agregada con soportes');
@@ -2396,6 +2421,39 @@ const App = () => {
                 );
               })()}
 
+              {/* DEDUCCIONES DETECTADAS PARA EL CONCEPTO VINCULADO (préstamos u otros descuentos) */}
+              {newGasto.tipo === 'Gasto' && newGasto.presupuestoItemId && (() => {
+                const [anioGasto, mesGasto] = (newGasto.fecha || '').split('-').map(n => parseInt(n));
+                if (!anioGasto || !mesGasto) return null;
+                const deduccionesItem = deducciones
+                  .filter(d => d.presupuestoItemId === newGasto.presupuestoItemId)
+                  .map(d => ({ ...d, cuotaAplicada: getCuotaAplicada(d, anioGasto, mesGasto) }))
+                  .filter(d => d.cuotaAplicada > 0);
+                if (!deduccionesItem.length) return null;
+                const totalDeduccion = deduccionesItem.reduce((sum, d) => sum + d.cuotaAplicada, 0);
+                const bruto = parseFloat(newGasto.valor) || 0;
+                const neto = Math.max(0, bruto - totalDeduccion);
+                return (
+                  <div style={{ backgroundColor: '#FBF3E5', border: '1px solid #C4A747', borderRadius: '4px', padding: '1rem', marginBottom: '1rem' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={newGasto.aplicarDeduccion !== false} onChange={(e) => setNewGasto({...newGasto, aplicarDeduccion: e.target.checked})} />
+                      💵 Se detectaron deducciones activas — aplicar al valor neto de este pago
+                    </label>
+                    {deduccionesItem.map(d => (
+                      <p key={d.id} style={{ margin: '0.5rem 0 0 1.6rem', fontSize: '0.8rem', color: '#6B6458' }}>
+                        {d.tipo} — {formatMoney(d.cuotaAplicada, newGasto.empresa)}{d.observaciones ? ` (${d.observaciones})` : ''}
+                      </p>
+                    ))}
+                    {newGasto.aplicarDeduccion !== false && (
+                      <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #E6E0D2', display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                        <span style={{ color: '#6B6458' }}>Bruto: {formatMoney(bruto, newGasto.empresa)} − Deducción: {formatMoney(totalDeduccion, newGasto.empresa)}</span>
+                        <span style={{ fontWeight: 'bold', color: '#221E15' }}>Neto a Pagar: {formatMoney(neto, newGasto.empresa)}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <input type="number" placeholder="Valor" value={newGasto.valor} onChange={(e) => {setNewGasto({...newGasto, valor: e.target.value}); setNewIngreso({...newIngreso, valor: e.target.value});}} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
                 <select value={newGasto.categoria} onChange={(e) => {setNewGasto({...newGasto, categoria: e.target.value}); setNewIngreso({...newIngreso, categoria: e.target.value});}} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }}>
@@ -2739,7 +2797,14 @@ const App = () => {
                           <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.ceco}</td>
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.cuenta}</td>
                           <td style={{ padding: '0.75rem', color: '#6B6458' }}>{g.detalle}</td>
-                          <td style={{ padding: '0.75rem', color: '#CC4B4B', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(g.valor, g.empresa)}</td>
+                          <td style={{ padding: '0.75rem', color: '#CC4B4B', textAlign: 'right', fontWeight: 'bold' }}>
+                            {formatMoney(g.valor, g.empresa)}
+                            {g.valorBruto != null && (
+                              <div style={{ fontSize: '0.7rem', color: '#6B6458', fontWeight: 'normal' }} title="Valor bruto antes de deducciones">
+                                Bruto {formatMoney(g.valorBruto, g.empresa)} · −{formatMoney(g.deduccionAplicada, g.empresa)}
+                              </div>
+                            )}
+                          </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                             {g.soportes && g.soportes.length > 0 ? (
                               <button onClick={() => handleViewSoportes(g.soportes)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }}>📎 {g.soportes.length}</button>
