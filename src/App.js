@@ -3284,7 +3284,7 @@ const App = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {gastosUsuario.filter(g => g.tipo === 'Gasto').map(g => (
+                      {gastosUsuario.filter(g => g.tipo === 'Gasto').sort((a, b) => new Date(b.fecha) - new Date(a.fecha) || (b.id || 0) - (a.id || 0)).map(g => (
                         <tr key={g.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.fecha}</td>
                           {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === g.responsableNombre)?.foto} nombre={g.responsableNombre} size={22} />{g.responsableNombre}</div></td>}
