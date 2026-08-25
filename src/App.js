@@ -412,7 +412,7 @@ const App = () => {
   const cargarPerfilUsuario = async (authUser) => {
     const { data: perfil, error } = await supabase
       .from('usuarios')
-      .select('id, nombre, email, rol, cargo, foto_url, cedula, telefono, empresas ( nombre )')
+      .select('id, nombre, email, rol, cargo, foto_url, cedula, telefono, funciones, banco, tipo_cuenta_bancaria, numero_cuenta, titular_cuenta, empresas ( nombre )')
       .eq('auth_user_id', authUser.id)
       .single();
 
@@ -430,7 +430,12 @@ const App = () => {
       cargo: perfil.cargo || '',
       foto: perfil.foto_url || '',
       cedula: perfil.cedula || '',
-      telefono: perfil.telefono || ''
+      telefono: perfil.telefono || '',
+      funciones: perfil.funciones || '',
+      banco: perfil.banco || '',
+      tipoCuentaBancaria: perfil.tipo_cuenta_bancaria || '',
+      numeroCuenta: perfil.numero_cuenta || '',
+      titularCuenta: perfil.titular_cuenta || ''
     };
   };
 
