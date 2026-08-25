@@ -105,6 +105,80 @@ const getSaldoPendienteEnMes = (deduccion, anio, mes) => {
   return Math.max(0, saldoDespues);
 };
 
+// CUENTAS DE COBRO — utilidades para el PDF automático (formato "Prestación de Servicios Profesionales").
+// NIT de cada empresa de la holding, para el encabezado del documento.
+// Tomados de los certificados de Cámara de Comercio de Medellín para Antioquia.
+// ⚠️ ARKO no tiene certificado cargado todavía — completar apenas se tenga.
+const NIT_EMPRESAS = {
+  'AM SPORTS GROUP SAS': '901219895-5',
+  'PRO INVESTMENTS GLOBAL SAS': '901821315-6',
+  'PRONOVA CAPITAL SAS': '901217839-3',
+  'FOR SEVEN MEDIA SAS': '901804728-2',
+  'ARKO': '(pendiente)'
+};
+
+// Razón social EXACTA de Cámara de Comercio, para imprimir en el PDF de Cuenta de Cobro.
+// Solo hace falta cuando difiere del nombre interno que usa el resto del sistema (dropdowns,
+// reportes, etc.) — por ahora únicamente FOR SEVEN MEDIA SAS está registrada como "FOR 7 MEDIA S.A.S".
+const RAZON_SOCIAL_LEGAL = {
+  'FOR SEVEN MEDIA SAS': 'FOR 7 MEDIA S.A.S'
+};
+const getRazonSocialLegal = (empresa) => RAZON_SOCIAL_LEGAL[empresa] || empresa;
+
+const MESES_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+// Convierte un entero (parte de pesos, sin decimales) a su representación en letras en español.
+// Cubre hasta 999.999.999 — más que suficiente para cualquier cuenta de cobro real.
+const numeroALetras = (numero) => {
+  const UNIDADES = ['', 'un', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve'];
+  const DIEZ_A_DIECINUEVE = ['diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciséis', 'diecisiete', 'dieciocho', 'diecinueve'];
+  const DECENAS = ['', '', 'veinte', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
+  const CENTENAS = ['', 'ciento', 'doscientos', 'trescientos', 'cuatrocientos', 'quinientos', 'seiscientos', 'setecientos', 'ochocientos', 'novecientos'];
+
+  const trescientosNoventaYNueveOMenos = (n) => {
+    if (n === 0) return '';
+    if (n < 10) return UNIDADES[n];
+    if (n < 20) return DIEZ_A_DIECINUEVE[n - 10];
+    if (n < 100) {
+      const d = Math.floor(n / 10);
+      const u = n % 10;
+      if (d === 2) return u === 0 ? 'veinte' : (u === 1 ? 'veintiún' : `veinti${UNIDADES[u]}`);
+      return u === 0 ? DECENAS[d] : `${DECENAS[d]} y ${UNIDADES[u]}`;
+    }
+    if (n === 100) return 'cien';
+    const c = Math.floor(n / 100);
+    const resto = n % 100;
+    return resto === 0 ? CENTENAS[c] : `${CENTENAS[c]} ${trescientosNoventaYNueveOMenos(resto)}`;
+  };
+
+  const bloqueDeTres = (n, singular, plural) => {
+    if (n === 0) return '';
+    if (n === 1 && singular) return singular;
+    return `${trescientosNoventaYNueveOMenos(n)} ${plural}`;
+  };
+
+  const entero = Math.floor(Math.abs(numero || 0));
+  if (entero === 0) return 'cero';
+
+  const millones = Math.floor(entero / 1000000);
+  const miles = Math.floor((entero % 1000000) / 1000);
+  const resto = entero % 1000;
+
+  const partes = [];
+  if (millones > 0) partes.push(bloqueDeTres(millones, 'un millón', 'millones'));
+  if (miles > 0) partes.push(miles === 1 ? 'mil' : `${trescientosNoventaYNueveOMenos(miles)} mil`);
+  if (resto > 0) partes.push(trescientosNoventaYNueveOMenos(resto));
+
+  return partes.join(' ').replace(/\s+/g, ' ').trim();
+};
+
+// "Un millón doscientos trece mil novecientos cinco pesos" a partir de 1213905
+const valorEnLetrasPesos = (valor) => {
+  const texto = numeroALetras(valor);
+  const capitalizado = texto.charAt(0).toUpperCase() + texto.slice(1);
+  return `${capitalizado} pesos`;
+};
+
 const App = () => {
   // MONEDA POR EMPRESA — ARKO opera en dólares, el resto de la holding en pesos colombianos
   // DEBE ir primero: se usa en cálculos que aparecen más abajo en el componente.
@@ -213,11 +287,14 @@ const App = () => {
   const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', valorAnticipoOriginal: '', detalle: '', empresa: 'AM SPORTS GROUP SAS', documentos: [] });
   const [generandoPDF, setGenerandoPDF] = useState(null);
   const [editingResponsableId, setEditingResponsableId] = useState(null);
-  const responsableVacio = { nombre: '', email: '', empresa: 'AM SPORTS GROUP SAS', foto: '', cedula: '', telefono: '', fechaNacimiento: '', cargo: '', fechaIngreso: '', tipoVinculacion: '', contactoEmergenciaNombre: '', contactoEmergenciaTelefono: '', eps: '', arl: '', documentoCedula: null, documentoPasaporte: null };
+  const responsableVacio = { nombre: '', email: '', empresa: 'AM SPORTS GROUP SAS', foto: '', cedula: '', telefono: '', fechaNacimiento: '', cargo: '', fechaIngreso: '', tipoVinculacion: '', contactoEmergenciaNombre: '', contactoEmergenciaTelefono: '', eps: '', arl: '', funciones: '', banco: '', tipoCuentaBancaria: '', numeroCuenta: '', titularCuenta: '', documentoCedula: null, documentoPasaporte: null };
   const [newResponsable, setNewResponsable] = useState(responsableVacio);
   const [newUserType, setNewUserType] = useState('Colaborador');
   const [cuentasDeCobro, setCuentasDeCobro] = useState(() => JSON.parse(localStorage.getItem('amCuentasDeCobro') || '[]'));
-  const [newCuentaCobro, setNewCuentaCobro] = useState({ fecha: new Date().toISOString().split('T')[0], numero: '', responsable: '', empresa: '', monto: '', concepto: '', estado: 'Pendiente' });
+  // Cuenta de Cobro ahora es semi-automática: el colaborador solo elige el mes que está
+  // cobrando, el valor y (si aplica) ajusta la descripción de funciones. Nombre, cédula,
+  // empresa, NIT, cargo y datos bancarios se toman de su propio perfil (Colaboradores).
+  const [newCuentaCobro, setNewCuentaCobro] = useState({ mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), ciudad: 'Medellín', monto: '', funciones: '', estado: 'Pendiente' });
   const [gastos, setGastos] = useState(() => JSON.parse(localStorage.getItem('amGastos') || '[]'));
   const [ingresos, setIngresos] = useState(() => JSON.parse(localStorage.getItem('amIngresos') || '[]'));
   const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', soportes: [], presupuestoItemId: '', aplicarDeduccion: true });
@@ -451,6 +528,11 @@ const App = () => {
     contactoEmergenciaTelefono: row.contacto_emergencia_telefono || '',
     eps: row.eps || '',
     arl: row.arl || '',
+    funciones: row.funciones || '',
+    banco: row.banco || '',
+    tipoCuentaBancaria: row.tipo_cuenta_bancaria || '',
+    numeroCuenta: row.numero_cuenta || '',
+    titularCuenta: row.titular_cuenta || '',
     documentoCedula: null,
     documentoPasaporte: null
   });
@@ -459,7 +541,7 @@ const App = () => {
     setCargandoUsuarios(true);
     const { data, error } = await supabase
       .from('usuarios')
-      .select('id, nombre, email, rol, cargo, foto_url, cedula, telefono, fecha_nacimiento, fecha_ingreso, tipo_vinculacion, contacto_emergencia_nombre, contacto_emergencia_telefono, eps, arl, empresas ( nombre )')
+      .select('id, nombre, email, rol, cargo, foto_url, cedula, telefono, fecha_nacimiento, fecha_ingreso, tipo_vinculacion, contacto_emergencia_nombre, contacto_emergencia_telefono, eps, arl, funciones, banco, tipo_cuenta_bancaria, numero_cuenta, titular_cuenta, empresas ( nombre )')
       .order('nombre');
 
     if (error) {
@@ -899,7 +981,12 @@ const App = () => {
         contacto_emergencia_nombre: newResponsable.contactoEmergenciaNombre || null,
         contacto_emergencia_telefono: newResponsable.contactoEmergenciaTelefono || null,
         eps: newResponsable.eps || null,
-        arl: newResponsable.arl || null
+        arl: newResponsable.arl || null,
+        funciones: newResponsable.funciones || null,
+        banco: newResponsable.banco || null,
+        tipo_cuenta_bancaria: newResponsable.tipoCuentaBancaria || null,
+        numero_cuenta: newResponsable.numeroCuenta || null,
+        titular_cuenta: newResponsable.titularCuenta || null
       })
       .eq('id', editingResponsableId);
 
@@ -981,37 +1068,162 @@ const App = () => {
 
   // CUENTAS DE COBRO CRUD
   const handleAddCuentaCobro = () => {
-    if (!newCuentaCobro.numero || !newCuentaCobro.responsable || !newCuentaCobro.monto) {
-      alert('Número, responsable y monto son obligatorios');
+    if (!newCuentaCobro.monto || parseFloat(newCuentaCobro.monto) <= 0) {
+      alert('Ingresa un valor mayor a cero');
+      return;
+    }
+    if (!user.cedula || !user.cargo) {
+      alert('Antes de crear tu Cuenta de Cobro, completa tu Cédula y Cargo en tu perfil (módulo Colaboradores).');
+      return;
+    }
+    const funcionesFinal = newCuentaCobro.funciones || user.funciones || '';
+    if (!funcionesFinal) {
+      alert('Falta la descripción de funciones. Complétala aquí o guárdala una vez en tu perfil (módulo Colaboradores).');
       return;
     }
 
-    if (parseFloat(newCuentaCobro.monto) <= 0) {
-      alert('El monto debe ser mayor a cero');
-      return;
-    }
+    // Consecutivo por colaborador: cuenta cuántas cuentas de cobro ya tiene esta persona.
+    const numeroConsecutivo = cuentasDeCobro.filter(c => c.responsableNombre === user.nombre).length + 1;
+    const hoy = new Date();
+    const fechaISO = hoy.toISOString().split('T')[0];
+    const vencimiento = new Date(hoy.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const monto = parseFloat(newCuentaCobro.monto) || 0;
 
     const nuevaCuenta = {
       id: Date.now(),
-      ...newCuentaCobro,
-      soportes: soportesCuentaCobroTemp,
-      responsableNombre: responsables.find(r => r.nombre === newCuentaCobro.responsable)?.nombre || newCuentaCobro.responsable
+      numero: String(numeroConsecutivo).padStart(2, '0'),
+      fecha: fechaISO,
+      vencimiento,
+      ciudad: newCuentaCobro.ciudad || 'Medellín',
+      mes: newCuentaCobro.mes,
+      anio: newCuentaCobro.anio,
+      monto,
+      funciones: funcionesFinal,
+      estado: 'Pendiente',
+      empresa: user.empresa,
+      empresaNit: NIT_EMPRESAS[user.empresa] || '(pendiente)',
+      responsableId: user.id,
+      responsableNombre: user.nombre,
+      responsableCedula: user.cedula,
+      responsableCargo: user.cargo,
+      // Snapshot de los datos bancarios al momento de crear la cuenta — si el colaborador
+      // los actualiza después en su perfil, esta cuenta ya emitida no cambia retroactivamente.
+      banco: user.banco || '',
+      tipoCuentaBancaria: user.tipoCuentaBancaria || '',
+      numeroCuenta: user.numeroCuenta || '',
+      titularCuenta: user.titularCuenta || user.nombre,
+      soportes: soportesCuentaCobroTemp
     };
 
     setCuentasDeCobro([...cuentasDeCobro, nuevaCuenta]);
     localStorage.setItem('amCuentasDeCobro', JSON.stringify([...cuentasDeCobro, nuevaCuenta]));
 
-    setNewCuentaCobro({
-      fecha: new Date().toISOString().split('T')[0],
-      numero: '',
-      responsable: '',
-      empresa: '',
-      monto: '',
-      concepto: '',
-      estado: 'Pendiente'
-    });
+    setNewCuentaCobro({ mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), ciudad: 'Medellín', monto: '', funciones: '', estado: 'Pendiente' });
     setSoportesCuentaCobroTemp([]);
-    alert('✅ Cuenta de cobro agregada');
+    handleGenerarPDFCuentaCobro(nuevaCuenta);
+    alert('✅ Cuenta de cobro creada — el PDF se descargó automáticamente (también puedes volver a descargarlo desde la tabla).');
+  };
+
+  // Genera el PDF de la Cuenta de Cobro con el formato "Prestación de Servicios Profesionales".
+  const handleGenerarPDFCuentaCobro = (c) => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margen = 15;
+    const centro = pageWidth / 2;
+
+    doc.setDrawColor(0, 0, 200);
+    doc.setLineWidth(0.8);
+    doc.rect(margen, margen, pageWidth - margen * 2, pageHeight - margen * 2);
+
+    const fechaEmision = new Date(c.fecha + 'T00:00:00');
+    const fechaVenc = new Date(c.vencimiento + 'T00:00:00');
+    const fmt = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+
+    let y = margen + 15;
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'bold');
+    doc.text(`${MESES_ES[fechaEmision.getMonth()].charAt(0).toUpperCase()}${MESES_ES[fechaEmision.getMonth()].slice(1)}, ${fechaEmision.getDate()} de ${fechaEmision.getFullYear()}`, margen + 5, y);
+
+    y += 15;
+    doc.setFontSize(14);
+    doc.text('PRESTACIÓN DE SERVICIOS PROFESIONALES', centro, y, { align: 'center' });
+
+    y += 8;
+    doc.setLineWidth(0.3);
+    doc.line(margen + 5, y, pageWidth - margen - 5, y);
+
+    y += 15;
+    doc.setFontSize(11);
+    doc.text(`Cuenta de cobro No: ${c.numero}`, centro, y, { align: 'center' });
+
+    y += 12;
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    doc.text(`Ciudad y Fecha  : ${c.ciudad}, ${fmt(fechaEmision)}`, centro - 35, y);
+    y += 8;
+    doc.text(`Vencimiento     : ${fmt(fechaVenc)}`, centro - 35, y);
+
+    y += 14;
+    doc.setFontSize(12);
+    doc.setFont(undefined, 'bold');
+    doc.text(getRazonSocialLegal(c.empresa), centro, y, { align: 'center' });
+    y += 8;
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    doc.text('NIT:', centro - 8, y, { align: 'right' });
+    doc.setFont(undefined, 'bold');
+    doc.text(c.empresaNit, centro - 4, y);
+
+    y += 12;
+    doc.setFont(undefined, 'normal');
+    doc.text('Debe a:', centro, y, { align: 'center' });
+
+    y += 10;
+    doc.setFontSize(12);
+    doc.setFont(undefined, 'bold');
+    doc.text(c.responsableNombre.toUpperCase(), centro, y, { align: 'center' });
+
+    y += 8;
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    doc.text(`C.C ${c.responsableCedula}`, centro, y, { align: 'center' });
+
+    y += 14;
+    const valorTexto = `${valorEnLetrasPesos(c.monto)} (COP$${new Intl.NumberFormat('es-CO').format(c.monto)}) por concepto de prestación de servicios profesionales como ${c.responsableCargo}, (${c.funciones}) en el mes de ${MESES_ES[c.mes - 1]} del ${c.anio}.`;
+    const parrafo = doc.splitTextToSize(`La suma de ${valorTexto}`, pageWidth - margen * 2 - 16);
+    doc.text(parrafo, margen + 8, y);
+    y += parrafo.length * 5.5 + 10;
+
+    doc.text(`Se firma en ${c.ciudad}, a los (${fechaEmision.getDate()}) días del mes de ${MESES_ES[fechaEmision.getMonth()]} de ${fechaEmision.getFullYear()}`, margen + 8, y);
+
+    if (c.banco || c.numeroCuenta) {
+      y += 14;
+      doc.setFont(undefined, 'bold');
+      doc.text('Datos para consignación:', margen + 8, y);
+      doc.setFont(undefined, 'normal');
+      y += 7;
+      doc.text(`Banco: ${c.banco || '—'}    Tipo de cuenta: ${c.tipoCuentaBancaria || '—'}    No. Cuenta: ${c.numeroCuenta || '—'}`, margen + 8, y);
+      y += 7;
+      doc.text(`Titular: ${c.titularCuenta || c.responsableNombre}`, margen + 8, y);
+    }
+
+    y += 20;
+    doc.text('Aceptada', pageWidth - margen - 45, y);
+
+    y += 22;
+    const firmaIzqX = margen + 10;
+    const firmaDerX = centro + 15;
+    doc.line(firmaIzqX, y, firmaIzqX + 60, y);
+    doc.line(firmaDerX, y, firmaDerX + 60, y);
+    y += 6;
+    doc.text(c.responsableNombre, firmaIzqX, y);
+    doc.text('Encargado', firmaDerX, y);
+    y += 6;
+    doc.text(`C.C  ${c.responsableCedula}`, firmaIzqX, y);
+    doc.text('C.C', firmaDerX, y);
+
+    doc.save(`Cuenta_de_Cobro_${c.numero}_${c.responsableNombre.replace(/\s+/g, '_')}.pdf`);
   };
 
   const handleUpdateCuentaCobro = (id, campo, valor) => {
@@ -2198,6 +2410,35 @@ const App = () => {
                           <option value="Prestación de Servicios">Prestación de Servicios</option>
                         </select>
                       </div>
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <label style={labelStyle}>Funciones (para la Cuenta de Cobro)</label>
+                        <textarea placeholder="Ej: Coordinar estrategias en el desarrollo de los proyectos deportivos asignados y prestar apoyo al área de scouting de la empresa." value={newResponsable.funciones} onChange={(e) => setNewResponsable({...newResponsable, funciones: e.target.value})} rows={2} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
+                        <p style={{ color: '#8F8877', fontSize: '0.75rem', margin: '0.35rem 0 0 0' }}>Se usa como el texto entre paréntesis del PDF de Cuenta de Cobro — se guarda una sola vez y se reutiliza cada mes.</p>
+                      </div>
+                    </div>
+
+                    <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Datos bancarios (para consignación y Cuenta de Cobro)</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                      <div>
+                        <label style={labelStyle}>Banco</label>
+                        <input type="text" placeholder="Ej: Bancolombia" value={newResponsable.banco} onChange={(e) => setNewResponsable({...newResponsable, banco: e.target.value})} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Tipo de Cuenta</label>
+                        <select value={newResponsable.tipoCuentaBancaria} onChange={(e) => setNewResponsable({...newResponsable, tipoCuentaBancaria: e.target.value})} style={inputStyle}>
+                          <option value="">Seleccionar</option>
+                          <option value="Ahorros">Ahorros</option>
+                          <option value="Corriente">Corriente</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Número de Cuenta</label>
+                        <input type="text" value={newResponsable.numeroCuenta} onChange={(e) => setNewResponsable({...newResponsable, numeroCuenta: e.target.value})} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Titular de la Cuenta</label>
+                        <input type="text" placeholder="Si es distinto al nombre del colaborador" value={newResponsable.titularCuenta} onChange={(e) => setNewResponsable({...newResponsable, titularCuenta: e.target.value})} style={inputStyle} />
+                      </div>
                     </div>
 
                     <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Contacto de emergencia y salud</h3>
@@ -3359,22 +3600,45 @@ const App = () => {
           <div>
             <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
               <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nueva Cuenta de Cobro</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                <input type="date" value={newCuentaCobro.fecha} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, fecha: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
-                <input type="text" placeholder="Número de Cuenta" value={newCuentaCobro.numero} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, numero: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
-                <select value={newCuentaCobro.responsable} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, responsable: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }}>
-                  <option value="">Colaborador</option>
-                  {responsables.map(r => <option key={r.id} value={r.nombre}>{r.nombre}</option>)}
-                </select>
-                <select value={newCuentaCobro.empresa} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, empresa: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }}>
-                  <option value="">Empresa</option>
-                  {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
-                </select>
+
+              {/* DATOS AUTOMÁTICOS DEL COLABORADOR LOGUEADO — ya no hay que elegir a quién pertenece */}
+              <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem', marginBottom: '1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
+                <div><span style={{ color: '#8F8877', fontSize: '0.75rem' }}>Colaborador</span><p style={{ margin: 0, fontWeight: 'bold', color: '#221E15' }}>{user.nombre}</p></div>
+                <div><span style={{ color: '#8F8877', fontSize: '0.75rem' }}>C.C</span><p style={{ margin: 0, fontWeight: 'bold', color: user.cedula ? '#221E15' : '#CC4B4B' }}>{user.cedula || 'Falta en tu perfil'}</p></div>
+                <div><span style={{ color: '#8F8877', fontSize: '0.75rem' }}>Empresa</span><p style={{ margin: 0, fontWeight: 'bold', color: '#221E15' }}>{user.empresa}</p></div>
+                <div><span style={{ color: '#8F8877', fontSize: '0.75rem' }}>Cargo</span><p style={{ margin: 0, fontWeight: 'bold', color: user.cargo ? '#221E15' : '#CC4B4B' }}>{user.cargo || 'Falta en tu perfil'}</p></div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <input type="number" placeholder="Monto" value={newCuentaCobro.monto} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, monto: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
-                <input type="text" placeholder="Concepto" value={newCuentaCobro.concepto} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, concepto: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
+              {(!user.cedula || !user.cargo || !user.banco || !user.numeroCuenta) && (
+                <p style={{ color: '#CC4B4B', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>⚠️ Completa tu Cédula, Cargo y Datos Bancarios en el módulo Colaboradores antes de crear tu Cuenta de Cobro.</p>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Mes que está cobrando</label>
+                  <select value={newCuentaCobro.mes} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, mes: parseInt(e.target.value)})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                    {MESES_ES.map((m, idx) => <option key={m} value={idx + 1}>{m.charAt(0).toUpperCase() + m.slice(1)}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Año</label>
+                  <input type="number" value={newCuentaCobro.anio} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, anio: parseInt(e.target.value) || newCuentaCobro.anio})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }} />
+                </div>
+                <div>
+                  <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Ciudad</label>
+                  <input type="text" value={newCuentaCobro.ciudad} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, ciudad: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }} />
+                </div>
+                <div>
+                  <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Valor</label>
+                  <input type="number" placeholder="Valor" value={newCuentaCobro.monto} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, monto: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }} />
+                </div>
               </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Funciones (texto entre paréntesis del PDF)</label>
+                <textarea value={newCuentaCobro.funciones || user.funciones || ''} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, funciones: e.target.value})} rows={2} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem', resize: 'vertical', fontFamily: 'inherit' }} />
+                {!user.funciones && <p style={{ color: '#8F8877', fontSize: '0.75rem', margin: '0.35rem 0 0 0' }}>💡 Si guardas esto en tu perfil (Colaboradores), no tendrás que escribirlo cada mes.</p>}
+              </div>
+
               {/* CARGA DE SOPORTES */}
               <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem', marginBottom: '1rem' }}>
                 <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>📎 Soportes (PDF u otros archivos)</label>
@@ -3406,6 +3670,7 @@ const App = () => {
                     <tr style={{ borderBottom: '2px solid #C4A747' }}>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Número</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Mes cobrado</th>
                       {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
                       <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th>
@@ -3418,6 +3683,7 @@ const App = () => {
                       <tr key={c.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{c.fecha}</td>
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{c.numero}</td>
+                        <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{c.mes ? `${MESES_ES[c.mes - 1]} ${c.anio}` : '—'}</td>
                         {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === c.responsableNombre)?.foto} nombre={c.responsableNombre} size={22} />{c.responsableNombre}</div></td>}
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><EmpresaLogo empresa={c.empresa} height={16} />{c.empresa}</div></td>
                         <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(c.monto, c.empresa)}</td>
@@ -3431,6 +3697,9 @@ const App = () => {
                           )}
                         </td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                          {c.responsableCedula && (
+                            <button onClick={() => handleGenerarPDFCuentaCobro(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#C4A747', fontSize: '1rem', marginRight: '0.5rem' }} title="Descargar PDF">📄</button>
+                          )}
                           {c.soportes && c.soportes.length > 0 ? (
                             <button onClick={() => handleViewSoportes(c.soportes)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }} title="Ver soportes">📎 {c.soportes.length}</button>
                           ) : (
