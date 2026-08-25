@@ -290,6 +290,17 @@ const App = () => {
   const [subiendoDocumento, setSubiendoDocumento] = useState(null); // 'documentoCedula' | 'documentoPasaporte' | null
   const responsables = usuariosDB.filter(u => u.rol === 'Responsable');
   const usuariosAdmin = usuariosDB.filter(u => u.rol !== 'Responsable');
+  // MI PERFIL — autoedición para cualquier rol. "miPerfil" se deriva de usuariosDB (que ya
+  // trae solo la propia fila para roles no admin, gracias a la política RLS "cualquiera ve su
+  // propia fila"); "miPerfilForm" es el borrador editable antes de guardar.
+  const miPerfil = usuariosDB.find(u => u.id === user?.id) || null;
+  const [miPerfilForm, setMiPerfilForm] = useState(null);
+  const [guardandoMiPerfil, setGuardandoMiPerfil] = useState(false);
+  const [subiendoMiArchivo, setSubiendoMiArchivo] = useState(null); // 'foto' | 'documentoCedula' | 'documentoPasaporte' | null
+  // Vista pública limitada (public.colaboradores_publico): nombre, foto, cargo y cumpleaños de
+  // TODOS los usuarios, para que cualquiera pueda ver el directorio/cumpleaños del mes sin
+  // exponer cédula, banco ni documentos de nadie (eso solo lo ve Admin/Coordinadora o el dueño).
+  const [colaboradoresPublico, setColaboradoresPublico] = useState([]);
   const [editingResponsableOrigen, setEditingResponsableOrigen] = useState('responsables'); // 'responsables' | 'admin' — de qué lista viene el registro que se está editando
   const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', valorAnticipoOriginal: '', detalle: '', empresa: 'AM SPORTS GROUP SAS', documentos: [] });
   const [generandoPDF, setGenerandoPDF] = useState(null);
@@ -652,17 +663,38 @@ const App = () => {
     setCargandoSolicitudes(false);
   };
 
+  // Directorio público limitado (nombre/foto/cargo/cumpleaños de TODOS) para el widget de
+  // cumpleaños del mes en Mi Perfil, visible para cualquier rol sin exponer datos sensibles.
+  const cargarColaboradoresPublico = async () => {
+    const { data, error } = await supabase.from('colaboradores_publico').select('*');
+    if (error) {
+      console.error('Error cargando colaboradores_publico:', error);
+      return;
+    }
+    setColaboradoresPublico(data || []);
+  };
+
   // Trae el listado de usuarios y de solicitudes apenas hay sesión activa (login o restauración de sesión).
   useEffect(() => {
     if (user) {
       cargarUsuarios();
       cargarSolicitudes();
+      cargarColaboradoresPublico();
     } else {
       setUsuariosDB([]);
       setSolicitudes([]);
+      setColaboradoresPublico([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+
+  // Al entrar a "Mi Perfil" se refresca el borrador con los datos más recientes guardados.
+  useEffect(() => {
+    if (currentView === 'mi-perfil' && miPerfil) {
+      setMiPerfilForm(miPerfil);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentView, miPerfil]);
 
   // Agregar documento (línea de gasto/soporte)
   const handleAddDocumento = () => {
@@ -1271,6 +1303,134 @@ const App = () => {
 
   const handleColaboradorRemoveArchivo = (campo) => {
     setNewResponsable(prev => ({ ...prev, [campo]: campo === 'foto' ? '' : null }));
+  };
+
+  // MI PERFIL — autoedición: cualquier rol edita SOLO su propia fila, nunca la de otro.
+  // A propósito NO se hace un UPDATE directo a "usuarios" aquí (esa tabla solo admite UPDATE
+  // de Administrador/Coordinadora por RLS) — en su lugar se usan las funciones RPC
+  // actualizar_mi_perfil/actualizar_mi_archivo, que ni siquiera reciben "rol" o "empresa_id"
+  // como parámetro, así que es imposible tocarlos desde aquí aunque alguien llame a la API directo.
+  const handleGuardarMiPerfil = async () => {
+    if (!miPerfilForm) return;
+    setGuardandoMiPerfil(true);
+    const { error } = await supabase.rpc('actualizar_mi_perfil', {
+      p_telefono: miPerfilForm.telefono || null,
+      p_fecha_nacimiento: miPerfilForm.fechaNacimiento || null,
+      p_cedula: miPerfilForm.cedula || null,
+      p_contacto_emergencia_nombre: miPerfilForm.contactoEmergenciaNombre || null,
+      p_contacto_emergencia_telefono: miPerfilForm.contactoEmergenciaTelefono || null,
+      p_eps: miPerfilForm.eps || null,
+      p_arl: miPerfilForm.arl || null,
+      p_funciones: miPerfilForm.funciones || null,
+      p_banco: miPerfilForm.banco || null,
+      p_tipo_cuenta_bancaria: miPerfilForm.tipoCuentaBancaria || null,
+      p_numero_cuenta: miPerfilForm.numeroCuenta || null,
+      p_titular_cuenta: miPerfilForm.titularCuenta || null
+    });
+    setGuardandoMiPerfil(false);
+    if (error) {
+      console.error('Error guardando mi perfil:', error);
+      alert('❌ No se pudo guardar: ' + error.message);
+      return;
+    }
+    await cargarUsuarios();
+    alert('✅ Perfil actualizado');
+  };
+
+  const handleMiPerfilFoto = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+
+    const extension = file.name.includes('.') ? file.name.split('.').pop() : 'jpg';
+    const ruta = `${user.id}/foto.${extension}`;
+
+    setSubiendoMiArchivo('foto');
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(ruta, file, { upsert: true });
+    if (uploadError) {
+      console.error('Error subiendo foto:', uploadError);
+      alert('❌ No se pudo subir la foto: ' + uploadError.message);
+      setSubiendoMiArchivo(null);
+      return;
+    }
+
+    // El bucket "avatars" es público, así que guardamos la URL pública directamente en
+    // foto_url (mismo campo que usa ColaboradorAvatar en todas partes de la app).
+    const { data: publicUrlData } = supabase.storage.from('avatars').getPublicUrl(ruta);
+    const { error: rpcError } = await supabase.rpc('actualizar_mi_archivo', { p_campo: 'foto_url', p_valor: publicUrlData.publicUrl });
+    setSubiendoMiArchivo(null);
+    if (rpcError) {
+      console.error('Error guardando foto:', rpcError);
+      alert('❌ La foto se subió pero no se pudo guardar: ' + rpcError.message);
+      return;
+    }
+    await cargarUsuarios();
+  };
+
+  const handleMiPerfilQuitarFoto = async () => {
+    if (!window.confirm('¿Quitar tu foto?')) return;
+    const { error } = await supabase.rpc('actualizar_mi_archivo', { p_campo: 'foto_url', p_valor: null });
+    if (error) {
+      console.error('Error quitando foto:', error);
+      alert('❌ No se pudo quitar: ' + error.message);
+      return;
+    }
+    await cargarUsuarios();
+  };
+
+  const MI_DOCUMENTO_COLUMNA = { documentoCedula: 'documento_cedula_path', documentoPasaporte: 'documento_pasaporte_path' };
+  const MI_DOCUMENTO_ETIQUETA = { documentoCedula: 'cedula', documentoPasaporte: 'pasaporte' };
+
+  const handleMiPerfilDocumento = async (e, campo) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+
+    const extension = file.name.includes('.') ? file.name.split('.').pop() : 'pdf';
+    const ruta = `${user.id}/${MI_DOCUMENTO_ETIQUETA[campo]}.${extension}`;
+
+    setSubiendoMiArchivo(campo);
+    const { error: uploadError } = await supabase.storage.from('documentos-rh').upload(ruta, file, { upsert: true });
+    if (uploadError) {
+      console.error('Error subiendo documento:', uploadError);
+      alert('❌ No se pudo subir el archivo: ' + uploadError.message);
+      setSubiendoMiArchivo(null);
+      return;
+    }
+
+    const { error: rpcError } = await supabase.rpc('actualizar_mi_archivo', { p_campo: MI_DOCUMENTO_COLUMNA[campo], p_valor: ruta });
+    setSubiendoMiArchivo(null);
+    if (rpcError) {
+      console.error('Error guardando documento:', rpcError);
+      alert('❌ El archivo se subió pero no se pudo registrar: ' + rpcError.message);
+      return;
+    }
+    await cargarUsuarios();
+  };
+
+  const handleMiPerfilVerDocumento = async (ruta) => {
+    const { data, error } = await supabase.storage.from('documentos-rh').createSignedUrl(ruta, 60);
+    if (error) {
+      console.error('Error generando link:', error);
+      alert('❌ No se pudo abrir el documento: ' + error.message);
+      return;
+    }
+    window.open(data.signedUrl, '_blank');
+  };
+
+  const handleMiPerfilEliminarDocumento = async (campo) => {
+    const ruta = miPerfil?.[campo];
+    if (!ruta) return;
+    if (!window.confirm('¿Quitar este documento?')) return;
+
+    await supabase.storage.from('documentos-rh').remove([ruta]);
+    const { error } = await supabase.rpc('actualizar_mi_archivo', { p_campo: MI_DOCUMENTO_COLUMNA[campo], p_valor: null });
+    if (error) {
+      console.error('Error quitando documento:', error);
+      alert('❌ No se pudo quitar: ' + error.message);
+      return;
+    }
+    await cargarUsuarios();
   };
 
   // CUENTAS DE COBRO CRUD
@@ -2195,6 +2355,7 @@ const App = () => {
       <nav style={{ backgroundColor: '#F8F6F1', borderBottom: '1px solid #E6E0D2', padding: '1rem 0' }}>
         <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'dashboard' ? '#C4A747' : '#E6E0D2', color: currentView === 'dashboard' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📊 Dashboard</button>
+          <button onClick={() => setCurrentView('mi-perfil')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'mi-perfil' ? '#C4A747' : '#E6E0D2', color: currentView === 'mi-perfil' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>🙋 Mi Perfil</button>
           
           <button onClick={() => setCurrentView('solicitudes')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'solicitudes' ? '#C4A747' : '#E6E0D2', color: currentView === 'solicitudes' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📋 Solicitudes</button>
           <button onClick={() => setCurrentView('cuentasCobro')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'cuentasCobro' ? '#C4A747' : '#E6E0D2', color: currentView === 'cuentasCobro' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💳 Cuentas de Cobro</button>
@@ -2348,6 +2509,158 @@ const App = () => {
             )}
           </div>
         )}
+
+        {/* MI PERFIL — visible para cualquier rol. Cada quien ve y edita SOLO su propia fila
+            (miPerfilForm viene de miPerfil, que ya está limitado por RLS/derivado de usuariosDB).
+            Nombre, Email, Rol, Empresa, Cargo, Fecha de Ingreso y Tipo de Vinculación NO son
+            editables desde acá — esos siguen siendo responsabilidad de Administrador/Coordinadora. */}
+        {currentView === 'mi-perfil' && (() => {
+          const inputStyle = { padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', width: '100%' };
+          const labelStyle = { display: 'block', color: '#C4A747', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 'bold' };
+          const readOnlyStyle = { ...inputStyle, backgroundColor: '#EFEBE0', color: '#8F8877' };
+
+          const cumpleanosEsteMesTodos = colaboradoresPublico
+            .filter(c => c.fecha_nacimiento)
+            .map(c => ({ ...c, diaCumple: parseInt(c.fecha_nacimiento.substring(8, 10), 10), mesCumple: parseInt(c.fecha_nacimiento.substring(5, 7), 10) }))
+            .filter(c => c.mesCumple === (new Date().getMonth() + 1))
+            .sort((a, b) => a.diaCumple - b.diaCumple);
+
+          if (!miPerfilForm) {
+            return <p style={{ color: '#8F8877' }}>Cargando tu perfil...</p>;
+          }
+
+          return (
+            <div>
+              {cumpleanosEsteMesTodos.length > 0 && (
+                <div style={{ backgroundColor: '#FFFFFF', padding: '1.5rem 2rem', borderRadius: '10px', border: '1px solid #E6E0D2', borderLeft: '4px solid #C4A747', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
+                  <h2 style={{ color: '#C4A747', margin: '0 0 1rem 0', fontSize: '1.1rem' }}>🎂 Cumpleaños de {nombresMeses[new Date().getMonth()]}</h2>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
+                    {cumpleanosEsteMesTodos.map(c => (
+                      <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '20px', padding: '0.5rem 1rem 0.5rem 0.5rem' }}>
+                        <ColaboradorAvatar foto={c.foto_url} nombre={c.nombre} size={28} />
+                        <span style={{ color: '#221E15', fontSize: '0.85rem' }}>{c.nombre} — día {c.diaCumple}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
+                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🙋 Mi Perfil</h2>
+
+                <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Datos de la organización</h3>
+                <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>Estos los administra Coordinadora Administrativa o Administrador — si algo está mal, avísales.</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                  <div><label style={labelStyle}>Nombre Completo</label><input type="text" value={miPerfilForm.nombre} disabled style={readOnlyStyle} /></div>
+                  <div><label style={labelStyle}>Email</label><input type="email" value={miPerfilForm.email} disabled style={readOnlyStyle} /></div>
+                  <div><label style={labelStyle}>Rol</label><input type="text" value={miPerfilForm.rol} disabled style={readOnlyStyle} /></div>
+                  <div><label style={labelStyle}>Empresa</label><input type="text" value={miPerfilForm.empresa} disabled style={readOnlyStyle} /></div>
+                  <div><label style={labelStyle}>Cargo / Puesto</label><input type="text" value={miPerfilForm.cargo} disabled style={readOnlyStyle} /></div>
+                  <div><label style={labelStyle}>Fecha de Ingreso</label><input type="text" value={miPerfilForm.fechaIngreso} disabled style={readOnlyStyle} /></div>
+                  <div><label style={labelStyle}>Tipo de Vinculación</label><input type="text" value={miPerfilForm.tipoVinculacion} disabled style={readOnlyStyle} /></div>
+                </div>
+
+                <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Datos personales</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'auto repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '2rem', alignItems: 'end' }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <label style={labelStyle}>Foto</label>
+                    <ColaboradorAvatar foto={miPerfilForm.foto} nombre={miPerfilForm.nombre} size={64} style={{ marginBottom: '0.5rem' }} />
+                    <input type="file" accept="image/*" disabled={subiendoMiArchivo === 'foto'} onChange={handleMiPerfilFoto} style={{ fontSize: '0.75rem', maxWidth: '140px' }} />
+                    {miPerfilForm.foto && <button type="button" onClick={handleMiPerfilQuitarFoto} style={{ display: 'block', margin: '0.35rem auto 0', background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '0.75rem' }}>Quitar foto</button>}
+                    {subiendoMiArchivo === 'foto' && <p style={{ color: '#8F8877', fontSize: '0.75rem', margin: '0.35rem 0 0 0' }}>Subiendo...</p>}
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Cédula</label>
+                    <input type="text" placeholder="Número de cédula" value={miPerfilForm.cedula} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, cedula: e.target.value })} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Teléfono</label>
+                    <input type="text" placeholder="Teléfono" value={miPerfilForm.telefono} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, telefono: e.target.value })} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Fecha de Nacimiento</label>
+                    <input type="date" value={miPerfilForm.fechaNacimiento} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, fechaNacimiento: e.target.value })} style={inputStyle} />
+                  </div>
+                </div>
+
+                <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Funciones</h3>
+                <div style={{ marginBottom: '2rem' }}>
+                  <label style={labelStyle}>Funciones (para la Cuenta de Cobro)</label>
+                  <textarea placeholder="Ej: Coordinar estrategias en el desarrollo de los proyectos deportivos asignados." value={miPerfilForm.funciones} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, funciones: e.target.value })} rows={2} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
+                  <p style={{ color: '#8F8877', fontSize: '0.75rem', margin: '0.35rem 0 0 0' }}>Se usa como el texto entre paréntesis del PDF de Cuenta de Cobro — se guarda una sola vez y se reutiliza cada mes.</p>
+                </div>
+
+                <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Datos bancarios (para consignación y Cuenta de Cobro)</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                  <div>
+                    <label style={labelStyle}>Banco</label>
+                    <input type="text" placeholder="Ej: Bancolombia" value={miPerfilForm.banco} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, banco: e.target.value })} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Tipo de Cuenta</label>
+                    <select value={miPerfilForm.tipoCuentaBancaria} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, tipoCuentaBancaria: e.target.value })} style={inputStyle}>
+                      <option value="">Seleccionar</option>
+                      <option value="Ahorros">Ahorros</option>
+                      <option value="Corriente">Corriente</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Número de Cuenta</label>
+                    <input type="text" value={miPerfilForm.numeroCuenta} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, numeroCuenta: e.target.value })} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Titular de la Cuenta</label>
+                    <input type="text" placeholder="Si es distinto a tu nombre" value={miPerfilForm.titularCuenta} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, titularCuenta: e.target.value })} style={inputStyle} />
+                  </div>
+                </div>
+
+                <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Contacto de emergencia y salud</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                  <div>
+                    <label style={labelStyle}>Nombre Contacto de Emergencia</label>
+                    <input type="text" value={miPerfilForm.contactoEmergenciaNombre} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, contactoEmergenciaNombre: e.target.value })} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Teléfono Contacto de Emergencia</label>
+                    <input type="text" value={miPerfilForm.contactoEmergenciaTelefono} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, contactoEmergenciaTelefono: e.target.value })} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>EPS</label>
+                    <input type="text" value={miPerfilForm.eps} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, eps: e.target.value })} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>ARL</label>
+                    <input type="text" value={miPerfilForm.arl} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, arl: e.target.value })} style={inputStyle} />
+                  </div>
+                </div>
+
+                <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Documentos</h3>
+                <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>Se guardan en un almacenamiento privado — solo tú, Administrador y Coordinadora Administrativa pueden verlos.</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                  {['documentoCedula', 'documentoPasaporte'].map(campo => (
+                    <div key={campo} style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem' }}>
+                      <label style={labelStyle}>{campo === 'documentoCedula' ? 'Cédula' : 'Pasaporte'}</label>
+                      {miPerfilForm[campo] ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          <span style={{ color: '#2F9E52', fontSize: '0.85rem' }}>📎 Archivo cargado</span>
+                          <button type="button" onClick={() => handleMiPerfilVerDocumento(miPerfilForm[campo])} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '0.8rem', textDecoration: 'underline' }}>Ver</button>
+                          <button type="button" onClick={() => handleMiPerfilEliminarDocumento(campo)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '0.8rem' }}>Quitar</button>
+                        </div>
+                      ) : (
+                        <input type="file" accept=".pdf,image/*" disabled={subiendoMiArchivo === campo} onChange={(e) => handleMiPerfilDocumento(e, campo)} style={{ fontSize: '0.75rem', width: '100%' }} />
+                      )}
+                      {subiendoMiArchivo === campo && <p style={{ color: '#8F8877', fontSize: '0.75rem', margin: '0.5rem 0 0 0' }}>Subiendo...</p>}
+                    </div>
+                  ))}
+                </div>
+
+                <button onClick={handleGuardarMiPerfil} disabled={guardandoMiPerfil} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoMiPerfil ? 'not-allowed' : 'pointer', opacity: guardandoMiPerfil ? 0.6 : 1 }}>
+                  {guardandoMiPerfil ? '⏳ Guardando...' : 'Guardar Cambios'}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
 
         {currentView === 'solicitudes' && (
           <div>
