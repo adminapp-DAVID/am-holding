@@ -281,6 +281,7 @@ const App = () => {
   // código que ya las usa (dropdowns, cumpleaños, ranking del dashboard, etc.).
   const [usuariosDB, setUsuariosDB] = useState([]);
   const [cargandoUsuarios, setCargandoUsuarios] = useState(true);
+  const [subiendoDocumento, setSubiendoDocumento] = useState(null); // 'documentoCedula' | 'documentoPasaporte' | null
   const responsables = usuariosDB.filter(u => u.rol === 'Responsable');
   const usuariosAdmin = usuariosDB.filter(u => u.rol !== 'Responsable');
   const [editingResponsableOrigen, setEditingResponsableOrigen] = useState('responsables'); // 'responsables' | 'admin' — de qué lista viene el registro que se está editando
@@ -512,10 +513,9 @@ const App = () => {
 
   // Convierte una fila de public.usuarios (snake_case, empresa_id) al mismo formato
   // camelCase que usaba el resto de la app cuando los datos vivían en localStorage.
-  // foto/documentoCedula/documentoPasaporte: por ahora foto sí se guarda (cabe bien como
-  // texto), pero los documentos (PDF de cédula/pasaporte) quedan pendientes de la Fase de
-  // Archivos — ya existen las columnas *_path (pensadas para Storage), pero mientras no
-  // conectemos los buckets, esos dos campos se muestran vacíos aquí.
+  // documentoCedula/documentoPasaporte: guardan la RUTA del archivo dentro del bucket
+  // privado "documentos-rh" (no el archivo en sí) — se resuelve a un link temporal
+  // (signed URL) solo cuando alguien le da clic a "Ver".
   const usuarioDBToLocal = (row) => ({
     id: row.id,
     nombre: row.nombre,
@@ -538,15 +538,15 @@ const App = () => {
     tipoCuentaBancaria: row.tipo_cuenta_bancaria || '',
     numeroCuenta: row.numero_cuenta || '',
     titularCuenta: row.titular_cuenta || '',
-    documentoCedula: null,
-    documentoPasaporte: null
+    documentoCedula: row.documento_cedula_path || null,
+    documentoPasaporte: row.documento_pasaporte_path || null
   });
 
   const cargarUsuarios = async () => {
     setCargandoUsuarios(true);
     const { data, error } = await supabase
       .from('usuarios')
-      .select('id, nombre, email, rol, cargo, foto_url, cedula, telefono, fecha_nacimiento, fecha_ingreso, tipo_vinculacion, contacto_emergencia_nombre, contacto_emergencia_telefono, eps, arl, funciones, banco, tipo_cuenta_bancaria, numero_cuenta, titular_cuenta, empresas ( nombre )')
+      .select('id, nombre, email, rol, cargo, foto_url, cedula, telefono, fecha_nacimiento, fecha_ingreso, tipo_vinculacion, contacto_emergencia_nombre, contacto_emergencia_telefono, eps, arl, funciones, banco, tipo_cuenta_bancaria, numero_cuenta, titular_cuenta, documento_cedula_path, documento_pasaporte_path, empresas ( nombre )')
       .order('nombre');
 
     if (error) {
@@ -1058,13 +1058,79 @@ const App = () => {
     e.target.value = '';
   };
 
-  const handleColaboradorDocumento = (e, campo) => {
+  // Documentos (Cédula/Pasaporte) — a diferencia de la foto, estos NO se guardan como texto
+  // en la fila: se suben al bucket privado "documentos-rh" (Storage) y en usuarios solo se
+  // guarda la ruta del archivo. Se sube de inmediato al elegir el archivo (no espera al botón
+  // "Guardar Cambios" general) para no perder el documento si algo más del formulario falla.
+  const DOCUMENTO_COLUMNA = { documentoCedula: 'documento_cedula_path', documentoPasaporte: 'documento_pasaporte_path' };
+  const DOCUMENTO_ETIQUETA = { documentoCedula: 'cedula', documentoPasaporte: 'pasaporte' };
+
+  const handleColaboradorDocumento = async (e, campo) => {
     const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => setNewResponsable(prev => ({ ...prev, [campo]: { nombre: file.name, tipo: file.type, data: event.target.result } }));
-    reader.readAsDataURL(file);
     e.target.value = '';
+    if (!file || !editingResponsableId) return;
+
+    const extension = file.name.includes('.') ? file.name.split('.').pop() : 'pdf';
+    const ruta = `${editingResponsableId}/${DOCUMENTO_ETIQUETA[campo]}.${extension}`;
+
+    setSubiendoDocumento(campo);
+    const { error: uploadError } = await supabase.storage
+      .from('documentos-rh')
+      .upload(ruta, file, { upsert: true });
+
+    if (uploadError) {
+      console.error('Error subiendo documento:', uploadError);
+      alert('❌ No se pudo subir el archivo: ' + uploadError.message);
+      setSubiendoDocumento(null);
+      return;
+    }
+
+    const { error: dbError } = await supabase
+      .from('usuarios')
+      .update({ [DOCUMENTO_COLUMNA[campo]]: ruta })
+      .eq('id', editingResponsableId);
+
+    setSubiendoDocumento(null);
+
+    if (dbError) {
+      console.error('Error guardando ruta del documento:', dbError);
+      alert('❌ El archivo se subió pero no se pudo vincular al usuario: ' + dbError.message);
+      return;
+    }
+
+    setNewResponsable(prev => ({ ...prev, [campo]: ruta }));
+    await cargarUsuarios();
+  };
+
+  // Abre el documento en una pestaña nueva vía signed URL (el bucket es privado — no tiene link público fijo).
+  const handleColaboradorVerDocumento = async (ruta) => {
+    const { data, error } = await supabase.storage.from('documentos-rh').createSignedUrl(ruta, 60);
+    if (error || !data?.signedUrl) {
+      alert('❌ No se pudo abrir el documento: ' + (error?.message || 'error desconocido'));
+      return;
+    }
+    window.open(data.signedUrl, '_blank');
+  };
+
+  const handleColaboradorEliminarDocumento = async (campo) => {
+    const ruta = newResponsable[campo];
+    if (!ruta || !editingResponsableId) return;
+    if (!window.confirm('¿Eliminar este documento?')) return;
+
+    await supabase.storage.from('documentos-rh').remove([ruta]);
+    const { error } = await supabase
+      .from('usuarios')
+      .update({ [DOCUMENTO_COLUMNA[campo]]: null })
+      .eq('id', editingResponsableId);
+
+    if (error) {
+      console.error('Error eliminando documento:', error);
+      alert('❌ No se pudo eliminar: ' + error.message);
+      return;
+    }
+
+    setNewResponsable(prev => ({ ...prev, [campo]: null }));
+    await cargarUsuarios();
   };
 
   const handleColaboradorRemoveArchivo = (campo) => {
@@ -2470,7 +2536,24 @@ const App = () => {
                     </div>
 
                     <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Documentos</h3>
-                    <p style={{ color: '#8F8877', fontSize: '0.85rem', margin: '0 0 1rem 0' }}>📎 La carga de cédula/pasaporte se conecta en la próxima fase (Archivos) — por ahora no se guarda desde aquí.</p>
+                    <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>Se guardan en un almacenamiento privado — solo Administrador y Coordinadora Administrativa pueden verlos o subirlos.</p>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                      {['documentoCedula', 'documentoPasaporte'].map(campo => (
+                        <div key={campo} style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem' }}>
+                          <label style={labelStyle}>{campo === 'documentoCedula' ? 'Cédula' : 'Pasaporte'}</label>
+                          {newResponsable[campo] ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                              <span style={{ color: '#2F9E52', fontSize: '0.85rem' }}>📎 Archivo cargado</span>
+                              <button type="button" onClick={() => handleColaboradorVerDocumento(newResponsable[campo])} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '0.8rem', textDecoration: 'underline' }}>Ver</button>
+                              <button type="button" onClick={() => handleColaboradorEliminarDocumento(campo)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '0.8rem' }}>Quitar</button>
+                            </div>
+                          ) : (
+                            <input type="file" accept=".pdf,image/*" disabled={subiendoDocumento === campo} onChange={(e) => handleColaboradorDocumento(e, campo)} style={{ fontSize: '0.75rem', width: '100%' }} />
+                          )}
+                          {subiendoDocumento === campo && <p style={{ color: '#8F8877', fontSize: '0.75rem', margin: '0.5rem 0 0 0' }}>Subiendo...</p>}
+                        </div>
+                      ))}
+                    </div>
                   </>
                 )}
 
