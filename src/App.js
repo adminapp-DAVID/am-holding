@@ -274,7 +274,13 @@ const App = () => {
   const [loginError, setLoginError] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
   const [currentView, setCurrentView] = useState('dashboard');
-  const [solicitudes, setSolicitudes] = useState(() => JSON.parse(localStorage.getItem('amSolicitudes') || '[]'));
+  // Solicitudes (Anticipo/Legalización/Reembolso) — conectado a Supabase (tabla public.solicitudes).
+  // Los soportes de Legalización/Reembolso se siguen uniendo en un solo PDF consolidado
+  // (mergeSoportesToPDF), pero ese PDF ya no se guarda embebido en la solicitud: se sube al
+  // bucket Storage "soportes" con su fila en la tabla public.soportes.
+  const [solicitudes, setSolicitudes] = useState([]);
+  const [cargandoSolicitudes, setCargandoSolicitudes] = useState(true);
+  const [guardandoSolicitud, setGuardandoSolicitud] = useState(false);
   // Usuarios — ya no vive en localStorage: se trae de la tabla public.usuarios de Supabase
   // (cargarUsuarios/usuarioDBToLocal más abajo). responsables/usuariosAdmin son vistas
   // derivadas de esa misma lista según el rol real, para no tener que tocar el resto del
@@ -304,7 +310,6 @@ const App = () => {
   const [soportesTemp, setSoportesTemp] = useState([]);
   const [soportesCuentaCobroTemp, setSoportesCuentaCobroTemp] = useState([]);
   const [soportesLegalizacionTemp, setSoportesLegalizacionTemp] = useState([]);
-  const [generandoSoportesPDF, setGenerandoSoportesPDF] = useState(false);
   const [verSoportes, setVerSoportes] = useState(null);
   const [mostrarImportar, setMostrarImportar] = useState(false);
   const [archivoImportacion, setArchivoImportacion] = useState(null);
@@ -330,10 +335,7 @@ const App = () => {
   const [presupuestoTab, setPresupuestoTab] = useState('mensual');
   const [filtroPresupuesto, setFiltroPresupuesto] = useState({ empresa: 'AM SPORTS GROUP SAS', mes: new Date().getMonth() + 1, anio: new Date().getFullYear() });
 
-  // URLs
-  const DRIVE_UPLOAD_URL = 'https://script.google.com/macros/s/AKfycby-voRnepppydRFrkEc4CO4dCV7Ymhac-bU63FPZrtVui71vxc2j0dC3TQphu8XhmEW5Q/exec';
-
-  // UNIR SOPORTES (PDF + imágenes) EN UN SOLO PDF — Legalizaciones y Reembolsos
+  // Convierte un dataURL (base64) leído por FileReader a bytes, para subirlo a Supabase Storage.
   const dataUrlToUint8Array = (dataUrl) => {
     const base64 = dataUrl.split(',')[1];
     const binary = atob(base64);
@@ -351,6 +353,7 @@ const App = () => {
     return `data:${mimeType};base64,${btoa(binary)}`;
   };
 
+  // Une varios soportes (PDFs + imágenes) en un solo PDF consolidado — Legalizaciones y Reembolsos.
   const mergeSoportesToPDF = async (soportes) => {
     const mergedPdf = await PDFDocument.create();
     const omitidos = [];
@@ -403,6 +406,62 @@ const App = () => {
       tipo: 'application/pdf',
       data: uint8ArrayToDataUrl(mergedBytes, 'application/pdf')
     };
+  };
+
+  // Sube UN soporte (ya leído como dataURL en memoria) al bucket privado "soportes" y
+  // registra su metadata en public.soportes. entidadTipo/entidadId identifican a qué
+  // solicitud/gasto/ingreso/cuenta de cobro pertenece (mismo patrón para las 4).
+  const subirSoporteEntidad = async (soporteTemp, entidadTipo, entidadId) => {
+    try {
+      const bytes = dataUrlToUint8Array(soporteTemp.data);
+      const blob = new Blob([bytes], { type: soporteTemp.tipo || 'application/octet-stream' });
+      const nombreLimpio = (soporteTemp.nombre || 'archivo').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const rutaArchivo = `${entidadTipo}/${entidadId}/${Date.now()}_${nombreLimpio}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('soportes')
+        .upload(rutaArchivo, blob, { contentType: soporteTemp.tipo || undefined, upsert: false });
+      if (uploadError) {
+        console.error('Error subiendo soporte a Storage:', uploadError);
+        alert(`❌ No se pudo subir el archivo "${soporteTemp.nombre}": ${uploadError.message}`);
+        return null;
+      }
+
+      const { error: metaError } = await supabase.from('soportes').insert({
+        bucket_path: rutaArchivo,
+        nombre_original: soporteTemp.nombre,
+        tamano_kb: Math.round((soporteTemp.tamaño || bytes.length) / 1024),
+        entidad_tipo: entidadTipo,
+        entidad_id: entidadId,
+        subido_por: user.id
+      });
+      if (metaError) {
+        console.error('Error guardando metadata del soporte:', metaError);
+        alert(`❌ El archivo "${soporteTemp.nombre}" se subió pero no se pudo registrar: ${metaError.message}`);
+        return null;
+      }
+      return rutaArchivo;
+    } catch (error) {
+      console.error('Error inesperado subiendo soporte:', error);
+      alert(`❌ Error inesperado subiendo "${soporteTemp.nombre}"`);
+      return null;
+    }
+  };
+
+  // Descarga un soporte guardado en Storage (bucket "soportes") como archivo local.
+  const handleDescargarSoporteStorage = async (soporte) => {
+    const { data, error } = await supabase.storage.from('soportes').download(soporte.bucketPath);
+    if (error || !data) {
+      console.error('Error descargando soporte:', error);
+      alert('❌ No se pudo descargar el archivo: ' + (error?.message || ''));
+      return;
+    }
+    const url = URL.createObjectURL(data);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = soporte.nombre;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   // Funciones Login (Supabase Auth)
@@ -559,46 +618,51 @@ const App = () => {
     setCargandoUsuarios(false);
   };
 
-  // Trae el listado de usuarios apenas hay sesión activa (login o restauración de sesión).
+  // Convierte una fila de public.solicitudes (con sus joins a empresas/usuarios) al
+  // mismo formato con el que ya trabaja toda la UI de Solicitudes.
+  const solicitudDBToLocal = (row) => ({
+    id: row.id,
+    fecha: row.fecha,
+    tipo: row.tipo,
+    valor: row.valor,
+    totalCalculado: row.total_calculado,
+    valorAnticipoOriginal: row.valor_anticipo_original || '',
+    detalle: row.detalle || '',
+    empresa: row.empresas?.nombre || '',
+    responsableId: row.responsable_id,
+    responsableNombre: row.usuarios?.nombre || '',
+    documentos: row.documentos || [],
+    estado: row.estado
+  });
+
+  const cargarSolicitudes = async () => {
+    setCargandoSolicitudes(true);
+    const { data, error } = await supabase
+      .from('solicitudes')
+      .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, detalle, estado, documentos, responsable_id, empresas ( nombre ), usuarios ( nombre )')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error cargando solicitudes:', error);
+      setCargandoSolicitudes(false);
+      return;
+    }
+
+    setSolicitudes(data.map(solicitudDBToLocal));
+    setCargandoSolicitudes(false);
+  };
+
+  // Trae el listado de usuarios y de solicitudes apenas hay sesión activa (login o restauración de sesión).
   useEffect(() => {
     if (user) {
       cargarUsuarios();
+      cargarSolicitudes();
     } else {
       setUsuariosDB([]);
+      setSolicitudes([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
-
-  // Upload a Drive — ahora sube el PDF único de soportes consolidado, en vez de un archivo por documento
-  const handleUploadArchivesToDrive = async (solicitud) => {
-    try {
-      if (!solicitud.soportePDF) return;
-
-      const payLoad = {
-        empresa: solicitud.empresa,
-        tipo: solicitud.tipo,
-        responsableNombre: solicitud.responsableNombre,
-        fecha: solicitud.fecha,
-        archivos: [{
-          nombre: solicitud.soportePDF.nombre,
-          data: solicitud.soportePDF.data.split(',')[1],
-          mimeType: solicitud.soportePDF.tipo
-        }]
-      };
-
-      const response = await fetch(DRIVE_UPLOAD_URL, {
-        method: 'POST',
-        body: JSON.stringify(payLoad)
-      });
-
-      const result = await response.json();
-      if (result.success) {
-        alert(`✅ Soportes guardados en Drive`);
-      }
-    } catch (error) {
-      console.warn('Error upload Drive:', error);
-    }
-  };
 
   // Agregar documento (línea de gasto/soporte)
   const handleAddDocumento = () => {
@@ -616,7 +680,8 @@ const App = () => {
     });
   };
 
-  // Soportes consolidados (Legalización / Reembolso) — se unen en un solo PDF al guardar
+  // Soportes consolidados (Legalización / Reembolso) — se unen en un solo PDF al guardar,
+  // y ese PDF único es el que sube al bucket "soportes" de Supabase.
   const handleAddSoporteLegalizacion = (e) => {
     const files = Array.from(e.target.files);
     files.forEach(file => {
@@ -640,7 +705,9 @@ const App = () => {
     setSoportesLegalizacionTemp(soportesLegalizacionTemp.filter(s => s.id !== id));
   };
 
-  // Guardar solicitud
+  // Guardar solicitud — inserta en public.solicitudes y luego, si hay soportes cargados,
+  // los une en un solo PDF consolidado (como antes) y sube ESE PDF único al bucket
+  // "soportes" con su fila en public.soportes (queda registrado en Supabase, no en localStorage).
   const handleAddSolicitud = async () => {
     if (!newSolicitud.tipo) {
       alert('Selecciona un tipo');
@@ -663,61 +730,89 @@ const App = () => {
     }
 
     const totalCalculado = newSolicitud.documentos.reduce((sum, doc) => sum + (parseFloat(doc.valor) || 0), 0);
+    const empresaNombre = user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa;
 
-    let soportePDF = null;
-    if ((newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso') && soportesLegalizacionTemp.length > 0) {
-      setGenerandoSoportesPDF(true);
-      try {
-        soportePDF = await mergeSoportesToPDF(soportesLegalizacionTemp);
-      } catch (error) {
-        console.error('Error uniendo soportes a PDF:', error);
-        alert('❌ Hubo un error uniendo los soportes en un solo PDF. La solicitud se guardará sin el PDF consolidado.');
+    setGuardandoSolicitud(true);
+    try {
+      let empresaId = null;
+      if (empresaNombre) {
+        const { data: empresaRow, error: empresaError } = await supabase
+          .from('empresas')
+          .select('id')
+          .eq('nombre', empresaNombre)
+          .single();
+        if (empresaError) console.error('Error buscando empresa:', empresaError);
+        empresaId = empresaRow?.id || null;
       }
-      setGenerandoSoportesPDF(false);
+
+      const { data: inserted, error } = await supabase
+        .from('solicitudes')
+        .insert({
+          fecha: newSolicitud.fecha,
+          tipo: newSolicitud.tipo,
+          valor: newSolicitud.tipo === 'Anticipo' ? (parseFloat(newSolicitud.valor) || 0) : 0,
+          total_calculado: totalCalculado,
+          detalle: newSolicitud.detalle || null,
+          empresa_id: empresaId,
+          responsable_id: user.id,
+          documentos: newSolicitud.documentos,
+          valor_anticipo_original: newSolicitud.tipo === 'Legalización' ? (parseFloat(newSolicitud.valorAnticipoOriginal) || null) : null,
+          estado: 'Pendiente'
+        })
+        .select('id')
+        .single();
+
+      if (error) {
+        console.error('Error creando solicitud:', error);
+        alert('❌ No se pudo guardar la solicitud: ' + error.message);
+        return;
+      }
+
+      // Los soportes de Legalización/Reembolso se unen en un solo PDF y ese PDF único
+      // se sube al bucket "soportes" (queda una sola fila en public.soportes por solicitud).
+      if (soportesLegalizacionTemp.length > 0) {
+        try {
+          const soportePDF = await mergeSoportesToPDF(soportesLegalizacionTemp);
+          await subirSoporteEntidad(soportePDF, 'solicitud', inserted.id);
+        } catch (mergeError) {
+          console.error('Error uniendo soportes a PDF:', mergeError);
+          alert('⚠️ La solicitud se guardó, pero hubo un error uniendo los soportes en un solo PDF.');
+        }
+      }
+
+      await cargarSolicitudes();
+
+      setNewSolicitud({
+        fecha: new Date().toISOString().split('T')[0],
+        tipo: '',
+        valor: '',
+        valorAnticipoOriginal: '',
+        detalle: '',
+        empresa: 'AM SPORTS GROUP SAS',
+        documentos: []
+      });
+      setSoportesLegalizacionTemp([]);
+      alert('✅ Solicitud creada');
+    } finally {
+      setGuardandoSolicitud(false);
     }
-
-    const nuevaSolicitud = {
-      id: Date.now(),
-      fecha: newSolicitud.fecha,
-      tipo: newSolicitud.tipo,
-      valor: newSolicitud.tipo === 'Anticipo' ? newSolicitud.valor : 0,
-      valorAnticipoOriginal: newSolicitud.tipo === 'Legalización' ? (newSolicitud.valorAnticipoOriginal || '') : '',
-      totalCalculado: totalCalculado,
-      detalle: newSolicitud.detalle,
-      empresa: user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa,
-      responsableId: user.id,
-      responsableNombre: user.nombre,
-      documentos: newSolicitud.documentos,
-      soportePDF: soportePDF,
-      estado: 'Pendiente'
-    };
-
-    setSolicitudes([...solicitudes, nuevaSolicitud]);
-
-    if ((newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso') && soportePDF) {
-      await handleUploadArchivesToDrive(nuevaSolicitud);
-    }
-
-    localStorage.setItem('amSolicitudes', JSON.stringify([...solicitudes, nuevaSolicitud]));
-
-    setNewSolicitud({
-      fecha: new Date().toISOString().split('T')[0],
-      tipo: '',
-      valor: '',
-      valorAnticipoOriginal: '',
-      detalle: '',
-      empresa: 'AM SPORTS GROUP SAS',
-      documentos: []
-    });
-    setSoportesLegalizacionTemp([]);
-    alert('✅ Solicitud creada');
   };
 
-  // Cambiar estado
-  const handleChangeEstado = (id, nuevoEstado) => {
-    const updated = solicitudes.map(s => s.id === id ? {...s, estado: nuevoEstado} : s);
-    setSolicitudes(updated);
-    localStorage.setItem('amSolicitudes', JSON.stringify(updated));
+  // Cambiar estado (Admin/Coordinadora aprueban, pagan o legalizan)
+  const handleChangeEstado = async (id, nuevoEstado) => {
+    const anteriores = solicitudes;
+    setSolicitudes(solicitudes.map(s => s.id === id ? { ...s, estado: nuevoEstado } : s));
+
+    const { error } = await supabase
+      .from('solicitudes')
+      .update({ estado: nuevoEstado, updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error actualizando estado:', error);
+      alert('❌ No se pudo actualizar el estado: ' + error.message);
+      setSolicitudes(anteriores);
+    }
   };
 
   // Filtrar solicitudes por rol
@@ -819,16 +914,27 @@ const App = () => {
     setGenerandoPDF(null);
   };
 
-  // Descargar el PDF único de soportes consolidado
-  const handleDescargarArchivos = (s) => {
-    if (!s.soportePDF) {
-      alert('Esta solicitud no tiene soportes adjuntos.');
+  // Trae los soportes (archivos) de una solicitud desde public.soportes y abre el modal
+  // "Ver Soportes" ya existente (mismo que usan Gastos/Ingresos) para verlos/descargarlos.
+  const handleVerSoportesSolicitud = async (s) => {
+    const { data, error } = await supabase
+      .from('soportes')
+      .select('bucket_path, nombre_original, tamano_kb')
+      .eq('entidad_tipo', 'solicitud')
+      .eq('entidad_id', s.id)
+      .order('created_at');
+
+    if (error) {
+      console.error('Error cargando soportes:', error);
+      alert('❌ No se pudieron cargar los soportes: ' + error.message);
       return;
     }
-    const link = document.createElement('a');
-    link.href = s.soportePDF.data;
-    link.download = s.soportePDF.nombre;
-    link.click();
+
+    setVerSoportes((data || []).map(r => ({
+      nombre: r.nombre_original,
+      tamaño: (r.tamano_kb || 0) * 1024,
+      bucketPath: r.bucket_path
+    })));
   };
 
   // Generar Excel con el mismo formato del control de pagos (Fecha, Pagado a, NIT, Concepto, Valor, Tipo de Soporte)
@@ -856,7 +962,7 @@ const App = () => {
     XLSX.writeFile(wb, `${s.tipo}_${s.responsableNombre}_${s.fecha}.xlsx`);
   };
 
-  // Descargar ZIP (reporte PDF + PDF único de soportes)
+  // Descargar ZIP (reporte PDF + cada soporte adjunto, descargado individualmente del Storage)
   const handleDescargarZIP = async (s) => {
     const zip = new JSZip();
     const doc = new jsPDF();
@@ -908,9 +1014,23 @@ const App = () => {
 
     zip.file(`${s.tipo}-${s.id}.pdf`, doc.output('blob'));
 
-    if (s.soportePDF) {
-      const base64 = s.soportePDF.data.split(',')[1];
-      zip.file(s.soportePDF.nombre, base64, { base64: true });
+    const { data: soportesSolicitud, error: soportesError } = await supabase
+      .from('soportes')
+      .select('bucket_path, nombre_original')
+      .eq('entidad_tipo', 'solicitud')
+      .eq('entidad_id', s.id);
+
+    if (soportesError) {
+      console.error('Error cargando soportes para ZIP:', soportesError);
+    } else {
+      for (const soporte of soportesSolicitud || []) {
+        const { data: blob, error: downloadError } = await supabase.storage.from('soportes').download(soporte.bucket_path);
+        if (downloadError || !blob) {
+          console.warn('No se pudo descargar', soporte.bucket_path, downloadError);
+          continue;
+        }
+        zip.file(soporte.nombre_original, blob);
+      }
     }
 
     zip.generateAsync({ type: 'blob' }).then(blob => {
@@ -921,13 +1041,29 @@ const App = () => {
     });
   };
 
-  // Eliminar solicitud
-  const handleDeleteSolicitud = (id) => {
-    if (window.confirm('¿Eliminar solicitud?')) {
-      const updated = solicitudes.filter(s => s.id !== id);
-      setSolicitudes(updated);
-      localStorage.setItem('amSolicitudes', JSON.stringify(updated));
+  // Eliminar solicitud — borra también sus soportes (metadata + archivos en Storage)
+  const handleDeleteSolicitud = async (id) => {
+    if (!window.confirm('¿Eliminar solicitud?')) return;
+
+    const { data: soportesRelacionados } = await supabase
+      .from('soportes')
+      .select('bucket_path')
+      .eq('entidad_tipo', 'solicitud')
+      .eq('entidad_id', id);
+
+    if (soportesRelacionados && soportesRelacionados.length > 0) {
+      await supabase.storage.from('soportes').remove(soportesRelacionados.map(r => r.bucket_path));
+      await supabase.from('soportes').delete().eq('entidad_tipo', 'solicitud').eq('entidad_id', id);
     }
+
+    const { error } = await supabase.from('solicitudes').delete().eq('id', id);
+    if (error) {
+      console.error('Error eliminando solicitud:', error);
+      alert('❌ No se pudo eliminar la solicitud: ' + error.message);
+      return;
+    }
+
+    setSolicitudes(solicitudes.filter(s => s.id !== id));
   };
 
   // USUARIOS CRUD (conectado a Supabase — tabla public.usuarios)
@@ -1654,6 +1790,12 @@ const App = () => {
   };
 
   const handleDownloadSoporte = (soporte) => {
+    // Soportes de Solicitudes viven en Supabase Storage (bucketPath); los de
+    // Gastos/Ingresos siguen embebidos en base64 (soporte.data) por ahora.
+    if (soporte.bucketPath) {
+      handleDescargarSoporteStorage(soporte);
+      return;
+    }
     const link = document.createElement('a');
     link.href = soporte.data;
     link.download = soporte.nombre;
@@ -1958,14 +2100,34 @@ const App = () => {
     const zip = new JSZip();
     let count = 0;
 
-    solicitudes.forEach((sol, idx) => {
-      // Solicitudes nuevas: un solo PDF consolidado de soportes por solicitud
-      if (sol.soportePDF) {
-        const data = sol.soportePDF.data.split(',')[1];
-        zip.file(`${sol.fecha}_${sol.tipo}_${sol.soportePDF.nombre}`, data, { base64: true });
-        count++;
+    const { data: todosSoportes, error } = await supabase
+      .from('soportes')
+      .select('bucket_path, nombre_original, entidad_id')
+      .eq('entidad_tipo', 'solicitud');
+
+    if (error) {
+      console.error('Error cargando soportes para ZIP:', error);
+      alert('❌ No se pudieron cargar los soportes: ' + error.message);
+      return;
+    }
+
+    const solicitudPorId = {};
+    solicitudes.forEach(s => { solicitudPorId[s.id] = s; });
+
+    for (const soporte of todosSoportes || []) {
+      const sol = solicitudPorId[soporte.entidad_id];
+      const { data: blob, error: downloadError } = await supabase.storage.from('soportes').download(soporte.bucket_path);
+      if (downloadError || !blob) {
+        console.warn('No se pudo descargar', soporte.bucket_path, downloadError);
+        continue;
       }
-      // Compatibilidad con solicitudes antiguas que aún tengan archivo por documento
+      const prefijo = sol ? `${sol.fecha}_${sol.tipo}_` : '';
+      zip.file(`${prefijo}${soporte.nombre_original}`, blob);
+      count++;
+    }
+
+    // Compatibilidad con solicitudes antiguas que aún tengan archivo por documento embebido
+    solicitudes.forEach((sol, idx) => {
       if (sol.documentos && sol.documentos.length > 0) {
         sol.documentos.forEach((doc, docIdx) => {
           if (doc.archivo) {
@@ -2280,8 +2442,8 @@ const App = () => {
                   </>
                 )}
 
-                <button onClick={handleAddSolicitud} disabled={isReadOnly || generandoSoportesPDF} style={{ width: '100%', padding: '0.75rem', backgroundColor: isReadOnly ? '#D8D2C2' : '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: isReadOnly || generandoSoportesPDF ? 'not-allowed' : 'pointer', opacity: isReadOnly || generandoSoportesPDF ? 0.5 : 1 }}>
-                  {generandoSoportesPDF ? '⏳ Uniendo soportes en PDF...' : 'Guardar Solicitud'}
+                <button onClick={handleAddSolicitud} disabled={isReadOnly || guardandoSolicitud} style={{ width: '100%', padding: '0.75rem', backgroundColor: isReadOnly ? '#D8D2C2' : '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: isReadOnly || guardandoSolicitud ? 'not-allowed' : 'pointer', opacity: isReadOnly || guardandoSolicitud ? 0.5 : 1 }}>
+                  {guardandoSolicitud ? '⏳ Guardando solicitud...' : 'Guardar Solicitud'}
                 </button>
               </div>
               </div>
@@ -2290,6 +2452,7 @@ const App = () => {
               <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>
                 📋 {user.rol === 'Responsable' ? 'Mis Solicitudes' : user.rol === 'Contadora' ? 'Solicitudes Auditadas' : 'Todas las Solicitudes'}
               </h2>
+              {cargandoSolicitudes && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando solicitudes...</p>}
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                   <thead style={{ backgroundColor: '#F8F6F1' }}>
@@ -2336,8 +2499,8 @@ const App = () => {
                                   <button onClick={() => handleDescargarZIP(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }} title="ZIP">
                                     📦
                                   </button>
-                                  <button onClick={() => handleDescargarArchivos(s)} disabled={!s.soportePDF} style={{ background: 'none', border: 'none', cursor: s.soportePDF ? 'pointer' : 'not-allowed', color: s.soportePDF ? '#2F9E52' : '#8F8877', fontSize: '1rem' }} title="PDF de Soportes">
-                                    ⬇️
+                                  <button onClick={() => handleVerSoportesSolicitud(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }} title="Ver Soportes">
+                                    📎
                                   </button>
                                 </>
                               )}
