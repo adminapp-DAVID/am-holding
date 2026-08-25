@@ -2368,7 +2368,10 @@ const App = () => {
                   )}
                 </div>
 
-                {newUserType === 'Colaborador' && (
+                {/* Antes esto solo se mostraba para el rol Colaborador. Se abrió a todos los roles porque
+                    Cédula, Funciones y Datos bancarios ahora los necesita CUALQUIER usuario para poder
+                    generar su propia Cuenta de Cobro, sin importar su perfil (Admin, Gerente, etc.). */}
+                {true && (
                   <>
                     <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Datos personales</h3>
                     <div style={{ display: 'grid', gridTemplateColumns: 'auto repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '2rem', alignItems: 'end' }}>
