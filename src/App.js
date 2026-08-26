@@ -781,7 +781,7 @@ const App = () => {
     }
 
     const totalCalculado = newSolicitud.documentos.reduce((sum, doc) => sum + (parseFloat(doc.valor) || 0), 0);
-    const empresaNombre = user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa;
+    const empresaNombre = (user.rol === 'Responsable' || user.rol === 'Gerente') ? user.empresa : newSolicitud.empresa;
 
     setGuardandoSolicitud(true);
     try {
@@ -866,8 +866,9 @@ const App = () => {
     }
   };
 
-  // Filtrar solicitudes por rol
-  const solicitudesUsuario = user?.rol === 'Responsable'
+  // Filtrar solicitudes por rol. El Gerente ahora se filtra igual que un Responsable: solo ve
+  // (y el Dashboard solo resume) las solicitudes que él mismo creó, no las de toda la empresa.
+  const solicitudesUsuario = (user?.rol === 'Responsable' || user?.rol === 'Gerente')
     ? solicitudes.filter(s => s.responsableId === user.id)
     : user?.rol === 'Contadora'
     ? solicitudes.filter(s => ['Aprobado', 'Pagado', 'Legalizado'].includes(s.estado))
@@ -1626,7 +1627,8 @@ const App = () => {
     }
   };
 
-  const cuentasCobroUsuario = user?.rol === 'Responsable' 
+  // El Gerente también se filtra igual que un Responsable: solo ve sus propias Cuentas de Cobro.
+  const cuentasCobroUsuario = (user?.rol === 'Responsable' || user?.rol === 'Gerente')
     ? cuentasDeCobro.filter(c => c.responsableNombre === user.nombre)
     : cuentasDeCobro;
 
@@ -2261,9 +2263,11 @@ const App = () => {
     .sort((a, b) => a.diaCumple - b.diaCumple);
 
   // PERMISOS POR ROL
-  const canEdit = user?.rol && ['Administrador', 'Coordinadora Administrativa', 'Responsable'].includes(user.rol);
+  // El Gerente dejó de ser "solo lectura" en Solicitudes/Cuentas de Cobro: ahora crea y gestiona
+  // las suyas propias, igual que un Responsable (pero solo ve las suyas, no las de los demás).
+  const canEdit = user?.rol && ['Administrador', 'Coordinadora Administrativa', 'Responsable', 'Gerente'].includes(user.rol);
   const canApprove = user?.rol && ['Administrador', 'Coordinadora Administrativa'].includes(user.rol);
-  const isReadOnly = user?.rol === 'Contadora' || user?.rol === 'Gerente';
+  const isReadOnly = user?.rol === 'Contadora';
   
   // Color estado
   const getColorEstado = (estado) => {
@@ -2531,7 +2535,7 @@ const App = () => {
                   <thead>
                     <tr style={{ borderBottom: '2px solid #C4A747' }}>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                      {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
+                      {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
                       <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th>
                       <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
@@ -2541,7 +2545,7 @@ const App = () => {
                     {ultimasSolicitudes.map(s => (
                       <tr key={s.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.fecha}</td>
-                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === s.responsableNombre)?.foto} nombre={s.responsableNombre} size={22} />{s.responsableNombre}</div></td>}
+                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === s.responsableNombre)?.foto} nombre={s.responsableNombre} size={22} />{s.responsableNombre}</div></td>}
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
                         <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
@@ -2738,7 +2742,7 @@ const App = () => {
                 {isReadOnly && (
                   <div style={{ backgroundColor: '#FFF4F4', border: '1px solid #CC4B4B', borderRadius: '4px', padding: '1rem', marginBottom: '1rem', color: '#B0102B' }}>
                     <p style={{ margin: 0, fontWeight: 'bold' }}>🔒 Modo Solo Lectura</p>
-                    <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem' }}>{user.rol === 'Gerente' ? 'Los Gerentes pueden ver y descargar, pero no crear ni editar solicitudes.' : 'Los Contadores no pueden crear ni editar solicitudes. Solo pueden ver y descargar.'}</p>
+                    <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem' }}>Los Contadores no pueden crear ni editar solicitudes. Solo pueden ver y descargar.</p>
                   </div>
                 )}
                 
@@ -2750,16 +2754,16 @@ const App = () => {
                     <option value="Legalización">Legalización</option>
                     <option value="Reembolso">Reembolso</option>
                   </select>
-                  {user.rol !== 'Responsable' && (
+                  {user.rol !== 'Responsable' && user.rol !== 'Gerente' && (
                     <select value={newSolicitud.empresa} onChange={(e) => setNewSolicitud({...newSolicitud, empresa: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }}>
                       {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
                     </select>
                   )}
                   {newSolicitud.tipo === 'Anticipo' && (
-                    <input type="number" placeholder={`Valor Solicitado (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
+                    <input type="number" placeholder={`Valor Solicitado (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
                   )}
                   {newSolicitud.tipo === 'Legalización' && (
-                    <input type="number" placeholder={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valorAnticipoOriginal} onChange={(e) => setNewSolicitud({...newSolicitud, valorAnticipoOriginal: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
+                    <input type="number" placeholder={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valorAnticipoOriginal} onChange={(e) => setNewSolicitud({...newSolicitud, valorAnticipoOriginal: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
                   )}
                 </div>
 
@@ -2794,7 +2798,7 @@ const App = () => {
 
                       {newSolicitud.documentos.length > 0 && (
                         <p style={{ color: '#C4A747', textAlign: 'right', margin: '0.5rem 0 0 0', fontWeight: 'bold', fontSize: '0.9rem' }}>
-                          Total: {formatMoney(newSolicitud.documentos.reduce((sum, d) => sum + (parseFloat(d.valor) || 0), 0), user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)}
+                          Total: {formatMoney(newSolicitud.documentos.reduce((sum, d) => sum + (parseFloat(d.valor) || 0), 0), user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)}
                         </p>
                       )}
                     </div>
@@ -2830,7 +2834,7 @@ const App = () => {
 
             <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
               <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>
-                📋 {user.rol === 'Responsable' ? 'Mis Solicitudes' : user.rol === 'Contadora' ? 'Solicitudes Auditadas' : 'Todas las Solicitudes'}
+                📋 {(user.rol === 'Responsable' || user.rol === 'Gerente') ? 'Mis Solicitudes' : user.rol === 'Contadora' ? 'Solicitudes Auditadas' : 'Todas las Solicitudes'}
               </h2>
               {cargandoSolicitudes && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando solicitudes...</p>}
               <div style={{ overflowX: 'auto' }}>
@@ -2838,7 +2842,7 @@ const App = () => {
                   <thead style={{ backgroundColor: '#F8F6F1' }}>
                     <tr style={{ borderBottom: '2px solid #C4A747' }}>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                      {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
+                      {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
                       <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
                       <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Docs</th>
@@ -2850,7 +2854,7 @@ const App = () => {
                     {solicitudesUsuario.map(s => (
                       <tr key={s.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.fecha}</td>
-                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === s.responsableNombre)?.foto} nombre={s.responsableNombre} size={22} />{s.responsableNombre}</div></td>}
+                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === s.responsableNombre)?.foto} nombre={s.responsableNombre} size={22} />{s.responsableNombre}</div></td>}
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
                         <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center', color: s.documentos?.length > 0 ? '#2F9E52' : '#8F8877' }}>{s.documentos?.length || 0}</td>
@@ -2886,7 +2890,7 @@ const App = () => {
                               )}
                             </>
                           )}
-                          {user.rol === 'Responsable' && (
+                          {(user.rol === 'Responsable' || user.rol === 'Gerente') && (
                             <button onClick={() => handleDeleteSolicitud(s.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>✕</button>
                           )}
                         </td>
@@ -3881,8 +3885,8 @@ const App = () => {
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
                   <button onClick={() => setPresupuestoTab('mensual')} style={{ padding: '0.6rem 1.25rem', backgroundColor: presupuestoTab === 'mensual' ? '#C4A747' : '#E6E0D2', color: presupuestoTab === 'mensual' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>📆 Mensual: Pagado/Pendiente</button>
                   <button onClick={() => setPresupuestoTab('anual')} style={{ padding: '0.6rem 1.25rem', backgroundColor: presupuestoTab === 'anual' ? '#C4A747' : '#E6E0D2', color: presupuestoTab === 'anual' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>📊 Ejecución Anual por CECO</button>
-                  <button onClick={() => setPresupuestoTab('deducciones')} style={{ padding: '0.6rem 1.25rem', backgroundColor: presupuestoTab === 'deducciones' ? '#C4A747' : '#E6E0D2', color: presupuestoTab === 'deducciones' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>💵 Deducciones</button>
-                  <button onClick={() => setPresupuestoTab('gestion')} style={{ padding: '0.6rem 1.25rem', backgroundColor: presupuestoTab === 'gestion' ? '#C4A747' : '#E6E0D2', color: presupuestoTab === 'gestion' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>⚙️ Gestión de Conceptos</button>
+                  {user.rol !== 'Gerente' && <button onClick={() => setPresupuestoTab('deducciones')} style={{ padding: '0.6rem 1.25rem', backgroundColor: presupuestoTab === 'deducciones' ? '#C4A747' : '#E6E0D2', color: presupuestoTab === 'deducciones' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>💵 Deducciones</button>}
+                  {user.rol !== 'Gerente' && <button onClick={() => setPresupuestoTab('gestion')} style={{ padding: '0.6rem 1.25rem', backgroundColor: presupuestoTab === 'gestion' ? '#C4A747' : '#E6E0D2', color: presupuestoTab === 'gestion' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>⚙️ Gestión de Conceptos</button>}
                 </div>
 
                 {/* ===== TAB MENSUAL ===== */}
@@ -3972,7 +3976,7 @@ const App = () => {
                 )}
 
                 {/* ===== TAB DEDUCCIONES ===== */}
-                {presupuestoTab === 'deducciones' && (() => {
+                {presupuestoTab === 'deducciones' && user.rol !== 'Gerente' && (() => {
                   const deduccionesEmpresa = deducciones.filter(d => presupuestoItems.find(p => p.id === d.presupuestoItemId)?.empresa === filtroPresupuesto.empresa);
                   return (
                   <div>
@@ -4116,7 +4120,7 @@ const App = () => {
                 )}
 
                 {/* ===== TAB GESTIÓN ===== */}
-                {presupuestoTab === 'gestion' && (
+                {presupuestoTab === 'gestion' && user.rol !== 'Gerente' && (
                   <div>
                     <h3 style={{ color: '#221E15', marginBottom: '1rem' }}>Conceptos Recurrentes Mensuales</h3>
 
@@ -4313,7 +4317,7 @@ const App = () => {
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Número</th>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Mes cobrado</th>
-                      {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
+                      {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
                       <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th>
                       <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
@@ -4326,7 +4330,7 @@ const App = () => {
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{c.fecha}</td>
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{c.numero}</td>
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{c.mes ? `${MESES_ES[c.mes - 1]} ${c.anio}` : '—'}</td>
-                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === c.responsableNombre)?.foto} nombre={c.responsableNombre} size={22} />{c.responsableNombre}</div></td>}
+                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === c.responsableNombre)?.foto} nombre={c.responsableNombre} size={22} />{c.responsableNombre}</div></td>}
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><EmpresaLogo empresa={c.empresa} height={16} />{c.empresa}</div></td>
                         <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(c.monto, c.empresa)}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
