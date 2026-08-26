@@ -327,11 +327,19 @@ const App = () => {
   const responsableVacio = { nombre: '', email: '', empresa: 'AM SPORTS GROUP SAS', foto: '', cedula: '', telefono: '', fechaNacimiento: '', cargo: '', fechaIngreso: '', tipoVinculacion: '', contactoEmergenciaNombre: '', contactoEmergenciaTelefono: '', eps: '', arl: '', funciones: '', banco: '', tipoCuentaBancaria: '', numeroCuenta: '', titularCuenta: '', documentoCedula: null, documentoPasaporte: null };
   const [newResponsable, setNewResponsable] = useState(responsableVacio);
   const [newUserType, setNewUserType] = useState('Colaborador');
-  const [cuentasDeCobro, setCuentasDeCobro] = useState(() => JSON.parse(localStorage.getItem('amCuentasDeCobro') || '[]'));
+  // Cuentas de Cobro — conectado a Supabase (tabla public.cuentas_cobro). Cada archivo de
+  // soporte se sube por separado al bucket "soportes" (no se unen en un solo PDF, a diferencia
+  // de Solicitudes) y queda registrado en public.soportes con entidad_tipo='cuenta_cobro'.
+  const [cuentasDeCobro, setCuentasDeCobro] = useState([]);
+  const [cargandoCuentasCobro, setCargandoCuentasCobro] = useState(true);
+  const [guardandoCuentaCobro, setGuardandoCuentaCobro] = useState(false);
   // Cuenta de Cobro ahora es semi-automática: el colaborador solo elige el mes que está
   // cobrando, el valor y (si aplica) ajusta la descripción de funciones. Nombre, cédula,
   // empresa, NIT, cargo y datos bancarios se toman de su propio perfil (Colaboradores).
   const [newCuentaCobro, setNewCuentaCobro] = useState({ mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), ciudad: 'Medellín', monto: '', funciones: '', estado: 'Pendiente' });
+  // Cuentas de Cobro solo maneja estos 3 estados (el check constraint de la tabla no admite
+  // "Legalizado" — ese estado es propio de Solicitudes). No reutilizar estadosSolicitud aquí.
+  const estadosCuentaCobro = ['Pendiente', 'Aprobado', 'Pagado'];
   const [gastos, setGastos] = useState(() => JSON.parse(localStorage.getItem('amGastos') || '[]'));
   const [ingresos, setIngresos] = useState(() => JSON.parse(localStorage.getItem('amIngresos') || '[]'));
   const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', soportes: [], presupuestoItemId: '', aplicarDeduccion: true });
@@ -682,6 +690,69 @@ const App = () => {
     setCargandoSolicitudes(false);
   };
 
+  // Convierte una fila de public.cuentas_cobro (con sus joins a empresas/usuarios) al mismo
+  // formato con el que ya trabaja toda la UI de Cuentas de Cobro (incluyendo el PDF).
+  const cuentaCobroDBToLocal = (row) => ({
+    id: row.id,
+    fecha: row.fecha,
+    numero: row.numero,
+    vencimiento: row.vencimiento || '',
+    ciudad: row.ciudad || '',
+    mes: row.mes,
+    anio: row.anio,
+    monto: row.monto,
+    funciones: row.funciones || '',
+    estado: row.estado,
+    empresa: row.empresas?.nombre || '',
+    empresaNit: row.empresa_nit || '',
+    responsableId: row.responsable_id,
+    responsableNombre: row.usuarios?.nombre || '',
+    responsableCedula: row.responsable_cedula || '',
+    responsableCargo: row.responsable_cargo || '',
+    banco: row.banco || '',
+    tipoCuentaBancaria: row.tipo_cuenta_bancaria || '',
+    numeroCuenta: row.numero_cuenta || '',
+    titularCuenta: row.titular_cuenta || '',
+    cantidadSoportes: 0 // se completa abajo con el conteo real de public.soportes
+  });
+
+  const cargarCuentasCobro = async () => {
+    setCargandoCuentasCobro(true);
+    const { data, error } = await supabase
+      .from('cuentas_cobro')
+      .select('id, fecha, numero, vencimiento, ciudad, mes, anio, monto, funciones, estado, empresa_nit, responsable_id, responsable_cedula, responsable_cargo, banco, tipo_cuenta_bancaria, numero_cuenta, titular_cuenta, empresas ( nombre ), usuarios ( nombre )')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error cargando cuentas de cobro:', error);
+      setCargandoCuentasCobro(false);
+      return;
+    }
+
+    const cuentas = (data || []).map(cuentaCobroDBToLocal);
+
+    // Los soportes de cada cuenta viven en public.soportes (entidad_tipo='cuenta_cobro'), no
+    // embebidos en la fila — se cuenta cuántos tiene cada una solo para saber si mostrar el
+    // botón "Ver soportes" en la tabla (el contenido real se trae al hacer clic).
+    if (cuentas.length > 0) {
+      const { data: soportesRows, error: soportesError } = await supabase
+        .from('soportes')
+        .select('entidad_id')
+        .eq('entidad_tipo', 'cuenta_cobro')
+        .in('entidad_id', cuentas.map(c => c.id));
+      if (soportesError) {
+        console.error('Error contando soportes de cuentas de cobro:', soportesError);
+      } else {
+        const conteo = {};
+        (soportesRows || []).forEach(r => { conteo[r.entidad_id] = (conteo[r.entidad_id] || 0) + 1; });
+        cuentas.forEach(c => { c.cantidadSoportes = conteo[c.id] || 0; });
+      }
+    }
+
+    setCuentasDeCobro(cuentas);
+    setCargandoCuentasCobro(false);
+  };
+
   // Directorio público limitado (nombre/foto/cargo/cumpleaños de TODOS) para el widget de
   // cumpleaños del mes en Mi Perfil, visible para cualquier rol sin exponer datos sensibles.
   const cargarColaboradoresPublico = async () => {
@@ -698,10 +769,12 @@ const App = () => {
     if (user) {
       cargarUsuarios();
       cargarSolicitudes();
+      cargarCuentasCobro();
       cargarColaboradoresPublico();
     } else {
       setUsuariosDB([]);
       setSolicitudes([]);
+      setCuentasDeCobro([]);
       setColaboradoresPublico([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1453,8 +1526,8 @@ const App = () => {
     await cargarUsuarios();
   };
 
-  // CUENTAS DE COBRO CRUD
-  const handleAddCuentaCobro = () => {
+  // CUENTAS DE COBRO CRUD (conectado a Supabase — tabla public.cuentas_cobro)
+  const handleAddCuentaCobro = async () => {
     if (!newCuentaCobro.monto || parseFloat(newCuentaCobro.monto) <= 0) {
       alert('Ingresa un valor mayor a cero');
       return;
@@ -1469,46 +1542,95 @@ const App = () => {
       return;
     }
 
-    // Consecutivo por colaborador: cuenta cuántas cuentas de cobro ya tiene esta persona.
-    const numeroConsecutivo = cuentasDeCobro.filter(c => c.responsableNombre === user.nombre).length + 1;
-    const hoy = new Date();
-    const fechaISO = hoy.toISOString().split('T')[0];
-    const vencimiento = new Date(hoy.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const monto = parseFloat(newCuentaCobro.monto) || 0;
+    setGuardandoCuentaCobro(true);
+    try {
+      // Consecutivo por colaborador: cuenta cuántas cuentas de cobro ya tiene esta persona.
+      const numeroConsecutivo = cuentasDeCobro.filter(c => c.responsableId === user.id).length + 1;
+      const hoy = new Date();
+      const fechaISO = hoy.toISOString().split('T')[0];
+      const vencimiento = new Date(hoy.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const monto = parseFloat(newCuentaCobro.monto) || 0;
+      const numero = String(numeroConsecutivo).padStart(2, '0');
 
-    const nuevaCuenta = {
-      id: Date.now(),
-      numero: String(numeroConsecutivo).padStart(2, '0'),
-      fecha: fechaISO,
-      vencimiento,
-      ciudad: newCuentaCobro.ciudad || 'Medellín',
-      mes: newCuentaCobro.mes,
-      anio: newCuentaCobro.anio,
-      monto,
-      funciones: funcionesFinal,
-      estado: 'Pendiente',
-      empresa: user.empresa,
-      empresaNit: NIT_EMPRESAS[user.empresa] || '(pendiente)',
-      responsableId: user.id,
-      responsableNombre: user.nombre,
-      responsableCedula: user.cedula,
-      responsableCargo: user.cargo,
+      let empresaId = null;
+      if (user.empresa) {
+        const { data: empresaRow, error: empresaError } = await supabase
+          .from('empresas')
+          .select('id')
+          .eq('nombre', user.empresa)
+          .single();
+        if (empresaError) console.error('Error buscando empresa:', empresaError);
+        empresaId = empresaRow?.id || null;
+      }
+
       // Snapshot de los datos bancarios al momento de crear la cuenta — si el colaborador
       // los actualiza después en su perfil, esta cuenta ya emitida no cambia retroactivamente.
-      banco: user.banco || '',
-      tipoCuentaBancaria: user.tipoCuentaBancaria || '',
-      numeroCuenta: user.numeroCuenta || '',
-      titularCuenta: user.titularCuenta || user.nombre,
-      soportes: soportesCuentaCobroTemp
-    };
+      const { data: inserted, error } = await supabase
+        .from('cuentas_cobro')
+        .insert({
+          fecha: fechaISO,
+          numero,
+          vencimiento,
+          ciudad: newCuentaCobro.ciudad || 'Medellín',
+          mes: newCuentaCobro.mes,
+          anio: newCuentaCobro.anio,
+          monto,
+          funciones: funcionesFinal,
+          estado: 'Pendiente',
+          empresa_id: empresaId,
+          empresa_nit: NIT_EMPRESAS[user.empresa] || '(pendiente)',
+          responsable_id: user.id,
+          responsable_cedula: user.cedula,
+          responsable_cargo: user.cargo,
+          banco: user.banco || '',
+          tipo_cuenta_bancaria: user.tipoCuentaBancaria || '',
+          numero_cuenta: user.numeroCuenta || '',
+          titular_cuenta: user.titularCuenta || user.nombre
+        })
+        .select('id')
+        .single();
 
-    setCuentasDeCobro([...cuentasDeCobro, nuevaCuenta]);
-    localStorage.setItem('amCuentasDeCobro', JSON.stringify([...cuentasDeCobro, nuevaCuenta]));
+      if (error) {
+        console.error('Error creando cuenta de cobro:', error);
+        alert('❌ No se pudo guardar la cuenta de cobro: ' + error.message);
+        return;
+      }
 
-    setNewCuentaCobro({ mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), ciudad: 'Medellín', monto: '', funciones: '', estado: 'Pendiente' });
-    setSoportesCuentaCobroTemp([]);
-    handleGenerarPDFCuentaCobro(nuevaCuenta);
-    alert('✅ Cuenta de cobro creada — el PDF se descargó automáticamente (también puedes volver a descargarlo desde la tabla).');
+      // A diferencia de Solicitudes, aquí cada archivo sube por separado (no se unen en un PDF).
+      for (const soporte of soportesCuentaCobroTemp) {
+        await subirSoporteEntidad(soporte, 'cuenta_cobro', inserted.id);
+      }
+
+      await cargarCuentasCobro();
+
+      // El PDF se genera con los datos que ya tenemos en memoria — no hace falta esperar
+      // a que vuelva a cargar desde Supabase.
+      handleGenerarPDFCuentaCobro({
+        numero,
+        fecha: fechaISO,
+        vencimiento,
+        ciudad: newCuentaCobro.ciudad || 'Medellín',
+        mes: newCuentaCobro.mes,
+        anio: newCuentaCobro.anio,
+        monto,
+        funciones: funcionesFinal,
+        empresa: user.empresa,
+        empresaNit: NIT_EMPRESAS[user.empresa] || '(pendiente)',
+        responsableNombre: user.nombre,
+        responsableCedula: user.cedula,
+        responsableCargo: user.cargo,
+        banco: user.banco || '',
+        tipoCuentaBancaria: user.tipoCuentaBancaria || '',
+        numeroCuenta: user.numeroCuenta || '',
+        titularCuenta: user.titularCuenta || user.nombre
+      });
+
+      setNewCuentaCobro({ mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), ciudad: 'Medellín', monto: '', funciones: '', estado: 'Pendiente' });
+      setSoportesCuentaCobroTemp([]);
+      alert('✅ Cuenta de cobro creada — el PDF se descargó automáticamente (también puedes volver a descargarlo desde la tabla).');
+    } finally {
+      setGuardandoCuentaCobro(false);
+    }
   };
 
   // Genera el PDF de la Cuenta de Cobro con el formato "Prestación de Servicios Profesionales".
@@ -1613,18 +1735,43 @@ const App = () => {
     doc.save(`Cuenta_de_Cobro_${c.numero}_${c.responsableNombre.replace(/\s+/g, '_')}.pdf`);
   };
 
-  const handleUpdateCuentaCobro = (id, campo, valor) => {
-    const updated = cuentasDeCobro.map(c => c.id === id ? {...c, [campo]: valor} : c);
-    setCuentasDeCobro(updated);
-    localStorage.setItem('amCuentasDeCobro', JSON.stringify(updated));
+  // Solo se usa hoy para cambiar "estado" (Admin/Coordinadora aprueban/pagan) — campo ya
+  // coincide 1:1 con el nombre de la columna en Supabase, así que no necesita mapeo.
+  const handleUpdateCuentaCobro = async (id, campo, valor) => {
+    const anteriores = cuentasDeCobro;
+    setCuentasDeCobro(cuentasDeCobro.map(c => c.id === id ? {...c, [campo]: valor} : c));
+
+    const { error } = await supabase.from('cuentas_cobro').update({ [campo]: valor }).eq('id', id);
+    if (error) {
+      console.error('Error actualizando cuenta de cobro:', error);
+      alert('❌ No se pudo actualizar: ' + error.message);
+      setCuentasDeCobro(anteriores);
+    }
   };
 
-  const handleDeleteCuentaCobro = (id) => {
-    if (window.confirm('¿Eliminar cuenta de cobro?')) {
-      const updated = cuentasDeCobro.filter(c => c.id !== id);
-      setCuentasDeCobro(updated);
-      localStorage.setItem('amCuentasDeCobro', JSON.stringify(updated));
+  // Eliminar cuenta de cobro — borra también sus soportes (metadata + archivos en Storage)
+  const handleDeleteCuentaCobro = async (id) => {
+    if (!window.confirm('¿Eliminar cuenta de cobro?')) return;
+
+    const { data: soportesRelacionados } = await supabase
+      .from('soportes')
+      .select('bucket_path')
+      .eq('entidad_tipo', 'cuenta_cobro')
+      .eq('entidad_id', id);
+
+    if (soportesRelacionados && soportesRelacionados.length > 0) {
+      await supabase.storage.from('soportes').remove(soportesRelacionados.map(r => r.bucket_path));
+      await supabase.from('soportes').delete().eq('entidad_tipo', 'cuenta_cobro').eq('entidad_id', id);
     }
+
+    const { error } = await supabase.from('cuentas_cobro').delete().eq('id', id);
+    if (error) {
+      console.error('Error eliminando cuenta de cobro:', error);
+      alert('❌ No se pudo eliminar la cuenta de cobro: ' + error.message);
+      return;
+    }
+
+    setCuentasDeCobro(cuentasDeCobro.filter(c => c.id !== id));
   };
 
   // El Gerente también se filtra igual que un Responsable: solo ve sus propias Cuentas de Cobro.
@@ -1995,6 +2142,29 @@ const App = () => {
 
   const handleRemoveSoporteCuentaCobro = (id) => {
     setSoportesCuentaCobroTemp(soportesCuentaCobroTemp.filter(s => s.id !== id));
+  };
+
+  // Trae los soportes de una Cuenta de Cobro ya guardada desde public.soportes y abre el
+  // mismo modal "Ver Soportes" que usan Solicitudes/Gastos/Ingresos.
+  const handleVerSoportesCuentaCobro = async (c) => {
+    const { data, error } = await supabase
+      .from('soportes')
+      .select('bucket_path, nombre_original, tamano_kb')
+      .eq('entidad_tipo', 'cuenta_cobro')
+      .eq('entidad_id', c.id)
+      .order('created_at');
+
+    if (error) {
+      console.error('Error cargando soportes:', error);
+      alert('❌ No se pudieron cargar los soportes: ' + error.message);
+      return;
+    }
+
+    setVerSoportes((data || []).map(r => ({
+      nombre: r.nombre_original,
+      tamaño: (r.tamano_kb || 0) * 1024,
+      bucketPath: r.bucket_path
+    })));
   };
 
   const handleDownloadSoporte = (soporte) => {
@@ -4305,11 +4475,12 @@ const App = () => {
                   </div>
                 )}
               </div>
-              <button onClick={handleAddCuentaCobro} disabled={isReadOnly} style={{ width: '100%', padding: '0.75rem', backgroundColor: isReadOnly ? '#D8D2C2' : '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: isReadOnly ? 'not-allowed' : 'pointer', opacity: isReadOnly ? 0.5 : 1 }}>Crear Cuenta de Cobro</button>
+              <button onClick={handleAddCuentaCobro} disabled={isReadOnly || guardandoCuentaCobro} style={{ width: '100%', padding: '0.75rem', backgroundColor: isReadOnly || guardandoCuentaCobro ? '#D8D2C2' : '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: isReadOnly || guardandoCuentaCobro ? 'not-allowed' : 'pointer', opacity: isReadOnly || guardandoCuentaCobro ? 0.5 : 1 }}>{guardandoCuentaCobro ? '⏳ Guardando...' : 'Crear Cuenta de Cobro'}</button>
             </div>
 
             <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
               <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>💳 Cuentas de Cobro ({cuentasCobroUsuario.length})</h2>
+              {cargandoCuentasCobro && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando cuentas de cobro...</p>}
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                   <thead style={{ backgroundColor: '#F8F6F1' }}>
@@ -4336,7 +4507,7 @@ const App = () => {
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                           {canApprove ? (
                             <select value={c.estado} onChange={(e) => handleUpdateCuentaCobro(c.id, 'estado', e.target.value)} disabled={isReadOnly || !canApprove} style={{ backgroundColor: getColorEstado(c.estado), color: '#221E15', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: isReadOnly || !canApprove ? 'not-allowed' : 'pointer', fontSize: '0.8rem', opacity: isReadOnly || !canApprove ? 0.6 : 1 }}>
-                              {estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}
+                              {estadosCuentaCobro.map(e => <option key={e} value={e}>{e}</option>)}
                             </select>
                           ) : (
                             <span style={{ backgroundColor: getColorEstado(c.estado), color: '#221E15', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{c.estado}</span>
@@ -4346,8 +4517,8 @@ const App = () => {
                           {c.responsableCedula && (
                             <button onClick={() => handleGenerarPDFCuentaCobro(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#C4A747', fontSize: '1rem', marginRight: '0.5rem' }} title="Descargar PDF">📄</button>
                           )}
-                          {c.soportes && c.soportes.length > 0 ? (
-                            <button onClick={() => handleViewSoportes(c.soportes)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }} title="Ver soportes">📎 {c.soportes.length}</button>
+                          {c.cantidadSoportes > 0 ? (
+                            <button onClick={() => handleVerSoportesCuentaCobro(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }} title="Ver soportes">📎 {c.cantidadSoportes}</button>
                           ) : (
                             <span style={{ color: '#6B6458', fontSize: '0.8rem', marginRight: '0.5rem' }}>—</span>
                           )}
