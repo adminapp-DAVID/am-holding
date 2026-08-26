@@ -42,32 +42,51 @@ const ColaboradorAvatar = ({ foto, nombre, size = 32, style = {} }) => {
 // Quita tildes/acentos y pasa a minúsculas, para comparar nombres sin depender de que estén escritos idéntico.
 const normalizarTexto = (s) => (s || '').toString().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
-// PRESUPUESTO — sugiere el ítem de presupuesto más probable para un gasto, según empresa+CECO+texto.
-// Compara por PALABRAS (no por texto exacto contiguo), porque el nombre del colaborador registrado
-// suele ser el nombre completo ("David Dario Andrade Hernández") mientras que el concepto de presupuesto
-// suele tener un nombre corto ("DAVID ANDRADE") — con comparación exacta esa coincidencia nunca se detecta.
-// La persona que registra el gasto siempre puede cambiar la sugerencia antes de guardar (sugerido + confirmado),
-// y también se puede vincular/desvincular manualmente después desde la tabla de Gastos en Finanzas.
-const getPresupuestoSugerido = (empresa, ceco, responsable, detalle, items) => {
-  const candidatos = (items || []).filter(p => p.activo !== false && p.empresa === empresa && p.ceco === ceco);
-  if (!candidatos.length) return '';
+// PRESUPUESTO — candidatos para vincular un gasto a un ítem de presupuesto, ordenados por relevancia.
+// Antes solo se buscaba dentro del mismo CECO del gasto, pero eso rompía la vinculación en casos como
+// los "gastos fijos" (ej. TIGO OFICINA): el concepto puede estar catalogado en un CECO distinto al que
+// la persona elige al registrar el pago, y entonces no aparecía ninguna opción para vincular.
+// Ahora se buscan candidatos en TODA la empresa (todos los CECO) y se ordenan así:
+//   1) los que coinciden por texto —comparando por PALABRAS, no texto exacto, porque el responsable/
+//      proveedor escrito en el gasto ("TIGO OFICINA PRINCIPAL") rara vez es idéntico al nombre corto
+//      del concepto de presupuesto ("TIGO OFICINA")— de mayor a menor coincidencia. Esto es lo que
+//      resuelve el caso de asociar por responsable/proveedor, incluso si el CECO no coincide.
+//   2) a igual coincidencia de texto, se prioriza el concepto del mismo CECO que el gasto.
+//   3) el resto de conceptos activos de la empresa, alfabético, por si se quiere vincular manualmente
+//      algo que el texto no logró emparejar.
+// La persona que registra el gasto siempre puede cambiar la sugerencia antes de guardar (sugerido +
+// confirmado), y también se puede vincular/desvincular manualmente después desde la tabla de Gastos.
+const getPresupuestoCandidatos = (empresa, ceco, responsable, detalle, items) => {
+  const candidatos = (items || []).filter(p => p.activo !== false && p.empresa === empresa);
   const textoWords = normalizarTexto(`${responsable || ''} ${detalle || ''}`).split(/\s+/).filter(Boolean);
-  if (!textoWords.length) return '';
   const textoSet = new Set(textoWords);
 
-  let mejor = null;
-  let mejorScore = 0;
-  candidatos.forEach(p => {
+  const conScore = candidatos.map(p => {
     const nombreWords = normalizarTexto(p.nombre).split(/\s+/).filter(w => w.length > 2);
-    if (!nombreWords.length) return;
-    const coincidencias = nombreWords.filter(w => textoSet.has(w)).length;
-    const requerido = Math.min(2, nombreWords.length); // al menos 2 palabras en común (o todas, si el nombre tiene 1)
-    if (coincidencias >= requerido) {
-      const score = coincidencias / nombreWords.length;
-      if (score > mejorScore) { mejorScore = score; mejor = p; }
+    let score = 0;
+    if (nombreWords.length && textoSet.size) {
+      const coincidencias = nombreWords.filter(w => textoSet.has(w)).length;
+      const requerido = Math.min(2, nombreWords.length); // al menos 2 palabras en común (o todas, si el nombre tiene 1)
+      if (coincidencias >= requerido) score = coincidencias / nombreWords.length;
     }
+    return { item: p, score, mismoCeco: p.ceco === ceco };
   });
-  return mejor ? mejor.id : '';
+
+  conScore.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (a.mismoCeco !== b.mismoCeco) return a.mismoCeco ? -1 : 1;
+    return (a.item.nombre || '').localeCompare(b.item.nombre || '');
+  });
+
+  return conScore;
+};
+
+// Atajo: solo el mejor candidato (para autosugerir al escribir el gasto). Solo sugiere si hubo
+// coincidencia real de texto — si no, deja "Sin vincular" y la persona elige manualmente.
+const getPresupuestoSugerido = (empresa, ceco, responsable, detalle, items) => {
+  const candidatos = getPresupuestoCandidatos(empresa, ceco, responsable, detalle, items);
+  const mejor = candidatos[0];
+  return (mejor && mejor.score > 0) ? mejor.item.id : '';
 };
 
 // DEDUCCIONES — cuánto de una deducción (préstamo u otro descuento) aplica en un mes puntual, calculado
@@ -1637,6 +1656,17 @@ const App = () => {
       ? (newGasto.presupuestoItemId || getPresupuestoSugerido(newGasto.empresa, newGasto.ceco, newGasto.responsable, newGasto.detalle, presupuestoItems))
       : '';
 
+    // Si el concepto vinculado pertenece a un CECO distinto al elegido en el formulario (caso típico
+    // de gastos fijos catalogados en otro CECO), el CECO del gasto se ajusta al del concepto — así el
+    // cruce en Presupuesto (que agrupa por empresa+CECO) reconoce el pago como hecho.
+    let cecoFinal = newGasto.ceco;
+    if (presupuestoItemIdFinal) {
+      const conceptoVinculado = presupuestoItems.find(p => p.id === presupuestoItemIdFinal);
+      if (conceptoVinculado && conceptoVinculado.ceco && conceptoVinculado.ceco !== cecoFinal) {
+        cecoFinal = conceptoVinculado.ceco;
+      }
+    }
+
     // Si el gasto queda vinculado a un concepto de Presupuesto con deducciones activas ese mes
     // (préstamo u otro descuento), el valor bruto ingresado se convierte en Neto a Pagar: el
     // "Valor" que queda guardado (y que alimenta Ejecutado/Dashboard/Presupuesto) es el neto real.
@@ -1661,6 +1691,7 @@ const App = () => {
     const nuevoGasto = {
       id: Date.now(),
       ...newGasto,
+      ceco: cecoFinal,
       valor: valorFinal,
       valorBruto: valorBrutoFinal,
       deduccionAplicada: deduccionAplicadaFinal,
@@ -1741,6 +1772,21 @@ const App = () => {
 
   const handleUpdateGasto = (id, campo, valor) => {
     const updated = gastos.map(g => g.id === id ? {...g, [campo]: valor} : g);
+    setGastos(updated);
+    localStorage.setItem('amGastos', JSON.stringify(updated));
+  };
+
+  // Vincular/desvincular un gasto ya registrado a un concepto de Presupuesto desde la tabla de Gastos.
+  // Si el concepto elegido pertenece a un CECO distinto al que tiene el gasto (caso de gastos fijos
+  // catalogados en otro CECO), también se ajusta el CECO del gasto — de lo contrario el cruce en
+  // Presupuesto (que agrupa por empresa+CECO) nunca lo va a reconocer como pagado.
+  const handleVincularPresupuesto = (id, valorSeleccionado) => {
+    const nuevoId = valorSeleccionado ? parseInt(valorSeleccionado) : null;
+    const concepto = nuevoId ? presupuestoItems.find(p => p.id === nuevoId) : null;
+    const updated = gastos.map(g => {
+      if (g.id !== id) return g;
+      return { ...g, presupuestoItemId: nuevoId, ceco: (concepto && concepto.ceco) ? concepto.ceco : g.ceco };
+    });
     setGastos(updated);
     localStorage.setItem('amGastos', JSON.stringify(updated));
   };
@@ -3211,20 +3257,26 @@ const App = () => {
               <input type="text" placeholder="Detalle/Descripción" value={newGasto.detalle} onChange={(e) => {setNewGasto({...newGasto, detalle: e.target.value}); setNewIngreso({...newIngreso, detalle: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', marginBottom: '1rem', boxSizing: 'border-box' }} />
 
               {newGasto.tipo === 'Gasto' && (() => {
-                const candidatosPresupuesto = presupuestoItems.filter(p => p.activo !== false && p.empresa === newGasto.empresa && p.ceco === newGasto.ceco);
-                if (!candidatosPresupuesto.length) return null;
-                const sugeridoId = getPresupuestoSugerido(newGasto.empresa, newGasto.ceco, newGasto.responsable, newGasto.detalle, presupuestoItems);
+                const candidatos = getPresupuestoCandidatos(newGasto.empresa, newGasto.ceco, newGasto.responsable, newGasto.detalle, presupuestoItems);
+                if (!candidatos.length) return null;
+                const sugeridoId = (candidatos[0] && candidatos[0].score > 0) ? candidatos[0].item.id : '';
                 const valorSeleccionado = newGasto.presupuestoItemId || sugeridoId || '';
                 return (
                   <div style={{ marginBottom: '1rem' }}>
                     <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Vincular a Presupuesto (opcional)</label>
-                    <select value={valorSeleccionado} onChange={(e) => setNewGasto({...newGasto, presupuestoItemId: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                    <select value={valorSeleccionado} onChange={(e) => setNewGasto({...newGasto, presupuestoItemId: e.target.value ? parseInt(e.target.value) : ''})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }}>
                       <option value="">Sin vincular</option>
-                      {candidatosPresupuesto.map(p => <option key={p.id} value={p.id}>{p.nombre} — {formatMoney(p.valorMensual, newGasto.empresa)}</option>)}
+                      {candidatos.map(({ item: p }) => <option key={p.id} value={p.id}>{p.nombre}{p.ceco !== newGasto.ceco ? ` · ${p.ceco}` : ''} — {formatMoney(p.valorMensual, newGasto.empresa)}</option>)}
                     </select>
                     {valorSeleccionado && sugeridoId === valorSeleccionado && !newGasto.presupuestoItemId && (
-                      <p style={{ fontSize: '0.75rem', color: '#6B6458', margin: '0.35rem 0 0 0' }}>💡 Sugerido automáticamente — puedes cambiarlo.</p>
+                      <p style={{ fontSize: '0.75rem', color: '#6B6458', margin: '0.35rem 0 0 0' }}>💡 Sugerido automáticamente por proveedor/responsable — puedes cambiarlo.</p>
                     )}
+                    {valorSeleccionado && (() => {
+                      const seleccionado = candidatos.find(c => c.item.id === valorSeleccionado);
+                      return seleccionado && !seleccionado.mismoCeco ? (
+                        <p style={{ fontSize: '0.75rem', color: '#C4A747', margin: '0.35rem 0 0 0' }}>⚠️ Este concepto está catalogado en {seleccionado.item.ceco}, distinto al CECO elegido arriba. Al guardar, el CECO del gasto se ajustará a {seleccionado.item.ceco} para que el Presupuesto lo reconozca como pagado.</p>
+                      ) : null;
+                    })()}
                   </div>
                 );
               })()}
@@ -3631,12 +3683,12 @@ const App = () => {
                           </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                             {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') ? (() => {
-                              const candidatosVinculo = presupuestoItems.filter(p => p.empresa === g.empresa && p.ceco === g.ceco);
+                              const candidatosVinculo = getPresupuestoCandidatos(g.empresa, g.ceco, g.responsable, g.detalle, presupuestoItems);
                               if (!candidatosVinculo.length) return <span style={{ color: '#AFA897', fontSize: '0.75rem' }}>—</span>;
                               return (
-                                <select value={g.presupuestoItemId || ''} onChange={(e) => handleUpdateGasto(g.id, 'presupuestoItemId', e.target.value || null)} style={{ padding: '0.35rem 0.5rem', backgroundColor: g.presupuestoItemId ? 'rgba(47,158,82,0.12)' : '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#221E15', fontSize: '0.75rem', maxWidth: '160px' }}>
+                                <select value={g.presupuestoItemId || ''} onChange={(e) => handleVincularPresupuesto(g.id, e.target.value)} style={{ padding: '0.35rem 0.5rem', backgroundColor: g.presupuestoItemId ? 'rgba(47,158,82,0.12)' : '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#221E15', fontSize: '0.75rem', maxWidth: '160px' }}>
                                   <option value="">Sin vincular</option>
-                                  {candidatosVinculo.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                                  {candidatosVinculo.map(({ item: p }) => <option key={p.id} value={p.id}>{p.nombre}{p.ceco !== g.ceco ? ` · ${p.ceco}` : ''}</option>)}
                                 </select>
                               );
                             })() : (
