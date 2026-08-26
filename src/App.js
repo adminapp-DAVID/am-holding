@@ -2178,6 +2178,12 @@ const App = () => {
   // Vista mensual: cada concepto recurrente activo de la empresa filtrada, cruzado contra los gastos
   // ya registrados en Finanzas ese mes (vía presupuestoItemId) para saber qué está Pagado y qué Pendiente,
   // más las deducciones (préstamos/otros descuentos) vigentes ese mes para calcular el Neto a Pagar.
+  //
+  // Prioridad del valor: si el concepto YA se pagó este mes (existe un gasto vinculado), el valor real
+  // ingresado en el formulario de Gasto de Finanzas manda sobre el valor base/ajustado de Presupuesto —
+  // no tiene sentido mantener los dos sincronizados a mano cuando el valor real ya quedó registrado.
+  // El valor base/ajuste manual (getValorEsperado) solo sigue sirviendo de ESTIMADO mientras el concepto
+  // sigue Pendiente ese mes (útil para saber cuánto esperar antes de pagar).
   const presupuestoMensualDetalle = (() => {
     const { empresa, mes, anio } = filtroPresupuesto;
     const mesStr = `${anio}-${String(mes).padStart(2, '0')}`;
@@ -2185,17 +2191,32 @@ const App = () => {
       .filter(p => p.activo !== false && p.empresa === empresa)
       .map(item => {
         const gastoVinculado = gastos.find(g => g.presupuestoItemId === item.id && g.fecha && g.fecha.substring(0, 7) === mesStr);
-        const valorEsperado = getValorEsperado(item.id, anio, mes);
-        const ajustado = valorEsperado !== (parseFloat(item.valorMensual) || 0);
+        const valorBaseEsperado = getValorEsperado(item.id, anio, mes);
+        const ajustado = valorBaseEsperado !== (parseFloat(item.valorMensual) || 0);
         const deduccionesDelItem = deducciones.filter(d => d.presupuestoItemId === item.id);
-        const totalDeducciones = deduccionesDelItem.reduce((sum, d) => sum + getCuotaAplicada(d, anio, mes), 0);
+        const totalDeduccionesEstimadas = deduccionesDelItem.reduce((sum, d) => sum + getCuotaAplicada(d, anio, mes), 0);
+
+        // Si hay gasto vinculado: "Valor del Mes" = lo que se escribió en el campo Valor de Finanzas
+        // (el bruto, si hubo deducción aplicada — así no se ve "doble descontado"); Deducciones = lo
+        // que realmente se aplicó a ESE pago (no el cálculo teórico); Neto a Pagar = lo que de verdad
+        // se pagó (gastoVinculado.valor, ya neto). Sin gasto vinculado, todo sigue siendo el estimado.
+        const valorMes = gastoVinculado
+          ? (gastoVinculado.valorBruto != null ? gastoVinculado.valorBruto : (parseFloat(gastoVinculado.valor) || 0))
+          : valorBaseEsperado;
+        const totalDeducciones = gastoVinculado
+          ? (gastoVinculado.deduccionAplicada != null ? gastoVinculado.deduccionAplicada : 0)
+          : totalDeduccionesEstimadas;
+        const netoAPagar = gastoVinculado ? (parseFloat(gastoVinculado.valor) || 0) : (valorBaseEsperado - totalDeduccionesEstimadas);
+
         return {
           ...item,
-          valorEsperado,
+          valorEsperado: valorMes,
+          valorBaseEsperado,
           ajustado,
+          esValorReal: !!gastoVinculado,
           deducciones: deduccionesDelItem.map(d => ({ ...d, cuotaAplicada: getCuotaAplicada(d, anio, mes), saldoPendiente: getSaldoPendienteEnMes(d, anio, mes) })),
           totalDeducciones,
-          netoAPagar: valorEsperado - totalDeducciones,
+          netoAPagar,
           pagado: !!gastoVinculado,
           valorPagadoReal: gastoVinculado ? (parseFloat(gastoVinculado.valor) || 0) : 0,
           gastoId: gastoVinculado ? gastoVinculado.id : null
@@ -3920,10 +3941,12 @@ const App = () => {
                                 <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{item.tipo}</td>
                                 <td style={{ padding: '0.75rem', textAlign: 'right', color: '#221E15' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.4rem' }}>
-                                    {item.ajustado && <span title={`Valor base: ${formatMoney(item.valorMensual, item.empresa)}`} style={{ fontSize: '0.7rem', color: '#3B72D9' }}>✏️ ajustado</span>}
+                                    {item.esValorReal ? (
+                                      <span title="Valor real ingresado al registrar el pago en Finanzas" style={{ fontSize: '0.7rem', color: '#2F9E52' }}>💰 real</span>
+                                    ) : (item.ajustado && <span title={`Valor base: ${formatMoney(item.valorMensual, item.empresa)}`} style={{ fontSize: '0.7rem', color: '#3B72D9' }}>✏️ ajustado</span>)}
                                     {formatMoney(item.valorEsperado, filtroPresupuesto.empresa)}
-                                    {puedeEditarPresupuesto && (
-                                      <button onClick={() => handleEditarValorMes(item)} title="Ajustar el valor de este mes" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '0.85rem' }}>✏️</button>
+                                    {puedeEditarPresupuesto && !item.esValorReal && (
+                                      <button onClick={() => handleEditarValorMes(item)} title="Ajustar el valor ESTIMADO de este mes (deja de usarse en cuanto se registre el pago real en Finanzas)" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '0.85rem' }}>✏️</button>
                                     )}
                                   </div>
                                 </td>
