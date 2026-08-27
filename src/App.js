@@ -3922,7 +3922,7 @@ const App = () => {
                 <button onClick={() => setMostrarImportar(true)} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#3B72D9', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>
                   📥 Importar Histórico
                 </button>
-                <p style={{ color: '#6B6458', margin: 0, fontSize: '0.85rem' }}>Gastos en localStorage: {gastos.length}</p>
+                <p style={{ color: '#6B6458', margin: 0, fontSize: '0.85rem' }}>{cargandoGastos ? 'Cargando gastos desde Supabase...' : `Gastos cargados desde Supabase: ${gastos.length}`}</p>
               </div>
             )}
 
