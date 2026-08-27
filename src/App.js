@@ -340,8 +340,16 @@ const App = () => {
   // Cuentas de Cobro solo maneja estos 3 estados (el check constraint de la tabla no admite
   // "Legalizado" — ese estado es propio de Solicitudes). No reutilizar estadosSolicitud aquí.
   const estadosCuentaCobro = ['Pendiente', 'Aprobado', 'Pagado'];
-  const [gastos, setGastos] = useState(() => JSON.parse(localStorage.getItem('amGastos') || '[]'));
-  const [ingresos, setIngresos] = useState(() => JSON.parse(localStorage.getItem('amIngresos') || '[]'));
+  // Gastos/Ingresos — conectado a Supabase (tablas public.gastos / public.ingresos). Los soportes de cada
+  // registro NUEVO se suben al bucket "soportes" (uno por uno, igual que Cuentas de Cobro). Los registros
+  // HISTÓRICOS migrados desde el Drive/Excel anterior no traen archivo subido — en su lugar guardan
+  // soporteDriveLink (el link de Drive tal cual), que solo abre esa URL en vez de pasar por Storage.
+  const [gastos, setGastos] = useState([]);
+  const [ingresos, setIngresos] = useState([]);
+  const [cargandoGastos, setCargandoGastos] = useState(true);
+  const [cargandoIngresos, setCargandoIngresos] = useState(true);
+  const [guardandoGasto, setGuardandoGasto] = useState(false);
+  const [guardandoIngreso, setGuardandoIngreso] = useState(false);
   const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', soportes: [], presupuestoItemId: '', aplicarDeduccion: true });
   const [newIngreso, setNewIngreso] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Ingreso', empresa: 'AM SPORTS GROUP SAS', responsable: '', detalle: '', valor: '', categoria: '', estado: 'Pagado', observaciones: '', linkSoporte: '', cuenta: '', soportes: [] });
   const [filtroFinanzas, setFiltroFinanzas] = useState({ mes: new Date().getMonth() + 1, empresa: 'Todos', tipo: 'Todos' });
@@ -354,17 +362,21 @@ const App = () => {
   const [filtroFechaInicio, setFiltroFechaInicio] = useState('2026-01-01');
   const [filtroFechaFin, setFiltroFechaFin] = useState(new Date().toISOString().split('T')[0]);
 
-  // PRESUPUESTO
-  const [presupuestoItems, setPresupuestoItems] = useState(() => JSON.parse(localStorage.getItem('amPresupuestoItems') || JSON.stringify(presupuestoSeedData)));
-  const [presupuestoAnual, setPresupuestoAnual] = useState(() => JSON.parse(localStorage.getItem('amPresupuestoAnual') || '[]'));
+  // PRESUPUESTO — conectado a Supabase (public.presupuesto_items, public.presupuesto_anual,
+  // public.presupuesto_overrides, public.deducciones). Los `id` ahora son uuid (texto) de Postgres, ya no
+  // números de Date.now() — cualquier comparación sigue funcionando igual (===), pero NUNCA hay que
+  // parsear estos ids con parseInt/Number en ningún lado nuevo que se agregue.
+  const [presupuestoItems, setPresupuestoItems] = useState([]);
+  const [presupuestoAnual, setPresupuestoAnual] = useState([]);
   // Ajustes al valor esperado de UN mes puntual (no cambia el valor base recurrente del concepto).
   // Cada registro: { id, presupuestoItemId, anio, mes, valor }.
-  const [presupuestoOverrides, setPresupuestoOverrides] = useState(() => JSON.parse(localStorage.getItem('amPresupuestoOverrides') || '[]'));
+  const [presupuestoOverrides, setPresupuestoOverrides] = useState([]);
   // Deducciones (préstamos u otros descuentos) aplicadas al valor mensual de un concepto de Nómina/Prestación
   // de Servicio. 'Préstamo' calcula su propio saldo pendiente mes a mes (sin tabla de historial, de forma
   // determinística a partir de fechaInicio/valorCuota/saldoTotal — ver mesesTranscurridos/getCuotaAplicada
   // más abajo); 'Otro' es un descuento recurrente fijo que se aplica todos los meses mientras esté activo.
-  const [deducciones, setDeducciones] = useState(() => JSON.parse(localStorage.getItem('amDeducciones') || '[]'));
+  const [deducciones, setDeducciones] = useState([]);
+  const [cargandoPresupuesto, setCargandoPresupuesto] = useState(true);
   const deduccionVacia = { presupuestoItemId: '', tipo: 'Préstamo', valorCuota: '', saldoTotal: '', fechaInicio: new Date().toISOString().split('T')[0], observaciones: '', activo: true };
   const [newDeduccion, setNewDeduccion] = useState(deduccionVacia);
   const [editingDeduccionId, setEditingDeduccionId] = useState(null);
@@ -753,6 +765,198 @@ const App = () => {
     setCargandoCuentasCobro(false);
   };
 
+  // ===== Presupuesto (Items, Anual, Overrides, Deducciones) y Finanzas (Gastos, Ingresos) =====
+  // Conectados a Supabase. Los `id` de presupuestoItems/deducciones son uuid de Postgres — nunca
+  // se deben parsear con parseInt/Number, las comparaciones siguen siendo con === igual que antes.
+
+  const presupuestoItemDBToLocal = (row) => ({
+    id: row.id,
+    empresa: row.empresas?.nombre || '',
+    ceco: row.cecos?.codigo || '',
+    nombre: row.nombre,
+    tipo: row.tipo || '',
+    valorMensual: row.valor_mensual,
+    diaLimitePago: row.dia_limite_pago != null ? String(row.dia_limite_pago) : '',
+    activo: row.activo
+  });
+
+  const cargarPresupuestoItems = async () => {
+    const { data, error } = await supabase
+      .from('presupuesto_items')
+      .select('id, nombre, tipo, valor_mensual, dia_limite_pago, activo, empresas ( nombre ), cecos ( codigo )')
+      .order('created_at', { ascending: true });
+    if (error) {
+      console.error('Error cargando presupuesto_items:', error);
+      return;
+    }
+    setPresupuestoItems((data || []).map(presupuestoItemDBToLocal));
+  };
+
+  const presupuestoAnualDBToLocal = (row) => ({
+    id: row.id,
+    empresa: row.empresas?.nombre || '',
+    ceco: row.cecos?.codigo || '',
+    anio: row.anio,
+    valorAnual: row.valor_anual
+  });
+
+  const cargarPresupuestoAnual = async () => {
+    const { data, error } = await supabase
+      .from('presupuesto_anual')
+      .select('id, anio, valor_anual, empresas ( nombre ), cecos ( codigo )')
+      .order('anio', { ascending: false });
+    if (error) {
+      console.error('Error cargando presupuesto_anual:', error);
+      return;
+    }
+    setPresupuestoAnual((data || []).map(presupuestoAnualDBToLocal));
+  };
+
+  const presupuestoOverrideDBToLocal = (row) => ({
+    id: row.id,
+    presupuestoItemId: row.presupuesto_item_id,
+    anio: row.anio,
+    mes: row.mes,
+    valor: row.valor
+  });
+
+  const cargarPresupuestoOverrides = async () => {
+    const { data, error } = await supabase
+      .from('presupuesto_overrides')
+      .select('id, presupuesto_item_id, anio, mes, valor');
+    if (error) {
+      console.error('Error cargando presupuesto_overrides:', error);
+      return;
+    }
+    setPresupuestoOverrides((data || []).map(presupuestoOverrideDBToLocal));
+  };
+
+  const deduccionDBToLocal = (row) => ({
+    id: row.id,
+    presupuestoItemId: row.presupuesto_item_id,
+    tipo: row.tipo,
+    valorCuota: row.valor_cuota,
+    saldoTotal: row.saldo_total != null ? row.saldo_total : '',
+    fechaInicio: row.fecha_inicio,
+    observaciones: row.observaciones || '',
+    activo: row.activo
+  });
+
+  const cargarDeducciones = async () => {
+    const { data, error } = await supabase
+      .from('deducciones')
+      .select('id, presupuesto_item_id, tipo, valor_cuota, saldo_total, fecha_inicio, observaciones, activo')
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.error('Error cargando deducciones:', error);
+      return;
+    }
+    setDeducciones((data || []).map(deduccionDBToLocal));
+  };
+
+  const cargarPresupuesto = async () => {
+    setCargandoPresupuesto(true);
+    await Promise.all([cargarPresupuestoItems(), cargarPresupuestoAnual(), cargarPresupuestoOverrides(), cargarDeducciones()]);
+    setCargandoPresupuesto(false);
+  };
+
+  // Cuenta cuántos soportes reales (public.soportes) tiene cada fila de un conjunto de gastos/ingresos.
+  const contarSoportesPorEntidad = async (entidadTipo, ids) => {
+    if (ids.length === 0) return {};
+    const { data, error } = await supabase
+      .from('soportes')
+      .select('entidad_id')
+      .eq('entidad_tipo', entidadTipo)
+      .in('entidad_id', ids);
+    if (error) {
+      console.error(`Error contando soportes de ${entidadTipo}:`, error);
+      return {};
+    }
+    const conteo = {};
+    (data || []).forEach(r => { conteo[r.entidad_id] = (conteo[r.entidad_id] || 0) + 1; });
+    return conteo;
+  };
+
+  const gastoDBToLocal = (row) => ({
+    id: row.id,
+    fecha: row.fecha,
+    tipo: row.tipo,
+    empresa: row.empresas?.nombre || '',
+    responsable: row.usuarios?.nombre || '',
+    responsableNombre: row.usuarios?.nombre || '',
+    ceco: row.cecos?.codigo || '',
+    cuenta: row.cuenta || '',
+    cuentaSalida: row.cuenta_salida || '',
+    cuentaDestino: row.cuenta_destino || '',
+    detalle: row.detalle || '',
+    valor: row.valor,
+    valorBruto: row.valor_bruto,
+    deduccionAplicada: row.deduccion_aplicada,
+    categoria: row.categoria || '',
+    estado: row.estado,
+    observaciones: row.observaciones || '',
+    presupuestoItemId: row.presupuesto_item_id,
+    soporteDriveLink: row.soporte_drive_link || '',
+    cantidadSoportes: 0
+  });
+
+  const cargarGastos = async () => {
+    setCargandoGastos(true);
+    const { data, error } = await supabase
+      .from('gastos')
+      .select('id, fecha, tipo, cuenta, cuenta_salida, cuenta_destino, detalle, valor, valor_bruto, deduccion_aplicada, categoria, estado, observaciones, presupuesto_item_id, soporte_drive_link, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
+      .order('fecha', { ascending: false });
+    if (error) {
+      console.error('Error cargando gastos:', error);
+      setCargandoGastos(false);
+      return;
+    }
+    const lista = (data || []).map(gastoDBToLocal);
+    if (lista.length > 0) {
+      const conteo = await contarSoportesPorEntidad('gasto', lista.map(g => g.id));
+      lista.forEach(g => { g.cantidadSoportes = conteo[g.id] || 0; });
+    }
+    setGastos(lista);
+    setCargandoGastos(false);
+  };
+
+  const ingresoDBToLocal = (row) => ({
+    id: row.id,
+    fecha: row.fecha,
+    tipo: row.tipo,
+    empresa: row.empresas?.nombre || '',
+    responsable: row.usuarios?.nombre || '',
+    responsableNombre: row.usuarios?.nombre || '',
+    cuenta: row.cuenta || '',
+    detalle: row.detalle || '',
+    valor: row.valor,
+    categoria: row.categoria || '',
+    estado: row.estado,
+    observaciones: row.observaciones || '',
+    soporteDriveLink: row.soporte_drive_link || '',
+    cantidadSoportes: 0
+  });
+
+  const cargarIngresos = async () => {
+    setCargandoIngresos(true);
+    const { data, error } = await supabase
+      .from('ingresos')
+      .select('id, fecha, tipo, cuenta, detalle, valor, categoria, estado, observaciones, soporte_drive_link, empresas ( nombre ), usuarios ( nombre )')
+      .order('fecha', { ascending: false });
+    if (error) {
+      console.error('Error cargando ingresos:', error);
+      setCargandoIngresos(false);
+      return;
+    }
+    const lista = (data || []).map(ingresoDBToLocal);
+    if (lista.length > 0) {
+      const conteo = await contarSoportesPorEntidad('ingreso', lista.map(i => i.id));
+      lista.forEach(i => { i.cantidadSoportes = conteo[i.id] || 0; });
+    }
+    setIngresos(lista);
+    setCargandoIngresos(false);
+  };
+
   // Directorio público limitado (nombre/foto/cargo/cumpleaños de TODOS) para el widget de
   // cumpleaños del mes en Mi Perfil, visible para cualquier rol sin exponer datos sensibles.
   const cargarColaboradoresPublico = async () => {
@@ -771,11 +975,20 @@ const App = () => {
       cargarSolicitudes();
       cargarCuentasCobro();
       cargarColaboradoresPublico();
+      cargarGastos();
+      cargarIngresos();
+      cargarPresupuesto();
     } else {
       setUsuariosDB([]);
       setSolicitudes([]);
       setCuentasDeCobro([]);
       setColaboradoresPublico([]);
+      setGastos([]);
+      setIngresos([]);
+      setPresupuestoItems([]);
+      setPresupuestoAnual([]);
+      setPresupuestoOverrides([]);
+      setDeducciones([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
@@ -1780,7 +1993,24 @@ const App = () => {
     : cuentasDeCobro;
 
   // GASTOS E INGRESOS CRUD
-  const handleAddGasto = () => {
+  // Resuelve nombre de empresa / código de CECO a sus id de Supabase (mismo patrón usado en
+  // Cuentas de Cobro/Solicitudes). empresas/cecos son constantes locales que reflejan el seed
+  // de Supabase, así que solo hace falta esta consulta puntual al guardar.
+  const resolverEmpresaId = async (nombreEmpresa) => {
+    if (!nombreEmpresa) return null;
+    const { data, error } = await supabase.from('empresas').select('id').eq('nombre', nombreEmpresa).single();
+    if (error) { console.error('Error buscando empresa:', error); return null; }
+    return data?.id || null;
+  };
+
+  const resolverCecoId = async (codigoCeco) => {
+    if (!codigoCeco) return null;
+    const { data, error } = await supabase.from('cecos').select('id').eq('codigo', codigoCeco).single();
+    if (error) { console.error('Error buscando CECO:', error); return null; }
+    return data?.id || null;
+  };
+
+  const handleAddGasto = async () => {
     if (!newGasto.detalle || !newGasto.valor) {
       alert('Detalle y valor son obligatorios');
       return;
@@ -1801,81 +2031,109 @@ const App = () => {
       return;
     }
 
-    const presupuestoItemIdFinal = newGasto.tipo === 'Gasto'
-      ? (newGasto.presupuestoItemId || getPresupuestoSugerido(newGasto.empresa, newGasto.ceco, newGasto.responsable, newGasto.detalle, presupuestoItems))
-      : '';
+    setGuardandoGasto(true);
+    try {
+      const presupuestoItemIdFinal = newGasto.tipo === 'Gasto'
+        ? (newGasto.presupuestoItemId || getPresupuestoSugerido(newGasto.empresa, newGasto.ceco, newGasto.responsable, newGasto.detalle, presupuestoItems))
+        : '';
 
-    // Si el concepto vinculado pertenece a un CECO distinto al elegido en el formulario (caso típico
-    // de gastos fijos catalogados en otro CECO), el CECO del gasto se ajusta al del concepto — así el
-    // cruce en Presupuesto (que agrupa por empresa+CECO) reconoce el pago como hecho.
-    let cecoFinal = newGasto.ceco;
-    if (presupuestoItemIdFinal) {
-      const conceptoVinculado = presupuestoItems.find(p => p.id === presupuestoItemIdFinal);
-      if (conceptoVinculado && conceptoVinculado.ceco && conceptoVinculado.ceco !== cecoFinal) {
-        cecoFinal = conceptoVinculado.ceco;
-      }
-    }
-
-    // Si el gasto queda vinculado a un concepto de Presupuesto con deducciones activas ese mes
-    // (préstamo u otro descuento), el valor bruto ingresado se convierte en Neto a Pagar: el
-    // "Valor" que queda guardado (y que alimenta Ejecutado/Dashboard/Presupuesto) es el neto real.
-    let valorFinal = newGasto.valor;
-    let valorBrutoFinal = null;
-    let deduccionAplicadaFinal = null;
-    if (newGasto.tipo === 'Gasto' && presupuestoItemIdFinal && newGasto.aplicarDeduccion !== false) {
-      const [anioGasto, mesGasto] = (newGasto.fecha || '').split('-').map(n => parseInt(n));
-      if (anioGasto && mesGasto) {
-        const totalDeduccion = deducciones
-          .filter(d => d.presupuestoItemId === presupuestoItemIdFinal)
-          .reduce((sum, d) => sum + getCuotaAplicada(d, anioGasto, mesGasto), 0);
-        if (totalDeduccion > 0) {
-          const bruto = parseFloat(newGasto.valor) || 0;
-          valorBrutoFinal = bruto;
-          deduccionAplicadaFinal = totalDeduccion;
-          valorFinal = Math.max(0, bruto - totalDeduccion);
+      // Si el concepto vinculado pertenece a un CECO distinto al elegido en el formulario (caso típico
+      // de gastos fijos catalogados en otro CECO), el CECO del gasto se ajusta al del concepto — así el
+      // cruce en Presupuesto (que agrupa por empresa+CECO) reconoce el pago como hecho.
+      let cecoFinal = newGasto.ceco;
+      if (presupuestoItemIdFinal) {
+        const conceptoVinculado = presupuestoItems.find(p => p.id === presupuestoItemIdFinal);
+        if (conceptoVinculado && conceptoVinculado.ceco && conceptoVinculado.ceco !== cecoFinal) {
+          cecoFinal = conceptoVinculado.ceco;
         }
       }
+
+      // Si el gasto queda vinculado a un concepto de Presupuesto con deducciones activas ese mes
+      // (préstamo u otro descuento), el valor bruto ingresado se convierte en Neto a Pagar: el
+      // "Valor" que queda guardado (y que alimenta Ejecutado/Dashboard/Presupuesto) es el neto real.
+      let valorFinal = newGasto.valor;
+      let valorBrutoFinal = null;
+      let deduccionAplicadaFinal = null;
+      if (newGasto.tipo === 'Gasto' && presupuestoItemIdFinal && newGasto.aplicarDeduccion !== false) {
+        const [anioGasto, mesGasto] = (newGasto.fecha || '').split('-').map(n => parseInt(n));
+        if (anioGasto && mesGasto) {
+          const totalDeduccion = deducciones
+            .filter(d => d.presupuestoItemId === presupuestoItemIdFinal)
+            .reduce((sum, d) => sum + getCuotaAplicada(d, anioGasto, mesGasto), 0);
+          if (totalDeduccion > 0) {
+            const bruto = parseFloat(newGasto.valor) || 0;
+            valorBrutoFinal = bruto;
+            deduccionAplicadaFinal = totalDeduccion;
+            valorFinal = Math.max(0, bruto - totalDeduccion);
+          }
+        }
+      }
+
+      const [empresaId, cecoId] = await Promise.all([resolverEmpresaId(newGasto.empresa), resolverCecoId(cecoFinal)]);
+      const responsableId = responsables.find(r => r.nombre === newGasto.responsable)?.id || null;
+
+      const { data: inserted, error } = await supabase
+        .from('gastos')
+        .insert({
+          fecha: newGasto.fecha,
+          tipo: newGasto.tipo,
+          empresa_id: empresaId,
+          responsable_id: responsableId,
+          ceco_id: cecoId,
+          cuenta: newGasto.cuenta || null,
+          cuenta_salida: newGasto.cuentaSalida || null,
+          cuenta_destino: newGasto.cuentaDestino || null,
+          detalle: newGasto.detalle,
+          valor: valorFinal,
+          valor_bruto: valorBrutoFinal,
+          deduccion_aplicada: deduccionAplicadaFinal,
+          categoria: newGasto.categoria || null,
+          estado: newGasto.estado,
+          observaciones: newGasto.observaciones || null,
+          presupuesto_item_id: presupuestoItemIdFinal || null
+        })
+        .select('id')
+        .single();
+
+      if (error) {
+        console.error('Error creando gasto:', error);
+        alert('❌ No se pudo guardar la transacción: ' + error.message);
+        return;
+      }
+
+      for (const soporte of soportesTemp) {
+        await subirSoporteEntidad(soporte, 'gasto', inserted.id);
+      }
+
+      await cargarGastos();
+
+      setNewGasto({
+        fecha: new Date().toISOString().split('T')[0],
+        tipo: 'Gasto',
+        empresa: 'AM SPORTS GROUP SAS',
+        responsable: '',
+        ceco: 'CECO-001-GF',
+        cuenta: '',
+        detalle: '',
+        valor: '',
+        categoria: '',
+        estado: 'Pendiente',
+        observaciones: '',
+        linkSoporte: '',
+        cuentaSalida: '',
+        cuentaDestino: '',
+        soportes: [],
+        presupuestoItemId: '',
+        aplicarDeduccion: true
+      });
+      setSoportesTemp([]);
+      alert('✅ Transacción agregada con soportes');
+    } finally {
+      setGuardandoGasto(false);
     }
-
-    const nuevoGasto = {
-      id: Date.now(),
-      ...newGasto,
-      ceco: cecoFinal,
-      valor: valorFinal,
-      valorBruto: valorBrutoFinal,
-      deduccionAplicada: deduccionAplicadaFinal,
-      presupuestoItemId: presupuestoItemIdFinal || null,
-      soportes: soportesTemp,
-      responsableNombre: responsables.find(r => r.nombre === newGasto.responsable)?.nombre || newGasto.responsable
-    };
-
-    setGastos([...gastos, nuevoGasto]);
-    localStorage.setItem('amGastos', JSON.stringify([...gastos, nuevoGasto]));
-    
-    setNewGasto({ 
-      fecha: new Date().toISOString().split('T')[0], 
-      tipo: 'Gasto',
-      empresa: 'AM SPORTS GROUP SAS',
-      responsable: '',
-      ceco: 'CECO-001-GF',
-      cuenta: '',
-      detalle: '',
-      valor: '',
-      categoria: '',
-      estado: 'Pendiente',
-      observaciones: '',
-      linkSoporte: '',
-      cuentaSalida: '',
-      cuentaDestino: '',
-      soportes: [],
-      presupuestoItemId: '',
-      aplicarDeduccion: true
-    });
-    setSoportesTemp([]);
-    alert('✅ Transacción agregada con soportes');
   };
 
-  const handleAddIngreso = () => {
+  const handleAddIngreso = async () => {
     if (!newIngreso.detalle || !newIngreso.valor) {
       alert('Detalle y valor son obligatorios');
       return;
@@ -1891,73 +2149,136 @@ const App = () => {
       return;
     }
 
-    const nuevoIngreso = {
-      id: Date.now(),
-      ...newIngreso,
-      soportes: soportesTemp,
-      responsableNombre: responsables.find(r => r.nombre === newIngreso.responsable)?.nombre || newIngreso.responsable
-    };
+    setGuardandoIngreso(true);
+    try {
+      const empresaId = await resolverEmpresaId(newIngreso.empresa);
+      const responsableId = responsables.find(r => r.nombre === newIngreso.responsable)?.id || null;
 
-    setIngresos([...ingresos, nuevoIngreso]);
-    localStorage.setItem('amIngresos', JSON.stringify([...ingresos, nuevoIngreso]));
-    
-    setNewIngreso({ 
-      fecha: new Date().toISOString().split('T')[0], 
-      tipo: 'Ingreso',
-      empresa: 'AM SPORTS GROUP SAS',
-      responsable: '',
-      detalle: '',
-      valor: '',
-      categoria: '',
-      estado: 'Pagado',
-      observaciones: '',
-      linkSoporte: '',
-      cuenta: '',
-      soportes: []
-    });
-    setSoportesTemp([]);
-    alert('✅ Ingreso agregado con soportes');
+      const { data: inserted, error } = await supabase
+        .from('ingresos')
+        .insert({
+          fecha: newIngreso.fecha,
+          tipo: newIngreso.tipo,
+          empresa_id: empresaId,
+          responsable_id: responsableId,
+          cuenta: newIngreso.cuenta || null,
+          detalle: newIngreso.detalle,
+          valor: newIngreso.valor,
+          categoria: newIngreso.categoria || null,
+          estado: newIngreso.estado,
+          observaciones: newIngreso.observaciones || null
+        })
+        .select('id')
+        .single();
+
+      if (error) {
+        console.error('Error creando ingreso:', error);
+        alert('❌ No se pudo guardar el ingreso: ' + error.message);
+        return;
+      }
+
+      for (const soporte of soportesTemp) {
+        await subirSoporteEntidad(soporte, 'ingreso', inserted.id);
+      }
+
+      await cargarIngresos();
+
+      setNewIngreso({
+        fecha: new Date().toISOString().split('T')[0],
+        tipo: 'Ingreso',
+        empresa: 'AM SPORTS GROUP SAS',
+        responsable: '',
+        detalle: '',
+        valor: '',
+        categoria: '',
+        estado: 'Pagado',
+        observaciones: '',
+        linkSoporte: '',
+        cuenta: '',
+        soportes: []
+      });
+      setSoportesTemp([]);
+      alert('✅ Ingreso agregado con soportes');
+    } finally {
+      setGuardandoIngreso(false);
+    }
   };
 
-  const handleUpdateGasto = (id, campo, valor) => {
-    const updated = gastos.map(g => g.id === id ? {...g, [campo]: valor} : g);
-    setGastos(updated);
-    localStorage.setItem('amGastos', JSON.stringify(updated));
+  const handleUpdateGasto = async (id, campo, valor) => {
+    const columnaDB = { estado: 'estado' }[campo] || campo;
+    const anteriores = gastos;
+    setGastos(gastos.map(g => g.id === id ? {...g, [campo]: valor} : g));
+    const { error } = await supabase.from('gastos').update({ [columnaDB]: valor }).eq('id', id);
+    if (error) {
+      console.error('Error actualizando gasto:', error);
+      alert('❌ No se pudo actualizar: ' + error.message);
+      setGastos(anteriores);
+    }
   };
 
   // Vincular/desvincular un gasto ya registrado a un concepto de Presupuesto desde la tabla de Gastos.
   // Si el concepto elegido pertenece a un CECO distinto al que tiene el gasto (caso de gastos fijos
   // catalogados en otro CECO), también se ajusta el CECO del gasto — de lo contrario el cruce en
-  // Presupuesto (que agrupa por empresa+CECO) nunca lo va a reconocer como pagado.
-  const handleVincularPresupuesto = (id, valorSeleccionado) => {
-    const nuevoId = valorSeleccionado ? parseInt(valorSeleccionado) : null;
+  // Presupuesto (que agrupa por empresa+CECO) nunca lo va a reconocer como pagado. Los id de
+  // presupuestoItems son uuid de Postgres — NUNCA se parsean con parseInt/Number.
+  const handleVincularPresupuesto = async (id, valorSeleccionado) => {
+    const nuevoId = valorSeleccionado || null;
     const concepto = nuevoId ? presupuestoItems.find(p => p.id === nuevoId) : null;
-    const updated = gastos.map(g => {
+    const anteriores = gastos;
+    setGastos(gastos.map(g => {
       if (g.id !== id) return g;
       return { ...g, presupuestoItemId: nuevoId, ceco: (concepto && concepto.ceco) ? concepto.ceco : g.ceco };
-    });
-    setGastos(updated);
-    localStorage.setItem('amGastos', JSON.stringify(updated));
-  };
+    }));
 
-  const handleDeleteGasto = (id) => {
-    if (window.confirm('¿Eliminar gasto?')) {
-      const updated = gastos.filter(g => g.id !== id);
-      setGastos(updated);
-      localStorage.setItem('amGastos', JSON.stringify(updated));
+    const patch = { presupuesto_item_id: nuevoId };
+    if (concepto && concepto.ceco) {
+      const cecoId = await resolverCecoId(concepto.ceco);
+      if (cecoId) patch.ceco_id = cecoId;
+    }
+    const { error } = await supabase.from('gastos').update(patch).eq('id', id);
+    if (error) {
+      console.error('Error vinculando presupuesto:', error);
+      alert('❌ No se pudo vincular: ' + error.message);
+      setGastos(anteriores);
     }
   };
 
-  const handleDeleteIngreso = (id) => {
-    if (window.confirm('¿Eliminar ingreso?')) {
-      const updated = ingresos.filter(i => i.id !== id);
-      setIngresos(updated);
-      localStorage.setItem('amIngresos', JSON.stringify(updated));
+  const handleDeleteGasto = async (id) => {
+    if (!window.confirm('¿Eliminar gasto?')) return;
+    const { data: soportesRelacionados } = await supabase
+      .from('soportes').select('bucket_path').eq('entidad_tipo', 'gasto').eq('entidad_id', id);
+    if (soportesRelacionados && soportesRelacionados.length > 0) {
+      await supabase.storage.from('soportes').remove(soportesRelacionados.map(r => r.bucket_path));
+      await supabase.from('soportes').delete().eq('entidad_tipo', 'gasto').eq('entidad_id', id);
     }
+    const { error } = await supabase.from('gastos').delete().eq('id', id);
+    if (error) {
+      console.error('Error eliminando gasto:', error);
+      alert('❌ No se pudo eliminar el gasto: ' + error.message);
+      return;
+    }
+    setGastos(gastos.filter(g => g.id !== id));
+  };
+
+  const handleDeleteIngreso = async (id) => {
+    if (!window.confirm('¿Eliminar ingreso?')) return;
+    const { data: soportesRelacionados } = await supabase
+      .from('soportes').select('bucket_path').eq('entidad_tipo', 'ingreso').eq('entidad_id', id);
+    if (soportesRelacionados && soportesRelacionados.length > 0) {
+      await supabase.storage.from('soportes').remove(soportesRelacionados.map(r => r.bucket_path));
+      await supabase.from('soportes').delete().eq('entidad_tipo', 'ingreso').eq('entidad_id', id);
+    }
+    const { error } = await supabase.from('ingresos').delete().eq('id', id);
+    if (error) {
+      console.error('Error eliminando ingreso:', error);
+      alert('❌ No se pudo eliminar el ingreso: ' + error.message);
+      return;
+    }
+    setIngresos(ingresos.filter(i => i.id !== id));
   };
 
   // PRESUPUESTO — CRUD de conceptos recurrentes mensuales y techos anuales por CECO
-  const handleAddPresupuestoItem = () => {
+  const handleAddPresupuestoItem = async () => {
     if (!newPresupuestoItem.nombre || !newPresupuestoItem.valorMensual) {
       alert('Nombre/Concepto y valor mensual son obligatorios');
       return;
@@ -1966,55 +2287,84 @@ const App = () => {
       alert('El valor mensual debe ser mayor a cero');
       return;
     }
-    const item = { id: Date.now(), ...newPresupuestoItem, activo: true };
-    const updated = [...presupuestoItems, item];
-    setPresupuestoItems(updated);
-    localStorage.setItem('amPresupuestoItems', JSON.stringify(updated));
+    const [empresaId, cecoId] = await Promise.all([resolverEmpresaId(newPresupuestoItem.empresa), resolverCecoId(newPresupuestoItem.ceco)]);
+    const { error } = await supabase.from('presupuesto_items').insert({
+      empresa_id: empresaId,
+      ceco_id: cecoId,
+      nombre: newPresupuestoItem.nombre,
+      tipo: newPresupuestoItem.tipo || null,
+      valor_mensual: newPresupuestoItem.valorMensual,
+      dia_limite_pago: newPresupuestoItem.diaLimitePago ? parseInt(newPresupuestoItem.diaLimitePago) : null,
+      activo: true
+    });
+    if (error) {
+      console.error('Error creando concepto de presupuesto:', error);
+      alert('❌ No se pudo guardar: ' + error.message);
+      return;
+    }
+    await cargarPresupuestoItems();
     setNewPresupuestoItem({ empresa: newPresupuestoItem.empresa, ceco: newPresupuestoItem.ceco, nombre: '', tipo: newPresupuestoItem.tipo, valorMensual: '', diaLimitePago: '', activo: true });
   };
 
-  const handleUpdatePresupuestoItem = (id, campo, valor) => {
-    const updated = presupuestoItems.map(p => p.id === id ? { ...p, [campo]: valor } : p);
-    setPresupuestoItems(updated);
-    localStorage.setItem('amPresupuestoItems', JSON.stringify(updated));
-  };
-
-  const handleDeletePresupuestoItem = (id) => {
-    if (window.confirm('¿Eliminar este concepto de presupuesto? Los gastos ya vinculados a él no se borran.')) {
-      const updated = presupuestoItems.filter(p => p.id !== id);
-      setPresupuestoItems(updated);
-      localStorage.setItem('amPresupuestoItems', JSON.stringify(updated));
+  const handleUpdatePresupuestoItem = async (id, campo, valor) => {
+    const anteriores = presupuestoItems;
+    setPresupuestoItems(presupuestoItems.map(p => p.id === id ? { ...p, [campo]: valor } : p));
+    const { error } = await supabase.from('presupuesto_items').update({ [campo]: valor }).eq('id', id);
+    if (error) {
+      console.error('Error actualizando concepto de presupuesto:', error);
+      alert('❌ No se pudo actualizar: ' + error.message);
+      setPresupuestoItems(anteriores);
     }
   };
 
-  const handleAddPresupuestoAnual = () => {
+  const handleDeletePresupuestoItem = async (id) => {
+    if (!window.confirm('¿Eliminar este concepto de presupuesto? Los gastos ya vinculados a él no se borran.')) return;
+    const { error } = await supabase.from('presupuesto_items').delete().eq('id', id);
+    if (error) {
+      console.error('Error eliminando concepto de presupuesto:', error);
+      alert('❌ No se pudo eliminar: ' + error.message);
+      return;
+    }
+    setPresupuestoItems(presupuestoItems.filter(p => p.id !== id));
+  };
+
+  const handleAddPresupuestoAnual = async () => {
     if (!newPresupuestoAnual.valorAnual || parseFloat(newPresupuestoAnual.valorAnual) <= 0) {
       alert('El valor anual es obligatorio y debe ser mayor a cero');
       return;
     }
+    const [empresaId, cecoId] = await Promise.all([resolverEmpresaId(newPresupuestoAnual.empresa), resolverCecoId(newPresupuestoAnual.ceco)]);
     const existente = presupuestoAnual.find(p => p.empresa === newPresupuestoAnual.empresa && p.ceco === newPresupuestoAnual.ceco && String(p.anio) === String(newPresupuestoAnual.anio));
-    let updated;
+    let error;
     if (existente) {
-      updated = presupuestoAnual.map(p => p.id === existente.id ? { ...p, valorAnual: newPresupuestoAnual.valorAnual } : p);
+      ({ error } = await supabase.from('presupuesto_anual').update({ valor_anual: newPresupuestoAnual.valorAnual }).eq('id', existente.id));
     } else {
-      updated = [...presupuestoAnual, { id: Date.now(), ...newPresupuestoAnual }];
+      ({ error } = await supabase.from('presupuesto_anual').insert({ empresa_id: empresaId, ceco_id: cecoId, anio: newPresupuestoAnual.anio, valor_anual: newPresupuestoAnual.valorAnual }));
     }
-    setPresupuestoAnual(updated);
-    localStorage.setItem('amPresupuestoAnual', JSON.stringify(updated));
+    if (error) {
+      console.error('Error guardando techo anual:', error);
+      alert('❌ No se pudo guardar: ' + error.message);
+      return;
+    }
+    await cargarPresupuestoAnual();
     setNewPresupuestoAnual({ empresa: newPresupuestoAnual.empresa, ceco: newPresupuestoAnual.ceco, anio: newPresupuestoAnual.anio, valorAnual: '' });
   };
 
-  const handleDeletePresupuestoAnual = (id) => {
-    if (window.confirm('¿Eliminar este techo anual?')) {
-      const updated = presupuestoAnual.filter(p => p.id !== id);
-      setPresupuestoAnual(updated);
-      localStorage.setItem('amPresupuestoAnual', JSON.stringify(updated));
+  const handleDeletePresupuestoAnual = async (id) => {
+    if (!window.confirm('¿Eliminar este techo anual?')) return;
+    const { error } = await supabase.from('presupuesto_anual').delete().eq('id', id);
+    if (error) {
+      console.error('Error eliminando techo anual:', error);
+      alert('❌ No se pudo eliminar: ' + error.message);
+      return;
     }
+    setPresupuestoAnual(presupuestoAnual.filter(p => p.id !== id));
   };
 
   // Ajustar el valor esperado de UN concepto para el mes que se está viendo en el filtro (sin tocar
   // el valor base recurrente). Dejar el campo vacío quita el ajuste y vuelve a usar el valor base.
-  const handleEditarValorMes = (item) => {
+  // Se guarda contra public.presupuesto_overrides, que tiene unique(presupuesto_item_id, anio, mes).
+  const handleEditarValorMes = async (item) => {
     const { anio, mes } = filtroPresupuesto;
     const actual = getValorEsperado(item.id, anio, mes);
     const input = window.prompt(
@@ -2023,10 +2373,13 @@ const App = () => {
     );
     if (input === null) return; // canceló
 
-    const sinOverride = presupuestoOverrides.filter(o => !(o.presupuestoItemId === item.id && o.anio === anio && o.mes === mes));
+    const overrideExistente = presupuestoOverrides.find(o => o.presupuestoItemId === item.id && o.anio === anio && o.mes === mes);
+
     if (input.trim() === '') {
-      setPresupuestoOverrides(sinOverride);
-      localStorage.setItem('amPresupuestoOverrides', JSON.stringify(sinOverride));
+      if (!overrideExistente) return;
+      const { error } = await supabase.from('presupuesto_overrides').delete().eq('id', overrideExistente.id);
+      if (error) { console.error('Error quitando ajuste:', error); alert('❌ No se pudo quitar el ajuste: ' + error.message); return; }
+      setPresupuestoOverrides(presupuestoOverrides.filter(o => o.id !== overrideExistente.id));
       return;
     }
     const valor = parseFloat(input);
@@ -2034,14 +2387,20 @@ const App = () => {
       alert('Valor inválido');
       return;
     }
-    const updated = [...sinOverride, { id: Date.now(), presupuestoItemId: item.id, anio, mes, valor }];
-    setPresupuestoOverrides(updated);
-    localStorage.setItem('amPresupuestoOverrides', JSON.stringify(updated));
+    if (overrideExistente) {
+      const { error } = await supabase.from('presupuesto_overrides').update({ valor }).eq('id', overrideExistente.id);
+      if (error) { console.error('Error actualizando ajuste:', error); alert('❌ No se pudo guardar: ' + error.message); return; }
+      setPresupuestoOverrides(presupuestoOverrides.map(o => o.id === overrideExistente.id ? { ...o, valor } : o));
+    } else {
+      const { data, error } = await supabase.from('presupuesto_overrides').insert({ presupuesto_item_id: item.id, anio, mes, valor }).select('id').single();
+      if (error) { console.error('Error guardando ajuste:', error); alert('❌ No se pudo guardar: ' + error.message); return; }
+      setPresupuestoOverrides([...presupuestoOverrides, { id: data.id, presupuestoItemId: item.id, anio, mes, valor }]);
+    }
   };
 
   // DEDUCCIONES — CRUD. Ligadas a un concepto de presupuesto (presupuestoItemId) para calcular, en la
   // vista Mensual, el Neto a Pagar = valor esperado del mes − deducciones activas ese mes.
-  const handleAddDeduccion = () => {
+  const handleAddDeduccion = async () => {
     if (!newDeduccion.presupuestoItemId) {
       alert('Selecciona a qué concepto (persona) aplica la deducción');
       return;
@@ -2055,16 +2414,24 @@ const App = () => {
       return;
     }
 
+    const payload = {
+      presupuesto_item_id: newDeduccion.presupuestoItemId,
+      tipo: newDeduccion.tipo,
+      valor_cuota: newDeduccion.valorCuota,
+      saldo_total: newDeduccion.tipo === 'Préstamo' ? newDeduccion.saldoTotal : null,
+      fecha_inicio: newDeduccion.fechaInicio,
+      observaciones: newDeduccion.observaciones || null
+    };
+
     if (editingDeduccionId) {
-      const updated = deducciones.map(d => d.id === editingDeduccionId ? { ...d, ...newDeduccion } : d);
-      setDeducciones(updated);
-      localStorage.setItem('amDeducciones', JSON.stringify(updated));
+      const { error } = await supabase.from('deducciones').update(payload).eq('id', editingDeduccionId);
+      if (error) { console.error('Error actualizando deducción:', error); alert('❌ No se pudo actualizar: ' + error.message); return; }
+      await cargarDeducciones();
       alert('✅ Deducción actualizada');
     } else {
-      const nueva = { id: Date.now(), ...newDeduccion, activo: true };
-      const updated = [...deducciones, nueva];
-      setDeducciones(updated);
-      localStorage.setItem('amDeducciones', JSON.stringify(updated));
+      const { error } = await supabase.from('deducciones').insert({ ...payload, activo: true });
+      if (error) { console.error('Error creando deducción:', error); alert('❌ No se pudo guardar: ' + error.message); return; }
+      await cargarDeducciones();
       alert('✅ Deducción agregada');
     }
     setEditingDeduccionId(null);
@@ -2081,19 +2448,29 @@ const App = () => {
     setNewDeduccion(deduccionVacia);
   };
 
-  const handleToggleDeduccionActivo = (id) => {
-    const updated = deducciones.map(d => d.id === id ? { ...d, activo: d.activo === false } : d);
-    setDeducciones(updated);
-    localStorage.setItem('amDeducciones', JSON.stringify(updated));
+  const handleToggleDeduccionActivo = async (id) => {
+    const actual = deducciones.find(d => d.id === id);
+    const nuevoActivo = actual ? actual.activo === false : true;
+    const anteriores = deducciones;
+    setDeducciones(deducciones.map(d => d.id === id ? { ...d, activo: nuevoActivo } : d));
+    const { error } = await supabase.from('deducciones').update({ activo: nuevoActivo }).eq('id', id);
+    if (error) {
+      console.error('Error actualizando deducción:', error);
+      alert('❌ No se pudo actualizar: ' + error.message);
+      setDeducciones(anteriores);
+    }
   };
 
-  const handleDeleteDeduccion = (id) => {
-    if (window.confirm('¿Eliminar esta deducción?')) {
-      const updated = deducciones.filter(d => d.id !== id);
-      setDeducciones(updated);
-      localStorage.setItem('amDeducciones', JSON.stringify(updated));
-      if (editingDeduccionId === id) handleCancelEditDeduccion();
+  const handleDeleteDeduccion = async (id) => {
+    if (!window.confirm('¿Eliminar esta deducción?')) return;
+    const { error } = await supabase.from('deducciones').delete().eq('id', id);
+    if (error) {
+      console.error('Error eliminando deducción:', error);
+      alert('❌ No se pudo eliminar: ' + error.message);
+      return;
     }
+    setDeducciones(deducciones.filter(d => d.id !== id));
+    if (editingDeduccionId === id) handleCancelEditDeduccion();
   };
 
   // MANEJO DE SOPORTES (ARCHIVOS)
@@ -2181,30 +2558,67 @@ const App = () => {
   };
 
   // IMPORTAR GASTOS DESDE JSON
+  // IMPORTAR GASTOS EN LOTE (histórico Drive mes a mes) — cada objeto del JSON usa los mismos campos
+  // que el formulario de Gasto (fecha, tipo, empresa, responsable, ceco, cuenta/cuentaSalida/
+  // cuentaDestino, detalle, valor, categoria, estado, observaciones) más, opcionalmente,
+  // soporteDriveLink para dejar el registro enlazado al soporte histórico en Drive en vez de subirlo
+  // a Storage. Cachea las búsquedas de empresa/CECO/responsable para no repetir consultas por fila.
   const handleImportarGastos = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const gastosAImportar = JSON.parse(event.target.result);
-        
+
         if (!Array.isArray(gastosAImportar)) {
           alert('❌ El archivo no contiene un array válido');
           return;
         }
 
-        // Agregar todos los gastos
-        const gastosActuales = JSON.parse(localStorage.getItem('amGastos') || '[]');
-        const gastosNuevos = [...gastosActuales, ...gastosAImportar];
-        
-        localStorage.setItem('amGastos', JSON.stringify(gastosNuevos));
-        setGastos(gastosNuevos);
-        
+        const empresaCache = {};
+        const cecoCache = {};
+        const filasAInsertar = [];
+
+        for (const g of gastosAImportar) {
+          if (!(g.empresa in empresaCache)) empresaCache[g.empresa] = await resolverEmpresaId(g.empresa);
+          const cecoFinal = g.tipo === 'Traslado' ? null : g.ceco;
+          if (cecoFinal && !(cecoFinal in cecoCache)) cecoCache[cecoFinal] = await resolverCecoId(cecoFinal);
+          const responsableId = responsables.find(r => r.nombre === g.responsable)?.id || null;
+
+          filasAInsertar.push({
+            fecha: g.fecha,
+            tipo: g.tipo || 'Gasto',
+            empresa_id: empresaCache[g.empresa] || null,
+            responsable_id: responsableId,
+            ceco_id: cecoFinal ? (cecoCache[cecoFinal] || null) : null,
+            cuenta: g.cuenta || null,
+            cuenta_salida: g.cuentaSalida || null,
+            cuenta_destino: g.cuentaDestino || null,
+            detalle: g.detalle || '',
+            valor: g.valor,
+            valor_bruto: g.valorBruto || null,
+            deduccion_aplicada: g.deduccionAplicada || null,
+            categoria: g.categoria || null,
+            estado: g.estado || 'Pendiente',
+            observaciones: g.observaciones || null,
+            presupuesto_item_id: g.presupuestoItemId || null,
+            soporte_drive_link: g.soporteDriveLink || null
+          });
+        }
+
+        const { error } = await supabase.from('gastos').insert(filasAInsertar);
+        if (error) {
+          console.error('Error importando gastos:', error);
+          alert('❌ No se pudieron importar los registros: ' + error.message);
+          return;
+        }
+
+        await cargarGastos();
         setMostrarImportar(false);
         setArchivoImportacion(null);
-        alert(`✅ Se importaron ${gastosAImportar.length} registros exitosamente!`);
+        alert(`✅ Se importaron ${filasAInsertar.length} registros exitosamente!`);
       } catch (error) {
         alert('❌ Error al procesar el archivo: ' + error.message);
       }
@@ -2214,6 +2628,32 @@ const App = () => {
 
   const handleViewSoportes = (soportes) => {
     setVerSoportes(soportes);
+  };
+
+  // Ver soportes de un Gasto/Ingreso: si es un registro histórico con link de Drive, se abre
+  // directamente esa URL; si tiene soportes reales subidos a Storage, se abre el modal compartido.
+  const handleVerSoportesGasto = async (g) => {
+    if (g.soporteDriveLink) { window.open(g.soporteDriveLink, '_blank'); return; }
+    const { data, error } = await supabase
+      .from('soportes')
+      .select('bucket_path, nombre_original, tamano_kb')
+      .eq('entidad_tipo', 'gasto')
+      .eq('entidad_id', g.id)
+      .order('created_at');
+    if (error) { console.error('Error cargando soportes:', error); alert('❌ No se pudieron cargar los soportes: ' + error.message); return; }
+    setVerSoportes((data || []).map(r => ({ nombre: r.nombre_original, tamaño: (r.tamano_kb || 0) * 1024, bucketPath: r.bucket_path })));
+  };
+
+  const handleVerSoportesIngreso = async (i) => {
+    if (i.soporteDriveLink) { window.open(i.soporteDriveLink, '_blank'); return; }
+    const { data, error } = await supabase
+      .from('soportes')
+      .select('bucket_path, nombre_original, tamano_kb')
+      .eq('entidad_tipo', 'ingreso')
+      .eq('entidad_id', i.id)
+      .order('created_at');
+    if (error) { console.error('Error cargando soportes:', error); alert('❌ No se pudieron cargar los soportes: ' + error.message); return; }
+    setVerSoportes((data || []).map(r => ({ nombre: r.nombre_original, tamaño: (r.tamano_kb || 0) * 1024, bucketPath: r.bucket_path })));
   };
 
   // Filtrar gastos e ingresos
@@ -3459,7 +3899,7 @@ const App = () => {
                 return (
                   <div style={{ marginBottom: '1rem' }}>
                     <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Vincular a Presupuesto (opcional)</label>
-                    <select value={valorSeleccionado} onChange={(e) => setNewGasto({...newGasto, presupuestoItemId: e.target.value ? parseInt(e.target.value) : ''})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                    <select value={valorSeleccionado} onChange={(e) => setNewGasto({...newGasto, presupuestoItemId: e.target.value || ''})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }}>
                       <option value="">Sin vincular</option>
                       {candidatos.map(({ item: p }) => <option key={p.id} value={p.id}>{p.nombre}{p.ceco !== newGasto.ceco ? ` · ${p.ceco}` : ''} — {formatMoney(p.valorMensual, newGasto.empresa)}</option>)}
                     </select>
@@ -3540,8 +3980,8 @@ const App = () => {
                 )}
               </div>
 
-              <button onClick={newGasto.tipo === 'Gasto' ? handleAddGasto : (newGasto.tipo === 'Traslado' ? handleAddGasto : handleAddIngreso)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
-                Registrar {newGasto.tipo === 'Traslado' ? 'Traslado' : (newGasto.tipo === 'Ingreso' ? 'Ingreso' : 'Gasto')}
+              <button disabled={guardandoGasto || guardandoIngreso} onClick={newGasto.tipo === 'Gasto' ? handleAddGasto : (newGasto.tipo === 'Traslado' ? handleAddGasto : handleAddIngreso)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: (guardandoGasto || guardandoIngreso) ? 'not-allowed' : 'pointer', opacity: (guardandoGasto || guardandoIngreso) ? 0.6 : 1 }}>
+                {(guardandoGasto || guardandoIngreso) ? 'Guardando...' : `Registrar ${newGasto.tipo === 'Traslado' ? 'Traslado' : (newGasto.tipo === 'Ingreso' ? 'Ingreso' : 'Gasto')}`}
               </button>
             </div>
             )}
@@ -3826,6 +4266,7 @@ const App = () => {
             {newGasto.tipo === 'Gasto' && (
               <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
                 <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>💸 Gastos Registrados ({gastosUsuario.filter(g => g.tipo === 'Gasto').length})</h2>
+                {cargandoGastos && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando gastos...</p>}
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                     <thead style={{ backgroundColor: '#F8F6F1' }}>
@@ -3861,8 +4302,8 @@ const App = () => {
                             )}
                           </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            {g.soportes && g.soportes.length > 0 ? (
-                              <button onClick={() => handleViewSoportes(g.soportes)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }}>📎 {g.soportes.length}</button>
+                            {(g.cantidadSoportes > 0 || g.soporteDriveLink) ? (
+                              <button onClick={() => handleVerSoportesGasto(g)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }}>📎 {g.soporteDriveLink ? 'Drive' : g.cantidadSoportes}</button>
                             ) : (
                               <span style={{ color: '#6B6458', fontSize: '0.8rem' }}>—</span>
                             )}
@@ -3932,8 +4373,8 @@ const App = () => {
                           <td style={{ padding: '0.75rem', color: '#CC4B4B', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.cuentaDestino}</td>
                           <td style={{ padding: '0.75rem', color: '#C4A747', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(g.valor, g.empresa)}</td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            {g.soportes && g.soportes.length > 0 ? (
-                              <button onClick={() => handleViewSoportes(g.soportes)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }}>📎 {g.soportes.length}</button>
+                            {(g.cantidadSoportes > 0 || g.soporteDriveLink) ? (
+                              <button onClick={() => handleVerSoportesGasto(g)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }}>📎 {g.soporteDriveLink ? 'Drive' : g.cantidadSoportes}</button>
                             ) : (
                               <span style={{ color: '#6B6458', fontSize: '0.8rem' }}>—</span>
                             )}
@@ -3964,6 +4405,7 @@ const App = () => {
             {newGasto.tipo === 'Ingreso' && (
               <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
                 <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>💰 Ingresos Registrados ({ingresosUsuario.length})</h2>
+                {cargandoIngresos && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando ingresos...</p>}
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                     <thead style={{ backgroundColor: '#F8F6F1' }}>
@@ -3989,8 +4431,8 @@ const App = () => {
                           <td style={{ padding: '0.75rem', color: '#6B6458' }}>{i.detalle}</td>
                           <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(i.valor, i.empresa)}</td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            {i.soportes && i.soportes.length > 0 ? (
-                              <button onClick={() => handleViewSoportes(i.soportes)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }}>📎 {i.soportes.length}</button>
+                            {(i.cantidadSoportes > 0 || i.soporteDriveLink) ? (
+                              <button onClick={() => handleVerSoportesIngreso(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }}>📎 {i.soporteDriveLink ? 'Drive' : i.cantidadSoportes}</button>
                             ) : (
                               <span style={{ color: '#6B6458', fontSize: '0.8rem' }}>—</span>
                             )}
@@ -4030,6 +4472,7 @@ const App = () => {
             <div>
               <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
                 <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📅 Presupuesto</h2>
+                {cargandoPresupuesto && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando presupuesto...</p>}
 
                 {/* FILTROS */}
                 <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem', marginBottom: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -4157,7 +4600,7 @@ const App = () => {
                       <div style={{ ...cardStyle, marginBottom: '1.5rem' }}>
                         <h4 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>{editingDeduccionId ? '✏️ Editar Deducción' : '➕ Nueva Deducción'}</h4>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                          <select value={newDeduccion.presupuestoItemId} onChange={(e) => setNewDeduccion({...newDeduccion, presupuestoItemId: e.target.value ? parseInt(e.target.value) : ''})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
+                          <select value={newDeduccion.presupuestoItemId} onChange={(e) => setNewDeduccion({...newDeduccion, presupuestoItemId: e.target.value || ''})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
                             <option value="">-- Selecciona persona/concepto --</option>
                             {presupuestoItems.filter(p => p.empresa === filtroPresupuesto.empresa).map(p => (
                               <option key={p.id} value={p.id}>{p.nombre}</option>
