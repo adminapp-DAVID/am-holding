@@ -4522,7 +4522,7 @@ const App = () => {
                           ) : (
                             <span style={{ color: '#6B6458', fontSize: '0.8rem', marginRight: '0.5rem' }}>—</span>
                           )}
-                          {user.rol === 'Administrador' && (
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
                             <button onClick={() => handleDeleteCuentaCobro(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }} title="Eliminar">
                               🗑️
                             </button>
