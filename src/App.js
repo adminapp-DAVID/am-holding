@@ -2010,6 +2010,121 @@ const App = () => {
     return data?.id || null;
   };
 
+  // MIGRACIÓN ÚNICA: rescata el Presupuesto (Conceptos, Techos Anuales, Ajustes por mes y
+  // Deducciones) que haya quedado guardado en localStorage de una versión anterior de la app
+  // (100% local, antes de esta conexión a Supabase) y lo sube a las tablas reales. Solo tiene
+  // sentido correrla UNA vez, desde el mismo navegador donde se cargaron esos datos — por eso
+  // el botón que la dispara solo aparece si presupuestoItems (Supabase) sigue vacío.
+  const handleMigrarPresupuestoLocal = async () => {
+    if (presupuestoItems.length > 0) {
+      alert('Ya hay conceptos de Presupuesto cargados en Supabase — no se debe volver a migrar (se duplicarían). Si necesitas repetir la migración, primero elimina los conceptos actuales.');
+      return;
+    }
+
+    let itemsLocal, anualLocal, overridesLocal, deduccionesLocal;
+    try {
+      itemsLocal = JSON.parse(localStorage.getItem('amPresupuestoItems') || '[]');
+      anualLocal = JSON.parse(localStorage.getItem('amPresupuestoAnual') || '[]');
+      overridesLocal = JSON.parse(localStorage.getItem('amPresupuestoOverrides') || '[]');
+      deduccionesLocal = JSON.parse(localStorage.getItem('amDeducciones') || '[]');
+    } catch (e) {
+      alert('❌ No se pudo leer el Presupuesto guardado localmente en este navegador.');
+      return;
+    }
+
+    if (itemsLocal.length === 0 && anualLocal.length === 0) {
+      alert('No se encontró Presupuesto guardado localmente en este navegador (localStorage). Si lo cargaste en otro computador/navegador, no va a estar aquí.');
+      return;
+    }
+
+    if (!window.confirm(`Se van a migrar a Supabase: ${itemsLocal.length} conceptos, ${anualLocal.length} techos anuales, ${overridesLocal.length} ajustes por mes y ${deduccionesLocal.length} deducciones.\n\n¿Continuar?`)) {
+      return;
+    }
+
+    setCargandoPresupuesto(true);
+    try {
+      const empresaCache = {};
+      const cecoCache = {};
+      const resolverEmpresaCached = async (nombre) => {
+        if (!(nombre in empresaCache)) empresaCache[nombre] = await resolverEmpresaId(nombre);
+        return empresaCache[nombre];
+      };
+      const resolverCecoCached = async (codigo) => {
+        if (!(codigo in cecoCache)) cecoCache[codigo] = await resolverCecoId(codigo);
+        return cecoCache[codigo];
+      };
+
+      // 1) Conceptos — se insertan uno por uno (en vez de en lote) para poder mapear el id viejo
+      //    (numérico, de Date.now()) al id nuevo (uuid de Postgres) y así poder migrar después,
+      //    con ese mapa, los Ajustes por mes y las Deducciones que apuntan a estos conceptos.
+      const mapaIds = {};
+      let erroresConceptos = 0;
+      for (const item of itemsLocal) {
+        const [empresaId, cecoId] = await Promise.all([resolverEmpresaCached(item.empresa), resolverCecoCached(item.ceco)]);
+        const { data, error } = await supabase.from('presupuesto_items').insert({
+          empresa_id: empresaId,
+          ceco_id: cecoId,
+          nombre: item.nombre,
+          tipo: item.tipo || null,
+          valor_mensual: item.valorMensual,
+          dia_limite_pago: item.diaLimitePago ? parseInt(item.diaLimitePago) : null,
+          activo: item.activo !== false
+        }).select('id').single();
+        if (error) { console.error('Error migrando concepto de presupuesto:', item, error); erroresConceptos++; continue; }
+        mapaIds[item.id] = data.id;
+      }
+
+      // 2) Techos anuales
+      let erroresAnual = 0;
+      for (const anual of anualLocal) {
+        const [empresaId, cecoId] = await Promise.all([resolverEmpresaCached(anual.empresa), resolverCecoCached(anual.ceco)]);
+        const { error } = await supabase.from('presupuesto_anual').insert({
+          empresa_id: empresaId, ceco_id: cecoId, anio: anual.anio, valor_anual: anual.valorAnual
+        });
+        if (error) { console.error('Error migrando techo anual:', anual, error); erroresAnual++; }
+      }
+
+      // 3) Ajustes por mes — usan el mapaIds del paso 1 para apuntar al concepto ya migrado
+      let erroresOverrides = 0;
+      for (const ov of overridesLocal) {
+        const nuevoItemId = mapaIds[ov.presupuestoItemId];
+        if (!nuevoItemId) { erroresOverrides++; continue; }
+        const { error } = await supabase.from('presupuesto_overrides').insert({
+          presupuesto_item_id: nuevoItemId, anio: ov.anio, mes: ov.mes, valor: ov.valor
+        });
+        if (error) { console.error('Error migrando ajuste de mes:', ov, error); erroresOverrides++; }
+      }
+
+      // 4) Deducciones — también usan mapaIds
+      let erroresDeducciones = 0;
+      for (const d of deduccionesLocal) {
+        const nuevoItemId = mapaIds[d.presupuestoItemId];
+        if (!nuevoItemId) { erroresDeducciones++; continue; }
+        const { error } = await supabase.from('deducciones').insert({
+          presupuesto_item_id: nuevoItemId,
+          tipo: d.tipo,
+          valor_cuota: d.valorCuota,
+          saldo_total: d.tipo === 'Préstamo' ? d.saldoTotal : null,
+          fecha_inicio: d.fechaInicio,
+          observaciones: d.observaciones || null,
+          activo: d.activo !== false
+        });
+        if (error) { console.error('Error migrando deducción:', d, error); erroresDeducciones++; }
+      }
+
+      await cargarPresupuesto();
+
+      const totalErrores = erroresConceptos + erroresAnual + erroresOverrides + erroresDeducciones;
+      if (totalErrores > 0) {
+        alert(`⚠️ Migración terminada con ${totalErrores} registro(s) que no se pudieron migrar (revisa la consola del navegador para el detalle). El resto ya quedó en Supabase.`);
+      } else {
+        alert('✅ Presupuesto migrado a Supabase. Revisa la tabla para confirmar que todo quedó correcto.');
+      }
+    } finally {
+      setCargandoPresupuesto(false);
+    }
+  };
+
   const handleAddGasto = async () => {
     if (!newGasto.detalle || !newGasto.valor) {
       alert('Detalle y valor son obligatorios');
@@ -4736,6 +4851,13 @@ const App = () => {
                 {presupuestoTab === 'gestion' && user.rol !== 'Gerente' && (
                   <div>
                     <h3 style={{ color: '#221E15', marginBottom: '1rem' }}>Conceptos Recurrentes Mensuales</h3>
+
+                    {puedeEditarPresupuesto && presupuestoItems.length === 0 && (
+                      <div style={{ backgroundColor: '#FFF8E1', border: '1px solid #C4A747', borderRadius: '6px', padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                        <span style={{ color: '#6B6458', fontSize: '0.85rem' }}>⚠️ No hay conceptos de Presupuesto en Supabase todavía. Si ya habías cargado tu Presupuesto en este mismo navegador antes de esta actualización, puedes recuperarlo con un solo clic.</span>
+                        <button onClick={handleMigrarPresupuestoLocal} style={{ padding: '0.6rem 1.1rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>🔄 Migrar Presupuesto guardado localmente</button>
+                      </div>
+                    )}
 
                     {puedeEditarPresupuesto && (
                       <div style={{ ...cardStyle, marginBottom: '1.5rem' }}>
