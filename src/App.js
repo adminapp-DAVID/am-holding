@@ -750,7 +750,11 @@ const App = () => {
     setCargandoSolicitudes(true);
     const { data, error } = await supabase
       .from('solicitudes')
-      .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, responsable_id, empresas ( nombre ), usuarios ( nombre )')
+      // OJO: usuarios!responsable_id — desde que "solicitudes" ganó revisado_por_id y
+      // aprobado_por_id (Sección 19), hay 3 FKs de solicitudes hacia usuarios. Sin indicar
+      // por cuál columna se hace el embed, PostgREST no sabe cuál usar y el select entero
+      // falla con "more than one relationship was found" (deja el historial vacío).
+      .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
       .order('created_at', { ascending: false });
 
     if (error) {
