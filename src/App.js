@@ -1607,85 +1607,6 @@ const App = () => {
     XLSX.writeFile(wb, `${s.tipo}_${s.responsableNombre}_${s.fecha}.xlsx`);
   };
 
-  // Descargar ZIP (reporte PDF + cada soporte adjunto, descargado individualmente del Storage)
-  const handleDescargarZIP = async (s) => {
-    const zip = new JSZip();
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    let yPos = 20;
-
-    doc.setFontSize(16);
-    doc.text(s.tipo === 'Anticipo' ? 'SOLICITUD DE ANTICIPO' : s.tipo === 'Legalización' ? 'LEGALIZACIÓN DE ANTICIPO' : 'REPORTE DE REEMBOLSO', pageWidth / 2, yPos, { align: 'center' });
-    yPos += 15;
-
-    doc.setFontSize(10);
-    doc.text(`Fecha: ${s.fecha}`, 20, yPos);
-    doc.text(`Colaborador: ${s.responsableNombre}`, pageWidth / 2, yPos);
-    yPos += 8;
-    doc.text(`Empresa: ${s.empresa}`, 20, yPos);
-    doc.text(`Concepto: ${s.detalle}`, pageWidth / 2, yPos);
-    yPos += 12;
-
-    if (s.tipo !== 'Anticipo') {
-      if (s.documentos && s.documentos.length > 0) {
-        doc.setFontSize(11);
-        doc.text('DOCUMENTOS', 20, yPos);
-        yPos += 8;
-        doc.setFontSize(9);
-
-        const tableData = s.documentos.map(d => [d.fecha || '-', d.proveedor, d.nit, d.descripcion, formatMoneyByMoneda(d.valor, getMoneda(s.empresa)), d.tipoSoporte || '-']);
-        doc.autoTable({
-          startY: yPos,
-          head: [['Fecha', 'Pagado a', 'NIT', 'Concepto', 'Valor', 'Tipo Soporte']],
-          body: tableData,
-          margin: 20,
-          theme: 'grid'
-        });
-        yPos = doc.lastAutoTable.finalY + 10;
-      }
-
-      if (s.tipo === 'Legalización' && s.valorAnticipoOriginal) {
-        doc.setFontSize(10);
-        doc.text(`Anticipo Original: ${formatMoneyByMoneda(s.valorAnticipoOriginal, getMoneda(s.empresa))}`, 20, yPos);
-        yPos += 10;
-      }
-    }
-
-    yPos += 5;
-    doc.setFontSize(11);
-    const totalLabel = s.tipo === 'Anticipo' ? 'TOTAL SOLICITADO' : 'TOTAL';
-    const totalValue = s.tipo === 'Anticipo' ? formatMoneyByMoneda(s.valor, getMoneda(s.empresa)) : formatMoneyByMoneda(s.totalCalculado, getMoneda(s.empresa));
-    doc.text(`${totalLabel}: ${totalValue}`, 20, yPos);
-
-    zip.file(`${s.tipo}-${s.id}.pdf`, doc.output('blob'));
-
-    const { data: soportesSolicitud, error: soportesError } = await supabase
-      .from('soportes')
-      .select('bucket_path, nombre_original')
-      .eq('entidad_tipo', 'solicitud')
-      .eq('entidad_id', s.id);
-
-    if (soportesError) {
-      console.error('Error cargando soportes para ZIP:', soportesError);
-    } else {
-      for (const soporte of soportesSolicitud || []) {
-        const { data: blob, error: downloadError } = await supabase.storage.from('soportes').download(soporte.bucket_path);
-        if (downloadError || !blob) {
-          console.warn('No se pudo descargar', soporte.bucket_path, downloadError);
-          continue;
-        }
-        zip.file(soporte.nombre_original, blob);
-      }
-    }
-
-    zip.generateAsync({ type: 'blob' }).then(blob => {
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = `${s.tipo}-${s.id}.zip`;
-      link.click();
-    });
-  };
-
   // Eliminar solicitud — borra también sus soportes (metadata + archivos en Storage)
   const handleDeleteSolicitud = async (id) => {
     if (!window.confirm('¿Eliminar solicitud?')) return;
@@ -3996,9 +3917,6 @@ const App = () => {
                                 <>
                                   <button onClick={() => handleGenerarExcel(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }} title="Excel">
                                     📊
-                                  </button>
-                                  <button onClick={() => handleDescargarZIP(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }} title="ZIP">
-                                    📦
                                   </button>
                                   <button onClick={() => handleVerSoportesSolicitud(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }} title="Ver Soportes">
                                     📎
