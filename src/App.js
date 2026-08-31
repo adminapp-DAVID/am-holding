@@ -1091,6 +1091,35 @@ const App = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
+  // TIEMPO REAL (Supabase Realtime): cuando alguien crea/edita/borra un registro en
+  // cualquiera de estos módulos, todos los que tengan la app abierta lo ven reflejado al
+  // instante, sin salir y volver a entrar. Un solo canal con una suscripción por tabla —
+  // cada evento simplemente vuelve a llamar al mismo "cargarXxx" que ya se usa al iniciar
+  // sesión, para no duplicar la lógica de mapeo. Requiere haber corrido la Sección 20 de
+  // supabase_patch_v2.sql (activa Realtime para estas tablas en el proyecto de Supabase).
+  useEffect(() => {
+    if (!user) return;
+
+    const canalRealtime = supabase
+      .channel('am-holding-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'solicitudes' }, () => cargarSolicitudes())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cuentas_cobro' }, () => cargarCuentasCobro())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos' }, () => cargarGastos())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ingresos' }, () => cargarIngresos())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'presupuesto_items' }, () => cargarPresupuestoItems())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'presupuesto_anual' }, () => cargarPresupuestoAnual())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'presupuesto_overrides' }, () => cargarPresupuestoOverrides())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'deducciones' }, () => cargarDeducciones())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'soportes_pendientes' }, () => cargarSoportesPendientes())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'usuarios' }, () => { cargarUsuarios(); cargarColaboradoresPublico(); })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(canalRealtime);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
   // Al entrar a "Mi Perfil" se refresca el borrador con los datos más recientes guardados.
   useEffect(() => {
     if (currentView === 'mi-perfil' && miPerfil) {
