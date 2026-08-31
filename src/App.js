@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import JSZip from 'jszip';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import * as XLSX from 'xlsx';
 import logoAmHolding from './assets/logos/logo-am-holding.png';
 import logoNoss from './assets/logos/logo-noss.png';
@@ -321,7 +321,7 @@ const App = () => {
   // exponer cédula, banco ni documentos de nadie (eso solo lo ve Admin/Coordinadora o el dueño).
   const [colaboradoresPublico, setColaboradoresPublico] = useState([]);
   const [editingResponsableOrigen, setEditingResponsableOrigen] = useState('responsables'); // 'responsables' | 'admin' — de qué lista viene el registro que se está editando
-  const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', valorAnticipoOriginal: '', detalle: '', empresa: 'AM SPORTS GROUP SAS', documentos: [] });
+  const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', valorAnticipoOriginal: '', anticipoId: '', detalle: '', empresa: 'AM SPORTS GROUP SAS', documentos: [] });
   const [generandoPDF, setGenerandoPDF] = useState(null);
   const [editingResponsableId, setEditingResponsableId] = useState(null);
   const responsableVacio = { nombre: '', email: '', empresa: 'AM SPORTS GROUP SAS', foto: '', cedula: '', telefono: '', fechaNacimiento: '', cargo: '', fechaIngreso: '', tipoVinculacion: '', contactoEmergenciaNombre: '', contactoEmergenciaTelefono: '', eps: '', arl: '', funciones: '', banco: '', tipoCuentaBancaria: '', numeroCuenta: '', titularCuenta: '', documentoCedula: null, documentoPasaporte: null };
@@ -356,6 +356,20 @@ const App = () => {
   const [soportesTemp, setSoportesTemp] = useState([]);
   const [soportesCuentaCobroTemp, setSoportesCuentaCobroTemp] = useState([]);
   const [soportesLegalizacionTemp, setSoportesLegalizacionTemp] = useState([]);
+  // BANDEJA DE SOPORTES — cada colaborador va subiendo sus recibos/facturas a medida que le
+  // llegan (con sus datos básicos), ANTES de decidir si van en una Legalización o un Reembolso.
+  // Al usarlos, quedan marcados "usado" y ligados a la solicitud que los consumió (nunca se
+  // borran solos) — tabla public.soportes_pendientes.
+  const [soportesPendientes, setSoportesPendientes] = useState([]);
+  const [cargandoSoportesPendientes, setCargandoSoportesPendientes] = useState(true);
+  const [seleccionPendientes, setSeleccionPendientes] = useState([]);
+  const nuevoSoportePendienteVacio = { fecha: new Date().toISOString().split('T')[0], proveedor: '', nit: '', descripcion: '', valor: '', tipoSoporte: '', archivo: null };
+  const [nuevoSoportePendiente, setNuevoSoportePendiente] = useState(nuevoSoportePendienteVacio);
+  const [subiendoSoportePendiente, setSubiendoSoportePendiente] = useState(false);
+  // Ids de la bandeja que quedaron "en uso" al prellenar el formulario de Nueva Solicitud
+  // (ver handleUsarPendientesEnSolicitud) — se marcan usado=true recién cuando la solicitud
+  // se guarda con éxito, nunca antes.
+  const [pendientesEnUso, setPendientesEnUso] = useState([]);
   const [verSoportes, setVerSoportes] = useState(null);
   const [mostrarImportar, setMostrarImportar] = useState(false);
   const [archivoImportacion, setArchivoImportacion] = useState(null);
@@ -404,9 +418,51 @@ const App = () => {
   };
 
   // Une varios soportes (PDFs + imágenes) en un solo PDF consolidado — Legalizaciones y Reembolsos.
-  const mergeSoportesToPDF = async (soportes) => {
+  // Si se pasa `portada` (empresa/tipo/responsable/fecha), agrega primero una página de carátula
+  // con el logo de la empresa (si existe) y los datos básicos de la solicitud.
+  const mergeSoportesToPDF = async (soportes, portada = null) => {
     const mergedPdf = await PDFDocument.create();
     const omitidos = [];
+
+    if (portada) {
+      try {
+        const pageWidth = 612;
+        const pageHeight = 792;
+        const page = mergedPdf.addPage([pageWidth, pageHeight]);
+        const font = await mergedPdf.embedFont(StandardFonts.HelveticaBold);
+        const fontNormal = await mergedPdf.embedFont(StandardFonts.Helvetica);
+        let y = pageHeight - 100;
+
+        const logoSrc = EMPRESA_LOGOS[portada.empresa];
+        if (logoSrc) {
+          try {
+            const logoBytes = await fetch(logoSrc).then(r => r.arrayBuffer());
+            const logoImg = await mergedPdf.embedPng(logoBytes);
+            const logoMaxW = 200, logoMaxH = 80;
+            const scale = Math.min(logoMaxW / logoImg.width, logoMaxH / logoImg.height, 1);
+            const w = logoImg.width * scale, h = logoImg.height * scale;
+            page.drawImage(logoImg, { x: (pageWidth - w) / 2, y: y - h, width: w, height: h });
+            y -= h + 40;
+          } catch (logoError) {
+            console.warn('No se pudo insertar el logo en la carátula:', logoError);
+          }
+        }
+
+        const centerText = (text, size, useFont) => {
+          const width = useFont.widthOfTextAtSize(text, size);
+          page.drawText(text, { x: (pageWidth - width) / 2, y, size, font: useFont, color: rgb(0.13, 0.12, 0.08) });
+          y -= size + 14;
+        };
+        centerText(`${(portada.tipo || '').toUpperCase()} DE GASTOS`, 18, font);
+        centerText(portada.empresa || '', 12, fontNormal);
+        centerText(`Colaborador: ${portada.responsableNombre || ''}`, 11, fontNormal);
+        centerText(`Fecha: ${portada.fecha || ''}`, 11, fontNormal);
+        y -= 20;
+        centerText('PAQUETE DE SOPORTES ADJUNTO', 10, fontNormal);
+      } catch (portadaError) {
+        console.warn('No se pudo generar la carátula del PDF consolidado:', portadaError);
+      }
+    }
 
     for (const soporte of soportes) {
       try {
@@ -677,6 +733,11 @@ const App = () => {
     valor: row.valor,
     totalCalculado: row.total_calculado,
     valorAnticipoOriginal: row.valor_anticipo_original || '',
+    anticipoId: row.anticipo_id || '',
+    revisadoPorId: row.revisado_por_id || '',
+    revisadoAt: row.revisado_at || '',
+    aprobadoPorId: row.aprobado_por_id || '',
+    aprobadoAt: row.aprobado_at || '',
     detalle: row.detalle || '',
     empresa: row.empresas?.nombre || '',
     responsableId: row.responsable_id,
@@ -689,7 +750,7 @@ const App = () => {
     setCargandoSolicitudes(true);
     const { data, error } = await supabase
       .from('solicitudes')
-      .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, detalle, estado, documentos, responsable_id, empresas ( nombre ), usuarios ( nombre )')
+      .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, responsable_id, empresas ( nombre ), usuarios ( nombre )')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -700,6 +761,37 @@ const App = () => {
 
     setSolicitudes(data.map(solicitudDBToLocal));
     setCargandoSolicitudes(false);
+  };
+
+  // BANDEJA DE SOPORTES — solo trae lo "sin usar" de la propia persona (RLS ya scopea por
+  // dueño, pero el filtro usado=false evita traer historial viejo innecesariamente).
+  const soportePendienteDBToLocal = (row) => ({
+    id: row.id,
+    fecha: row.fecha,
+    proveedor: row.proveedor || '',
+    nit: row.nit || '',
+    descripcion: row.descripcion || '',
+    valor: row.valor,
+    tipoSoporte: row.tipo_soporte || '',
+    bucketPath: row.bucket_path,
+    nombre: row.nombre_original,
+    tamano: row.tamano_kb || 0
+  });
+
+  const cargarSoportesPendientes = async () => {
+    setCargandoSoportesPendientes(true);
+    const { data, error } = await supabase
+      .from('soportes_pendientes')
+      .select('id, fecha, proveedor, nit, descripcion, valor, tipo_soporte, bucket_path, nombre_original, tamano_kb')
+      .eq('usado', false)
+      .order('fecha', { ascending: false });
+    if (error) {
+      console.error('Error cargando bandeja de soportes:', error);
+      setCargandoSoportesPendientes(false);
+      return;
+    }
+    setSoportesPendientes((data || []).map(soportePendienteDBToLocal));
+    setCargandoSoportesPendientes(false);
   };
 
   // Convierte una fila de public.cuentas_cobro (con sus joins a empresas/usuarios) al mismo
@@ -978,6 +1070,7 @@ const App = () => {
       cargarGastos();
       cargarIngresos();
       cargarPresupuesto();
+      cargarSoportesPendientes();
     } else {
       setUsuariosDB([]);
       setSolicitudes([]);
@@ -989,6 +1082,7 @@ const App = () => {
       setPresupuestoAnual([]);
       setPresupuestoOverrides([]);
       setDeducciones([]);
+      setSoportesPendientes([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
@@ -1042,6 +1136,132 @@ const App = () => {
     setSoportesLegalizacionTemp(soportesLegalizacionTemp.filter(s => s.id !== id));
   };
 
+  // BANDEJA DE SOPORTES — lee el archivo elegido a memoria (igual que el resto de uploads)
+  // y lo deja listo en el formulario cortico de "agregar a la bandeja" (todavía no sube nada).
+  const handleSeleccionarArchivoPendiente = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setNuevoSoportePendiente(prev => ({ ...prev, archivo: { nombre: file.name, tipo: file.type, tamaño: file.size, data: event.target.result } }));
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // Sube el archivo al bucket "soportes" (carpeta "pendiente/<usuario>/...") y guarda su fila
+  // en public.soportes_pendientes con los datos que la persona diligenció.
+  const handleAgregarSoportePendiente = async () => {
+    if (!nuevoSoportePendiente.archivo) {
+      alert('Selecciona el archivo del recibo/factura');
+      return;
+    }
+    if (!nuevoSoportePendiente.fecha || !nuevoSoportePendiente.valor) {
+      alert('Fecha y valor son obligatorios');
+      return;
+    }
+    setSubiendoSoportePendiente(true);
+    try {
+      const archivo = nuevoSoportePendiente.archivo;
+      const bytes = dataUrlToUint8Array(archivo.data);
+      const blob = new Blob([bytes], { type: archivo.tipo || 'application/octet-stream' });
+      const nombreLimpio = (archivo.nombre || 'archivo').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const rutaArchivo = `pendiente/${user.id}/${Date.now()}_${nombreLimpio}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('soportes')
+        .upload(rutaArchivo, blob, { contentType: archivo.tipo || undefined, upsert: false });
+      if (uploadError) {
+        console.error('Error subiendo recibo a la bandeja:', uploadError);
+        alert('❌ No se pudo subir el archivo: ' + uploadError.message);
+        return;
+      }
+
+      const { error } = await supabase.from('soportes_pendientes').insert({
+        usuario_id: user.id,
+        fecha: nuevoSoportePendiente.fecha,
+        proveedor: nuevoSoportePendiente.proveedor || null,
+        nit: nuevoSoportePendiente.nit || null,
+        descripcion: nuevoSoportePendiente.descripcion || null,
+        valor: parseFloat(nuevoSoportePendiente.valor) || 0,
+        tipo_soporte: nuevoSoportePendiente.tipoSoporte || null,
+        bucket_path: rutaArchivo,
+        nombre_original: archivo.nombre,
+        tamano_kb: Math.round((archivo.tamaño || bytes.length) / 1024)
+      });
+      if (error) {
+        console.error('Error guardando recibo en la bandeja:', error);
+        alert('❌ Se subió el archivo pero no se pudo registrar: ' + error.message);
+        return;
+      }
+
+      await cargarSoportesPendientes();
+      setNuevoSoportePendiente(nuevoSoportePendienteVacio);
+      alert('✅ Recibo agregado a tu bandeja');
+    } finally {
+      setSubiendoSoportePendiente(false);
+    }
+  };
+
+  const handleEliminarSoportePendiente = async (item) => {
+    if (!window.confirm('¿Eliminar este recibo de tu bandeja?')) return;
+    await supabase.storage.from('soportes').remove([item.bucketPath]);
+    const { error } = await supabase.from('soportes_pendientes').delete().eq('id', item.id);
+    if (error) {
+      console.error('Error eliminando recibo de la bandeja:', error);
+      alert('❌ No se pudo eliminar: ' + error.message);
+      return;
+    }
+    setSoportesPendientes(soportesPendientes.filter(s => s.id !== item.id));
+    setSeleccionPendientes(seleccionPendientes.filter(id => id !== item.id));
+  };
+
+  const toggleSeleccionPendiente = (id) => {
+    setSeleccionPendientes(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  // Toma los recibos marcados en la bandeja y prellena el formulario de "Nueva Solicitud" de
+  // arriba (tipo, tabla de Ítems del Gasto, y los archivos ya descargados listos para unirse en
+  // el PDF consolidado) — la persona solo revisa/completa y le da Guardar, igual que siempre.
+  // Los recibos quedan marcados "usado" recién cuando esa solicitud se guarda con éxito.
+  const handleUsarPendientesEnSolicitud = async (tipo) => {
+    const seleccionados = soportesPendientes.filter(s => seleccionPendientes.includes(s.id));
+    if (seleccionados.length === 0) {
+      alert('Selecciona al menos un recibo de tu bandeja');
+      return;
+    }
+    setCargandoSoportesPendientes(true);
+    try {
+      const archivosDescargados = [];
+      for (const item of seleccionados) {
+        const { data, error } = await supabase.storage.from('soportes').download(item.bucketPath);
+        if (error || !data) {
+          console.error('Error descargando recibo de la bandeja:', item, error);
+          continue;
+        }
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(data);
+        });
+        archivosDescargados.push({ id: item.id, nombre: item.nombre, tipo: data.type, tamaño: (item.tamano || 0) * 1024, data: dataUrl });
+      }
+
+      setSoportesLegalizacionTemp(archivosDescargados);
+      setNewSolicitud(prev => ({
+        ...prev,
+        tipo,
+        documentos: seleccionados.map(s => ({ fecha: s.fecha, proveedor: s.proveedor, nit: s.nit, descripcion: s.descripcion, valor: s.valor, tipoSoporte: s.tipoSoporte }))
+      }));
+      setPendientesEnUso(seleccionados.map(s => s.id));
+      setSeleccionPendientes([]);
+      alert(`✅ Se cargaron ${seleccionados.length} recibo(s) en el formulario de Nueva Solicitud, debajo. Revisa y completa el Concepto antes de guardar.`);
+    } finally {
+      setCargandoSoportesPendientes(false);
+    }
+  };
+
   // Guardar solicitud — inserta en public.solicitudes y luego, si hay soportes cargados,
   // los une en un solo PDF consolidado (como antes) y sube ESE PDF único al bucket
   // "soportes" con su fila en public.soportes (queda registrado en Supabase, no en localStorage).
@@ -1082,6 +1302,13 @@ const App = () => {
         empresaId = empresaRow?.id || null;
       }
 
+      // Legalización ligada de verdad a la Solicitud de Anticipo que le dio origen (si se eligió
+      // una): valor_anticipo_original queda como respaldo/compatibilidad, pero la fecha y el
+      // valor "oficiales" del anticipo se resuelven en pantalla a partir de anticipo_id.
+      const anticipoVinculado = newSolicitud.tipo === 'Legalización' && newSolicitud.anticipoId
+        ? solicitudes.find(a => a.id === newSolicitud.anticipoId)
+        : null;
+
       const { data: inserted, error } = await supabase
         .from('solicitudes')
         .insert({
@@ -1093,6 +1320,7 @@ const App = () => {
           empresa_id: empresaId,
           responsable_id: user.id,
           documentos: newSolicitud.documentos,
+          anticipo_id: anticipoVinculado ? anticipoVinculado.id : null,
           valor_anticipo_original: newSolicitud.tipo === 'Legalización' ? (parseFloat(newSolicitud.valorAnticipoOriginal) || null) : null,
           estado: 'Pendiente'
         })
@@ -1105,16 +1333,34 @@ const App = () => {
         return;
       }
 
-      // Los soportes de Legalización/Reembolso se unen en un solo PDF y ese PDF único
-      // se sube al bucket "soportes" (queda una sola fila en public.soportes por solicitud).
+      // Los soportes de Legalización/Reembolso se unen en un solo PDF (con portada de la
+      // empresa) y ese PDF único se sube al bucket "soportes" (una sola fila en public.soportes
+      // por solicitud).
       if (soportesLegalizacionTemp.length > 0) {
         try {
-          const soportePDF = await mergeSoportesToPDF(soportesLegalizacionTemp);
+          const soportePDF = await mergeSoportesToPDF(soportesLegalizacionTemp, {
+            empresa: empresaNombre,
+            tipo: newSolicitud.tipo,
+            responsableNombre: user.nombre,
+            fecha: newSolicitud.fecha
+          });
           await subirSoporteEntidad(soportePDF, 'solicitud', inserted.id);
         } catch (mergeError) {
           console.error('Error uniendo soportes a PDF:', mergeError);
           alert('⚠️ La solicitud se guardó, pero hubo un error uniendo los soportes en un solo PDF.');
         }
+      }
+
+      // Los recibos de la bandeja que se usaron para prellenar este formulario quedan marcados
+      // "usado" y ligados a esta solicitud — recién ahora que se guardó con éxito.
+      if (pendientesEnUso.length > 0) {
+        const { error: errorMarcar } = await supabase
+          .from('soportes_pendientes')
+          .update({ usado: true, solicitud_id: inserted.id })
+          .in('id', pendientesEnUso);
+        if (errorMarcar) console.error('Error marcando recibos de la bandeja como usados:', errorMarcar);
+        setPendientesEnUso([]);
+        await cargarSoportesPendientes();
       }
 
       await cargarSolicitudes();
@@ -1124,6 +1370,7 @@ const App = () => {
         tipo: '',
         valor: '',
         valorAnticipoOriginal: '',
+        anticipoId: '',
         detalle: '',
         empresa: 'AM SPORTS GROUP SAS',
         documentos: []
@@ -1135,14 +1382,32 @@ const App = () => {
     }
   };
 
-  // Cambiar estado (Admin/Coordinadora aprueban, pagan o legalizan)
+  // Cambiar estado (Admin/Coordinadora aprueban, pagan o legalizan). Además de guardar el
+  // estado, registra automáticamente quién hizo cada paso: quien mueve la solicitud a
+  // "Aprobado" queda como revisor, y quien la mueve a "Pagado"/"Legalizado" (el paso final)
+  // queda como quien aprobó — sin ningún campo ni paso nuevo que alguien tenga que diligenciar.
   const handleChangeEstado = async (id, nuevoEstado) => {
     const anteriores = solicitudes;
-    setSolicitudes(solicitudes.map(s => s.id === id ? { ...s, estado: nuevoEstado } : s));
+    const ahora = new Date().toISOString();
+    const patch = { estado: nuevoEstado, updated_at: ahora };
+    if (nuevoEstado === 'Aprobado') {
+      patch.revisado_por_id = user.id;
+      patch.revisado_at = ahora;
+    } else if (nuevoEstado === 'Pagado' || nuevoEstado === 'Legalizado') {
+      patch.aprobado_por_id = user.id;
+      patch.aprobado_at = ahora;
+    }
+
+    setSolicitudes(solicitudes.map(s => s.id === id ? {
+      ...s,
+      estado: nuevoEstado,
+      ...(patch.revisado_por_id ? { revisadoPorId: patch.revisado_por_id, revisadoAt: ahora } : {}),
+      ...(patch.aprobado_por_id ? { aprobadoPorId: patch.aprobado_por_id, aprobadoAt: ahora } : {})
+    } : s));
 
     const { error } = await supabase
       .from('solicitudes')
-      .update({ estado: nuevoEstado, updated_at: new Date().toISOString() })
+      .update(patch)
       .eq('id', id);
 
     if (error) {
@@ -1276,25 +1541,63 @@ const App = () => {
   };
 
   // Generar Excel con el mismo formato del control de pagos (Fecha, Pagado a, NIT, Concepto, Valor, Tipo de Soporte)
+  // Reporte Excel de Legalización/Reembolso — formato calcado del modelo real que se usaba a
+  // mano (encabezado formal, párrafo narrativo automático con los datos bancarios del
+  // colaborador, resumen de anticipo/reembolso, y Revisado/Aprobado tomados de quien realmente
+  // movió el estado en el sistema, nunca escritos a mano).
   const handleGenerarExcel = (s) => {
     const moneda = getMoneda(s.empresa);
+    const responsable = usuariosDB.find(u => u.id === s.responsableId);
+    const anticipoVinculado = s.anticipoId ? solicitudes.find(a => a.id === s.anticipoId) : null;
+    const valorAnticipo = anticipoVinculado ? (parseFloat(anticipoVinculado.valor) || 0) : (parseFloat(s.valorAnticipoOriginal) || 0);
+    const fechaAnticipo = anticipoVinculado ? anticipoVinculado.fecha : '';
+    const revisadoPor = s.revisadoPorId ? (usuariosDB.find(u => u.id === s.revisadoPorId)?.nombre || '') : '';
+    const aprobadoPor = s.aprobadoPorId ? (usuariosDB.find(u => u.id === s.aprobadoPorId)?.nombre || '') : '';
+
+    const esLegalizacion = s.tipo === 'Legalización';
+    const tituloFormato = esLegalizacion ? 'FORMATO LEGALIZACIÓN DE ANTICIPO' : 'FORMATO REEMBOLSO DE GASTOS';
+    const accionTexto = esLegalizacion ? 'LA LEGALIZACIÓN DEL GASTO' : 'LA SOLICITUD DE REEMBOLSO DEL GASTO';
+    const conceptosUnicos = [...new Set((s.documentos || []).map(d => (d.descripcion || '').trim()).filter(Boolean))];
+    const conceptoResumen = (conceptosUnicos.join(', ') || s.detalle || '').toUpperCase();
+    const datosCuenta = responsable && responsable.numeroCuenta
+      ? `FAVOR CONSIGNAR A LA CUENTA ${(responsable.tipoCuentaBancaria || '').toUpperCase()} ${(responsable.banco || '').toUpperCase()} N° ${responsable.numeroCuenta} A NOMBRE ${(responsable.titularCuenta || s.responsableNombre || '').toUpperCase()} CC ${responsable.cedula || ''}`
+      : '';
+    const parrafo = `SE PRESENTA ${accionTexto} DEL SEÑOR(A) ${(s.responsableNombre || '').toUpperCase()} CC ${responsable?.cedula || ''} POR CONCEPTO ${conceptoResumen}. SE ADJUNTA DETALLES. ${datosCuenta}`.replace(/\s+/g, ' ').trim();
+
     const rows = [];
-    rows.push([`${s.tipo === 'Legalización' ? 'LEGALIZACIÓN' : 'REEMBOLSO'} — ${s.empresa}`]);
+    rows.push([tituloFormato]);
+    rows.push([parrafo]);
     rows.push([]);
-    rows.push(['Fecha del Gasto', 'Pagado a', 'NIT', 'Por concepto de', `Valor pagado (${moneda})`, 'Tipo de soporte']);
-    (s.documentos || []).forEach(d => {
-      rows.push([d.fecha || '', d.proveedor || '', d.nit || '', d.descripcion || '', parseFloat(d.valor) || 0, d.tipoSoporte || '']);
-    });
-    rows.push(['', '', '', 'TOTAL', s.totalCalculado || 0, '']);
+    rows.push(['Empresa: ', s.empresa]);
+    rows.push(['NIT: ', NIT_EMPRESAS[s.empresa] || '']);
+    rows.push([esLegalizacion ? 'Fecha legalización' : 'Fecha reembolso', new Date().toISOString().split('T')[0]]);
     rows.push([]);
-    rows.push(['Elaborado por', s.responsableNombre || '']);
-    rows.push(['Estado', s.estado || '']);
-    if (s.tipo === 'Legalización' && s.valorAnticipoOriginal) {
-      rows.push(['Anticipo Original', parseFloat(s.valorAnticipoOriginal) || 0]);
+
+    if (esLegalizacion) {
+      if (fechaAnticipo) rows.push([`Fecha de la solicitud de anticipo: ${fechaAnticipo}`]);
+      rows.push([]);
+      const totalGastos = s.totalCalculado || 0;
+      const diferencia = totalGastos - valorAnticipo;
+      const etiquetaDiferencia = diferencia >= 0 ? 'a Reembolsar:' : 'a Devolver:';
+      rows.push(['', 'Valor Legalizado de Anticipo previo', valorAnticipo, etiquetaDiferencia, Math.abs(diferencia)]);
+      rows.push([]);
     }
 
+    rows.push([`Detalle de los pagos realizados por los cuales se solicita ${esLegalizacion ? 'la legalización' : 'el reembolso'}`]);
+    rows.push([]);
+    rows.push(['Fecha del Gasto', 'Pagado a', 'NIT/CC', `Valor pagado (${moneda})`, 'Tipo de soporte', 'Por concepto de']);
+    (s.documentos || []).forEach(d => {
+      rows.push([d.fecha || '', d.proveedor || '', d.nit || '', parseFloat(d.valor) || 0, d.tipoSoporte || '', d.descripcion || '']);
+    });
+    rows.push([]);
+    rows.push(['Elaborado por', 'Revisado:', 'Aprobado:', s.totalCalculado || 0]);
+    rows.push([s.responsableNombre || '', revisadoPor || '(pendiente)', aprobadoPor || '(pendiente)']);
+    rows.push([]);
+    rows.push(['Estado', s.estado || '']);
+    rows.push(['', '', '', '', 'SOPORTES:', 'Ver PDF consolidado adjunto a esta solicitud']);
+
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{ wch: 14 }, { wch: 22 }, { wch: 16 }, { wch: 30 }, { wch: 16 }, { wch: 20 }];
+    ws['!cols'] = [{ wch: 22 }, { wch: 26 }, { wch: 16 }, { wch: 20 }, { wch: 18 }, { wch: 32 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, s.tipo.substring(0, 30));
     XLSX.writeFile(wb, `${s.tipo}_${s.responsableNombre}_${s.fecha}.xlsx`);
@@ -3461,6 +3764,73 @@ const App = () => {
         {currentView === 'solicitudes' && (
           <div>
             <div>
+              {!isReadOnly && (
+                <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
+                  <h2 style={{ color: '#C4A747', margin: '0 0 0.5rem 0' }}>📥 Mi Bandeja de Soportes</h2>
+                  <p style={{ color: '#6B6458', fontSize: '0.85rem', margin: '0 0 1.5rem 0' }}>Sube aquí tus recibos y facturas a medida que te van llegando. Cuando quieras pedir una Legalización o Reembolso, marca los que quieras usar y el sistema prellena el formulario de abajo con esos datos.</p>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem', backgroundColor: '#F8F6F1', padding: '1rem', borderRadius: '4px', border: '1px solid #E6E0D2' }}>
+                    <input type="date" value={nuevoSoportePendiente.fecha} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, fecha: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
+                    <input type="text" placeholder="Pagado a" value={nuevoSoportePendiente.proveedor} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, proveedor: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
+                    <input type="text" placeholder="NIT" value={nuevoSoportePendiente.nit} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, nit: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
+                    <input type="text" placeholder="Por concepto de" value={nuevoSoportePendiente.descripcion} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, descripcion: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
+                    <input type="number" placeholder="Valor pagado" value={nuevoSoportePendiente.valor} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, valor: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
+                    <select value={nuevoSoportePendiente.tipoSoporte} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, tipoSoporte: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }}>
+                      <option value="">Tipo de Soporte</option>
+                      {tiposSoporte.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+                    <input type="file" accept="application/pdf,image/*" onChange={handleSeleccionarArchivoPendiente} style={{ flex: 1, minWidth: '200px', padding: '0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', boxSizing: 'border-box', cursor: 'pointer' }} />
+                    {nuevoSoportePendiente.archivo && <span style={{ color: '#2F9E52', fontSize: '0.8rem' }}>📎 {nuevoSoportePendiente.archivo.nombre}</span>}
+                    <button onClick={handleAgregarSoportePendiente} disabled={subiendoSoportePendiente} style={{ padding: '0.6rem 1.25rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: subiendoSoportePendiente ? 'not-allowed' : 'pointer', opacity: subiendoSoportePendiente ? 0.6 : 1 }}>
+                      {subiendoSoportePendiente ? 'Subiendo...' : '+ Agregar a mi bandeja'}
+                    </button>
+                  </div>
+
+                  {cargandoSoportesPendientes && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando tu bandeja...</p>}
+
+                  {soportesPendientes.length === 0 ? (
+                    <p style={{ color: '#AFA897', fontSize: '0.85rem' }}>Tu bandeja está vacía.</p>
+                  ) : (
+                    <>
+                      <div style={{ overflowX: 'auto', marginBottom: '1rem' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '2px solid #E6E0D2' }}>
+                              <th style={{ padding: '0.5rem' }}></th>
+                              <th style={{ textAlign: 'left', padding: '0.5rem', color: '#C4A747' }}>Fecha</th>
+                              <th style={{ textAlign: 'left', padding: '0.5rem', color: '#C4A747' }}>Pagado a</th>
+                              <th style={{ textAlign: 'left', padding: '0.5rem', color: '#C4A747' }}>Concepto</th>
+                              <th style={{ textAlign: 'right', padding: '0.5rem', color: '#C4A747' }}>Valor</th>
+                              <th style={{ textAlign: 'left', padding: '0.5rem', color: '#C4A747' }}>Archivo</th>
+                              <th style={{ padding: '0.5rem' }}></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {soportesPendientes.map(item => (
+                              <tr key={item.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                                <td style={{ padding: '0.5rem', textAlign: 'center' }}><input type="checkbox" checked={seleccionPendientes.includes(item.id)} onChange={() => toggleSeleccionPendiente(item.id)} /></td>
+                                <td style={{ padding: '0.5rem', color: '#6B6458' }}>{item.fecha}</td>
+                                <td style={{ padding: '0.5rem', color: '#6B6458' }}>{item.proveedor}</td>
+                                <td style={{ padding: '0.5rem', color: '#6B6458' }}>{item.descripcion}</td>
+                                <td style={{ padding: '0.5rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(item.valor, user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)}</td>
+                                <td style={{ padding: '0.5rem', color: '#6B6458', fontSize: '0.75rem' }}>{item.nombre}</td>
+                                <td style={{ padding: '0.5rem', textAlign: 'center' }}><button onClick={() => handleEliminarSoportePendiente(item)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B' }}>🗑️</button></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                        <button onClick={() => handleUsarPendientesEnSolicitud('Legalización')} disabled={seleccionPendientes.length === 0} style={{ padding: '0.6rem 1.25rem', backgroundColor: seleccionPendientes.length === 0 ? '#D8D2C2' : '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: seleccionPendientes.length === 0 ? 'not-allowed' : 'pointer' }}>Usar seleccionados en Legalización</button>
+                        <button onClick={() => handleUsarPendientesEnSolicitud('Reembolso')} disabled={seleccionPendientes.length === 0} style={{ padding: '0.6rem 1.25rem', backgroundColor: seleccionPendientes.length === 0 ? '#D8D2C2' : '#2F9E52', color: '#FFFFFF', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: seleccionPendientes.length === 0 ? 'not-allowed' : 'pointer' }}>Usar seleccionados en Reembolso</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
               <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
                 <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nueva Solicitud</h2>
 
@@ -3488,9 +3858,27 @@ const App = () => {
                     <input type="number" placeholder={`Valor Solicitado (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
                   )}
                   {newSolicitud.tipo === 'Legalización' && (
-                    <input type="number" placeholder={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valorAnticipoOriginal} onChange={(e) => setNewSolicitud({...newSolicitud, valorAnticipoOriginal: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
+                    <input type="number" placeholder={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} disabled={!!newSolicitud.anticipoId} value={newSolicitud.valorAnticipoOriginal} onChange={(e) => setNewSolicitud({...newSolicitud, valorAnticipoOriginal: e.target.value})} style={{ padding: '0.75rem', backgroundColor: newSolicitud.anticipoId ? '#EDEAE0' : '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
                   )}
                 </div>
+
+                {newSolicitud.tipo === 'Legalización' && (() => {
+                  const misAnticipos = solicitudes.filter(a => a.tipo === 'Anticipo' && a.responsableId === user.id);
+                  if (misAnticipos.length === 0) return null;
+                  return (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Vincular al Anticipo que se está legalizando (opcional, recomendado)</label>
+                      <select value={newSolicitud.anticipoId} onChange={(e) => {
+                        const id = e.target.value;
+                        const anticipo = misAnticipos.find(a => a.id === id);
+                        setNewSolicitud({...newSolicitud, anticipoId: id, valorAnticipoOriginal: anticipo ? anticipo.valor : ''});
+                      }} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                        <option value="">Sin vincular (diligenciar el valor manualmente)</option>
+                        {misAnticipos.map(a => <option key={a.id} value={a.id}>{a.fecha} — {formatMoney(a.valor, a.empresa)}</option>)}
+                      </select>
+                    </div>
+                  );
+                })()}
 
                 <input type="text" placeholder="Concepto" value={newSolicitud.detalle} onChange={(e) => setNewSolicitud({...newSolicitud, detalle: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', marginBottom: '1rem', boxSizing: 'border-box' }} />
 
