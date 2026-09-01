@@ -266,14 +266,9 @@ const App = () => {
     { id: 32, empresa: 'ARKO', ceco: 'CECO-004-HR', nombre: 'NESTOR OVIDIO', tipo: 'Prestación de Servicio', valorMensual: 155.10, diaLimitePago: '11' }
   ].map(item => ({ ...item, activo: true }));
   const nombresMeses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-  const cecos = [
-    { codigo: 'CECO-001-GF', nombre: 'Gastos Fijos', tipo: 'ADMINISTRATIVOS' },
-    { codigo: 'CECO-002-NM', nombre: 'Nómina', tipo: 'NOMINA' },
-    { codigo: 'CECO-003-GR', nombre: 'Gastos de Representación', tipo: 'REEMBOLSOS' },
-    { codigo: 'CECO-004-HR', nombre: 'Honorarios', tipo: 'ANTICIPOS' },
-    { codigo: 'CECO-005-OT', nombre: 'Otros', tipo: 'VARIOS' },
-    { codigo: 'CECO-006-VI', nombre: 'Viajes', tipo: 'REEMBOLSOS' }
-  ];
+  // Los CECOs YA NO son una lista fija en el código — viven en la tabla public.cecos de Supabase
+  // (cargarCecos/cecosDB más abajo) para que Administrador/Coordinadora Administrativa puedan
+  // crear o editar códigos a futuro desde la propia app, sin necesidad de tocar código.
   const categorias = ['Transporte', 'Hospedaje', 'Alimentación', 'Servicios', 'Equipos', 'Comunicación', 'Otros'];
   const cuentasPorEmpresa = {
     'AM SPORTS GROUP SAS': ['CUENTA BANCOLOMBIA', 'CUENTA BBVA'],
@@ -307,8 +302,26 @@ const App = () => {
   const [usuariosDB, setUsuariosDB] = useState([]);
   const [cargandoUsuarios, setCargandoUsuarios] = useState(true);
   const [subiendoDocumento, setSubiendoDocumento] = useState(null); // 'documentoCedula' | 'documentoPasaporte' | null
+  // CECOs — catálogo dinámico desde public.cecos (ver comentario más abajo, junto a `cecos`).
+  const [cecosDB, setCecosDB] = useState([]);
+  const [cargandoCecos, setCargandoCecos] = useState(true);
   const responsables = usuariosDB.filter(u => u.rol === 'Responsable');
   const usuariosAdmin = usuariosDB.filter(u => u.rol !== 'Responsable');
+  // Lista aparte para Finanzas: un Gasto/Ingreso/Traslado puede quedar a nombre de
+  // CUALQUIER persona de la compañía (Gerente, Coordinadora, Contadora, Administrador),
+  // no solo de quienes tienen el rol "Responsable" — a diferencia de `responsables`
+  // (que sigue igual para no afectar Colaboradores, Solicitudes ni el ranking del
+  // Dashboard, donde sí corresponde solo mirar ese rol).
+  const personasFinanzas = usuariosDB;
+  // CECOs (Centros de Costo/Ingreso) — catálogo editable en Supabase (tabla public.cecos).
+  // `cecos` = catálogo completo (activos e inactivos, se usa para mostrar el nombre de CECOs
+  // viejos en registros históricos). `cecosGasto`/`cecosIngreso` = solo los activos de cada
+  // tipo, para los desplegables del formulario de Finanzas (Gasto usa CECO-xxx, Ingreso usa
+  // CEIN-xxx; Traslado siempre usa el mismo código fijo CEIN-003-ACPT, sin desplegable).
+  const cecos = cecosDB;
+  const cecosGasto = cecosDB.filter(c => c.tipo === 'Gasto' && c.activo !== false).sort((a, b) => a.codigo.localeCompare(b.codigo));
+  const cecosIngreso = cecosDB.filter(c => c.tipo === 'Ingreso' && c.activo !== false).sort((a, b) => a.codigo.localeCompare(b.codigo));
+  const CECO_TRASLADO_FIJO = 'CEIN-003-ACPT';
   // MI PERFIL — autoedición para cualquier rol. "miPerfil" se deriva de usuariosDB (que ya
   // trae solo la propia fila para roles no admin, gracias a la política RLS "cualquiera ve su
   // propia fila"); "miPerfilForm" es el borrador editable antes de guardar.
@@ -351,8 +364,16 @@ const App = () => {
   const [guardandoGasto, setGuardandoGasto] = useState(false);
   const [guardandoIngreso, setGuardandoIngreso] = useState(false);
   const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', soportes: [], presupuestoItemId: '', aplicarDeduccion: true });
-  const [newIngreso, setNewIngreso] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Ingreso', empresa: 'AM SPORTS GROUP SAS', responsable: '', detalle: '', valor: '', categoria: '', estado: 'Pagado', observaciones: '', linkSoporte: '', cuenta: '', soportes: [] });
+  const [newIngreso, setNewIngreso] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Ingreso', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CEIN-001-ING', detalle: '', valor: '', categoria: '', estado: 'Pagado', observaciones: '', linkSoporte: '', cuenta: '', soportes: [] });
+  // Filtro de la lista histórica unificada de Finanzas (Gastos + Ingresos + Traslados en
+  // una sola tabla, en vez de las 3 tablas separadas que había antes).
+  const [filtroTipoFinanzas, setFiltroTipoFinanzas] = useState('Todos');
   const [filtroFinanzas, setFiltroFinanzas] = useState({ mes: new Date().getMonth() + 1, empresa: 'Todos', tipo: 'Todos' });
+  // Gestión de CECOs (Administrador y Coordinadora Administrativa) — crear/editar códigos
+  // sin tocar código de la app. Panel colapsable dentro de Finanzas.
+  const [mostrarGestionCecos, setMostrarGestionCecos] = useState(false);
+  const [nuevoCeco, setNuevoCeco] = useState({ codigo: '', nombre: '', tipo: 'Gasto' });
+  const [guardandoCeco, setGuardandoCeco] = useState(false);
   const [soportesTemp, setSoportesTemp] = useState([]);
   const [soportesCuentaCobroTemp, setSoportesCuentaCobroTemp] = useState([]);
   const [soportesLegalizacionTemp, setSoportesLegalizacionTemp] = useState([]);
@@ -1023,6 +1044,7 @@ const App = () => {
     empresa: row.empresas?.nombre || '',
     responsable: row.usuarios?.nombre || '',
     responsableNombre: row.usuarios?.nombre || '',
+    ceco: row.cecos?.codigo || '',
     cuenta: row.cuenta || '',
     detalle: row.detalle || '',
     valor: row.valor,
@@ -1037,7 +1059,7 @@ const App = () => {
     setCargandoIngresos(true);
     const { data, error } = await supabase
       .from('ingresos')
-      .select('id, fecha, tipo, cuenta, detalle, valor, categoria, estado, observaciones, soporte_drive_link, empresas ( nombre ), usuarios ( nombre )')
+      .select('id, fecha, tipo, cuenta, detalle, valor, categoria, estado, observaciones, soporte_drive_link, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
       .order('fecha', { ascending: false });
     if (error) {
       console.error('Error cargando ingresos:', error);
@@ -1051,6 +1073,25 @@ const App = () => {
     }
     setIngresos(lista);
     setCargandoIngresos(false);
+  };
+
+  // Catálogo de CECOs (Centros de Costo/Ingreso) — tabla public.cecos. Reemplaza el array fijo
+  // que vivía antes en el código: Administrador/Coordinadora Administrativa pueden crear o editar
+  // CECOs desde la pantalla de Gestión de CECOs en Finanzas, y esto se refleja al instante (vía
+  // Realtime) en los desplegables de todos los que tengan la app abierta.
+  const cargarCecos = async () => {
+    setCargandoCecos(true);
+    const { data, error } = await supabase
+      .from('cecos')
+      .select('id, codigo, nombre, tipo, activo')
+      .order('codigo');
+    if (error) {
+      console.error('Error cargando CECOs:', error);
+      setCargandoCecos(false);
+      return;
+    }
+    setCecosDB((data || []).map(c => ({ ...c, activo: c.activo !== false })));
+    setCargandoCecos(false);
   };
 
   // Directorio público limitado (nombre/foto/cargo/cumpleaños de TODOS) para el widget de
@@ -1075,6 +1116,7 @@ const App = () => {
       cargarIngresos();
       cargarPresupuesto();
       cargarSoportesPendientes();
+      cargarCecos();
     } else {
       setUsuariosDB([]);
       setSolicitudes([]);
@@ -1087,6 +1129,7 @@ const App = () => {
       setPresupuestoOverrides([]);
       setDeducciones([]);
       setSoportesPendientes([]);
+      setCecosDB([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
@@ -1111,6 +1154,7 @@ const App = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'presupuesto_overrides' }, () => cargarPresupuestoOverrides())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'deducciones' }, () => cargarDeducciones())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'soportes_pendientes' }, () => cargarSoportesPendientes())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cecos' }, () => cargarCecos())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'usuarios' }, () => { cargarUsuarios(); cargarColaboradoresPublico(); })
       .subscribe();
 
@@ -2412,7 +2456,9 @@ const App = () => {
       // Si el concepto vinculado pertenece a un CECO distinto al elegido en el formulario (caso típico
       // de gastos fijos catalogados en otro CECO), el CECO del gasto se ajusta al del concepto — así el
       // cruce en Presupuesto (que agrupa por empresa+CECO) reconoce el pago como hecho.
-      let cecoFinal = newGasto.ceco;
+      // Los Traslados no eligen CECO en el formulario: siempre quedan con el mismo código fijo
+      // (CEIN-003-ACPT, "Traslado Recibido").
+      let cecoFinal = newGasto.tipo === 'Traslado' ? CECO_TRASLADO_FIJO : newGasto.ceco;
       if (presupuestoItemIdFinal) {
         const conceptoVinculado = presupuestoItems.find(p => p.id === presupuestoItemIdFinal);
         if (conceptoVinculado && conceptoVinculado.ceco && conceptoVinculado.ceco !== cecoFinal) {
@@ -2442,7 +2488,7 @@ const App = () => {
       }
 
       const [empresaId, cecoId] = await Promise.all([resolverEmpresaId(newGasto.empresa), resolverCecoId(cecoFinal)]);
-      const responsableId = responsables.find(r => r.nombre === newGasto.responsable)?.id || null;
+      const responsableId = personasFinanzas.find(r => r.nombre === newGasto.responsable)?.id || null;
 
       const { data: inserted, error } = await supabase
         .from('gastos')
@@ -2523,8 +2569,8 @@ const App = () => {
 
     setGuardandoIngreso(true);
     try {
-      const empresaId = await resolverEmpresaId(newIngreso.empresa);
-      const responsableId = responsables.find(r => r.nombre === newIngreso.responsable)?.id || null;
+      const [empresaId, cecoId] = await Promise.all([resolverEmpresaId(newIngreso.empresa), resolverCecoId(newIngreso.ceco)]);
+      const responsableId = personasFinanzas.find(r => r.nombre === newIngreso.responsable)?.id || null;
 
       const { data: inserted, error } = await supabase
         .from('ingresos')
@@ -2533,6 +2579,7 @@ const App = () => {
           tipo: newIngreso.tipo,
           empresa_id: empresaId,
           responsable_id: responsableId,
+          ceco_id: cecoId,
           cuenta: newIngreso.cuenta || null,
           detalle: newIngreso.detalle,
           valor: newIngreso.valor,
@@ -2560,6 +2607,7 @@ const App = () => {
         tipo: 'Ingreso',
         empresa: 'AM SPORTS GROUP SAS',
         responsable: '',
+        ceco: 'CEIN-001-ING',
         detalle: '',
         valor: '',
         categoria: '',
@@ -2573,6 +2621,42 @@ const App = () => {
       alert('✅ Ingreso agregado con soportes');
     } finally {
       setGuardandoIngreso(false);
+    }
+  };
+
+  // GESTIÓN DE CECOs (Administrador y Coordinadora Administrativa) — crear un CECO nuevo o
+  // editar uno existente (nombre, tipo, activo). No se borran nunca: un CECO usado en registros
+  // viejos se "apaga" (activo=false) para que desaparezca de los desplegables sin romper el
+  // historial que ya lo referencia.
+  const handleAddCeco = async () => {
+    const codigo = nuevoCeco.codigo.trim().toUpperCase();
+    if (!codigo || !nuevoCeco.nombre.trim()) {
+      alert('Código y nombre son obligatorios');
+      return;
+    }
+    setGuardandoCeco(true);
+    try {
+      const { error } = await supabase.from('cecos').insert({ codigo, nombre: nuevoCeco.nombre.trim(), tipo: nuevoCeco.tipo, activo: true });
+      if (error) {
+        console.error('Error creando CECO:', error);
+        alert('❌ No se pudo crear el CECO: ' + error.message);
+        return;
+      }
+      await cargarCecos();
+      setNuevoCeco({ codigo: '', nombre: '', tipo: 'Gasto' });
+    } finally {
+      setGuardandoCeco(false);
+    }
+  };
+
+  const handleUpdateCeco = async (id, campo, valor) => {
+    const anteriores = cecosDB;
+    setCecosDB(cecosDB.map(c => c.id === id ? { ...c, [campo]: valor } : c));
+    const { error } = await supabase.from('cecos').update({ [campo]: valor }).eq('id', id);
+    if (error) {
+      console.error('Error actualizando CECO:', error);
+      alert('❌ No se pudo actualizar el CECO: ' + error.message);
+      setCecosDB(anteriores);
     }
   };
 
@@ -2955,9 +3039,10 @@ const App = () => {
 
         for (const g of gastosAImportar) {
           if (!(g.empresa in empresaCache)) empresaCache[g.empresa] = await resolverEmpresaId(g.empresa);
-          const cecoFinal = g.tipo === 'Traslado' ? null : g.ceco;
+          // Traslado siempre queda con el mismo CECO fijo (CEIN-003-ACPT), igual que en el formulario.
+          const cecoFinal = g.tipo === 'Traslado' ? CECO_TRASLADO_FIJO : g.ceco;
           if (cecoFinal && !(cecoFinal in cecoCache)) cecoCache[cecoFinal] = await resolverCecoId(cecoFinal);
-          const responsableId = responsables.find(r => r.nombre === g.responsable)?.id || null;
+          const responsableId = personasFinanzas.find(r => r.nombre === g.responsable)?.id || null;
 
           filasAInsertar.push({
             fecha: g.fecha,
@@ -3033,9 +3118,37 @@ const App = () => {
     ? gastos.filter(g => g.responsableNombre === user.nombre)
     : gastos;
 
-  const ingresosUsuario = user?.rol === 'Responsable' 
+  const ingresosUsuario = user?.rol === 'Responsable'
     ? ingresos.filter(i => i.responsableNombre === user.nombre)
     : ingresos;
+
+  // Historial unificado de Finanzas: Gastos, Traslados (ambos viven en la tabla "gastos",
+  // por eso ya vienen juntos en gastosUsuario) e Ingresos, todos en una sola lista ordenada
+  // por fecha. `filtroTipoFinanzas` ('Todos' | 'Gasto' | 'Traslado' | 'Ingreso') permite
+  // aislar un tipo cuando se necesita, sin perder la vista conjunta por defecto.
+  // Un Traslado es UN SOLO registro en la base de datos (cuentaSalida/cuentaDestino), pero en
+  // el historial se muestra como DOS líneas con la misma fecha: la salida de la cuenta/empresa
+  // de origen y la entrada a la cuenta/empresa de destino — así se lee como un movimiento real
+  // entre dos cuentas, no como una sola fila ambigua. `cuentaDestino` viene en formato
+  // "EMPRESA: CUENTA" cuando el destino es de otra empresa (así se arma en el desplegable del
+  // formulario); si no trae ese formato, se asume la misma empresa de origen.
+  const registrosFinanzasTodos = [
+    ...gastosUsuario.flatMap(g => {
+      if (g.tipo !== 'Traslado') return [{ ...g, _origen: 'gasto' }];
+      const [empresaDestino, cuentaDestinoNombre] = g.cuentaDestino && g.cuentaDestino.includes(': ')
+        ? g.cuentaDestino.split(': ')
+        : [g.empresa, g.cuentaDestino];
+      return [
+        { ...g, _origen: 'gasto', _ladoTraslado: 'salida', empresa: g.empresa, cuenta: g.cuentaSalida },
+        { ...g, _origen: 'gasto', _ladoTraslado: 'entrada', empresa: empresaDestino, cuenta: cuentaDestinoNombre },
+      ];
+    }),
+    ...ingresosUsuario.map(i => ({ ...i, tipo: 'Ingreso', _origen: 'ingreso' })),
+  ].sort((a, b) => new Date(b.fecha) - new Date(a.fecha) || (b.id || 0) - (a.id || 0));
+
+  const registrosFinanzas = filtroTipoFinanzas === 'Todos'
+    ? registrosFinanzasTodos
+    : registrosFinanzasTodos.filter(r => r.tipo === filtroTipoFinanzas);
 
   // Dashboard financiero — separado por moneda (ARKO en USD, el resto en COP).
   // Sumar pesos y dólares en un mismo total daría un número financieramente incorrecto.
@@ -4327,7 +4440,7 @@ const App = () => {
                       <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Colaborador</label>
                       <select value={newGasto.responsable} onChange={(e) => {setNewGasto({...newGasto, responsable: e.target.value}); setNewIngreso({...newIngreso, responsable: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }}>
                         <option value="">Seleccionar</option>
-                        {responsables.map(r => <option key={r.id} value={r.nombre}>{r.nombre}</option>)}
+                        {[...personasFinanzas].sort((a, b) => a.nombre.localeCompare(b.nombre)).map(r => <option key={r.id} value={r.nombre}>{r.nombre}{r.rol && r.rol !== 'Responsable' ? ` (${r.rol})` : ''}</option>)}
                       </select>
                     </div>
                   </>
@@ -4335,10 +4448,28 @@ const App = () => {
                 
                 {newGasto.tipo === 'Gasto' && (
                   <div>
-                    <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Centro de Costo</label>
+                    <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>CECO</label>
                     <select value={newGasto.ceco} onChange={(e) => setNewGasto({...newGasto, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }}>
-                      {cecos.map(c => <option key={c.codigo} value={c.codigo}>{c.nombre}</option>)}
+                      {cecosGasto.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo}</option>)}
                     </select>
+                  </div>
+                )}
+
+                {newGasto.tipo === 'Ingreso' && (
+                  <div>
+                    <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>CEIN (origen)</label>
+                    <select value={newIngreso.ceco} onChange={(e) => setNewIngreso({...newIngreso, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                      {cecosIngreso.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo}</option>)}
+                    </select>
+                  </div>
+                )}
+
+                {/* Traslado no elige CECO: siempre queda con el mismo código fijo (CEIN-003-ACPT,
+                    "Traslado Recibido"). Se muestra de solo lectura para que quede claro en pantalla. */}
+                {newGasto.tipo === 'Traslado' && (
+                  <div>
+                    <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>CECO</label>
+                    <input type="text" value={CECO_TRASLADO_FIJO} disabled style={{ width: '100%', padding: '0.75rem', backgroundColor: '#EFEBE1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', boxSizing: 'border-box', marginTop: '0.5rem' }} />
                   </div>
                 )}
               </div>
@@ -4437,6 +4568,64 @@ const App = () => {
               <button disabled={guardandoGasto || guardandoIngreso} onClick={newGasto.tipo === 'Gasto' ? handleAddGasto : (newGasto.tipo === 'Traslado' ? handleAddGasto : handleAddIngreso)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: (guardandoGasto || guardandoIngreso) ? 'not-allowed' : 'pointer', opacity: (guardandoGasto || guardandoIngreso) ? 0.6 : 1 }}>
                 {(guardandoGasto || guardandoIngreso) ? 'Guardando...' : `Registrar ${newGasto.tipo === 'Traslado' ? 'Traslado' : (newGasto.tipo === 'Ingreso' ? 'Ingreso' : 'Gasto')}`}
               </button>
+            </div>
+            )}
+
+            {/* GESTIÓN DE CECOs (SOLO ADMIN Y COORDINADORA) — catálogo editable en Supabase */}
+            {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
+            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                <h2 style={{ color: '#C4A747', margin: 0 }}>🗂️ Gestión de CECOs ({cecosDB.length})</h2>
+                <button onClick={() => setMostrarGestionCecos(!mostrarGestionCecos)} style={{ padding: '0.5rem 1rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>
+                  {mostrarGestionCecos ? 'Ocultar' : 'Ver / Crear CECOs'}
+                </button>
+              </div>
+              {mostrarGestionCecos && (
+                <div style={{ marginTop: '1.5rem' }}>
+                  {cargandoCecos && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando CECOs...</p>}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr auto', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                    <input type="text" placeholder="Código (ej. CECO-014-XX)" value={nuevoCeco.codigo} onChange={(e) => setNuevoCeco({...nuevoCeco, codigo: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
+                    <input type="text" placeholder="Nombre" value={nuevoCeco.nombre} onChange={(e) => setNuevoCeco({...nuevoCeco, nombre: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
+                    <select value={nuevoCeco.tipo} onChange={(e) => setNuevoCeco({...nuevoCeco, tipo: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }}>
+                      <option value="Gasto">Gasto (CECO-xxx)</option>
+                      <option value="Ingreso">Ingreso (CEIN-xxx)</option>
+                    </select>
+                    <button disabled={guardandoCeco} onClick={handleAddCeco} style={{ padding: '0.75rem 1.25rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoCeco ? 'not-allowed' : 'pointer', opacity: guardandoCeco ? 0.6 : 1, whiteSpace: 'nowrap' }}>+ Agregar</button>
+                  </div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                      <thead style={{ backgroundColor: '#F8F6F1' }}>
+                        <tr style={{ borderBottom: '2px solid #C4A747' }}>
+                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Código</th>
+                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Nombre</th>
+                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
+                          <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Activo</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...cecosDB].sort((a, b) => a.codigo.localeCompare(b.codigo)).map(c => (
+                          <tr key={c.id} style={{ borderBottom: '1px solid #E6E0D2', opacity: c.activo === false ? 0.5 : 1 }}>
+                            <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{c.codigo}</td>
+                            <td style={{ padding: '0.75rem' }}>
+                              <input type="text" defaultValue={c.nombre} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== c.nombre) handleUpdateCeco(c.id, 'nombre', v); }} style={{ width: '100%', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#221E15', boxSizing: 'border-box' }} />
+                            </td>
+                            <td style={{ padding: '0.75rem' }}>
+                              <select value={c.tipo} onChange={(e) => handleUpdateCeco(c.id, 'tipo', e.target.value)} style={{ padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#221E15' }}>
+                                <option value="Gasto">Gasto</option>
+                                <option value="Ingreso">Ingreso</option>
+                              </select>
+                            </td>
+                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                              <input type="checkbox" checked={c.activo !== false} onChange={(e) => handleUpdateCeco(c.id, 'activo', e.target.checked)} />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p style={{ fontSize: '0.75rem', color: '#8F8877', marginTop: '0.75rem' }}>Desmarcar "Activo" oculta el CECO de los desplegables sin borrarlo — los registros que ya lo usaron lo siguen mostrando normalmente.</p>
+                </div>
+              )}
             </div>
             )}
 
@@ -4716,196 +4905,118 @@ const App = () => {
             </div>
 
 
-            {/* TABLA GASTOS */}
-            {newGasto.tipo === 'Gasto' && (
-              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>💸 Gastos Registrados ({gastosUsuario.filter(g => g.tipo === 'Gasto').length})</h2>
-                {cargandoGastos && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando gastos...</p>}
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                    <thead style={{ backgroundColor: '#F8F6F1' }}>
-                      <tr style={{ borderBottom: '2px solid #C4A747' }}>
-                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
-                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
-                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
-                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta</th>
-                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Detalle</th>
-                        <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
-                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Soportes</th>
-                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
-                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Presupuesto</th>
-                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {gastosUsuario.filter(g => g.tipo === 'Gasto').sort((a, b) => new Date(b.fecha) - new Date(a.fecha) || (b.id || 0) - (a.id || 0)).map(g => (
-                        <tr key={g.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
-                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.fecha}</td>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === g.responsableNombre)?.foto} nombre={g.responsableNombre} size={22} />{g.responsableNombre}</div></td>}
-                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><EmpresaLogo empresa={g.empresa} height={16} />{g.empresa}</div></td>
-                          <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.ceco}</td>
-                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.cuenta}</td>
-                          <td style={{ padding: '0.75rem', color: '#6B6458' }}>{g.detalle}</td>
-                          <td style={{ padding: '0.75rem', color: '#CC4B4B', textAlign: 'right', fontWeight: 'bold' }}>
-                            {formatMoney(g.valor, g.empresa)}
-                            {g.valorBruto != null && (
+            {/* HISTORIAL UNIFICADO: Gastos + Traslados + Ingresos en una sola tabla, con filtro por Tipo */}
+            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
+                <h2 style={{ color: '#C4A747', margin: 0 }}>📋 Historial de Finanzas ({registrosFinanzas.length})</h2>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  {['Todos', 'Gasto', 'Traslado', 'Ingreso'].map(t => (
+                    <button key={t} onClick={() => setFiltroTipoFinanzas(t)} style={{ padding: '0.4rem 0.9rem', borderRadius: '4px', border: filtroTipoFinanzas === t ? '1px solid #C4A747' : '1px solid #E6E0D2', backgroundColor: filtroTipoFinanzas === t ? '#C4A747' : '#F8F6F1', color: filtroTipoFinanzas === t ? '#221E15' : '#6B6458', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}>
+                      {t === 'Gasto' ? '💸 Gasto' : t === 'Traslado' ? '🔄 Traslado' : t === 'Ingreso' ? '💰 Ingreso' : 'Todos'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {(cargandoGastos || cargandoIngresos) && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando...</p>}
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <thead style={{ backgroundColor: '#F8F6F1' }}>
+                    <tr style={{ borderBottom: '2px solid #C4A747' }}>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
+                      {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO / Cuenta</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Detalle</th>
+                      <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
+                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Soportes</th>
+                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
+                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Presupuesto</th>
+                      {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {registrosFinanzas.length === 0 ? (
+                      <tr><td colSpan={10} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin registros para este filtro.</td></tr>
+                    ) : registrosFinanzas.map(r => {
+                      const esGasto = r.tipo === 'Gasto';
+                      const esTraslado = r.tipo === 'Traslado';
+                      const esIngreso = r.tipo === 'Ingreso';
+                      const esSalidaTraslado = r._ladoTraslado === 'salida';
+                      const esEntradaTraslado = r._ladoTraslado === 'entrada';
+                      const colorValor = esIngreso || esEntradaTraslado ? '#2F9E52' : (esSalidaTraslado ? '#CC4B4B' : (esTraslado ? '#C4A747' : '#CC4B4B'));
+                      const iconoTipo = esGasto ? '💸' : (esTraslado ? '🔄' : '💰');
+                      const verSoportesFn = esIngreso ? handleVerSoportesIngreso : handleVerSoportesGasto;
+                      const deleteFn = esIngreso ? handleDeleteIngreso : handleDeleteGasto;
+                      return (
+                        <tr key={`${r.tipo}-${r.id}${r._ladoTraslado ? '-' + r._ladoTraslado : ''}`} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{r.fecha}</td>
+                          <td style={{ padding: '0.75rem', fontSize: '0.8rem' }}>
+                            {iconoTipo} {r.tipo}
+                            {esSalidaTraslado && <span style={{ color: '#CC4B4B', fontWeight: 'bold' }}> · Salida</span>}
+                            {esEntradaTraslado && <span style={{ color: '#2F9E52', fontWeight: 'bold' }}> · Entrada</span>}
+                          </td>
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={personasFinanzas.find(p => p.nombre === r.responsableNombre)?.foto} nombre={r.responsableNombre} size={22} />{r.responsableNombre}</div></td>}
+                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><EmpresaLogo empresa={r.empresa} height={16} />{r.empresa}</div></td>
+                          <td style={{ padding: '0.75rem', fontSize: '0.8rem' }}>
+                            <span style={{ color: '#C4A747', fontWeight: 'bold' }}>{r.ceco}</span>
+                            {r.cuenta && <div style={{ color: '#6B6458', fontSize: '0.75rem' }}>{r.cuenta}</div>}
+                          </td>
+                          <td style={{ padding: '0.75rem', color: '#6B6458' }}>{r.detalle}</td>
+                          <td style={{ padding: '0.75rem', color: colorValor, textAlign: 'right', fontWeight: 'bold' }}>
+                            {esSalidaTraslado ? '− ' : esEntradaTraslado ? '+ ' : ''}{formatMoney(r.valor, r.empresa)}
+                            {r.valorBruto != null && (
                               <div style={{ fontSize: '0.7rem', color: '#6B6458', fontWeight: 'normal' }} title="Valor bruto antes de deducciones">
-                                Bruto {formatMoney(g.valorBruto, g.empresa)} · −{formatMoney(g.deduccionAplicada, g.empresa)}
+                                Bruto {formatMoney(r.valorBruto, r.empresa)} · −{formatMoney(r.deduccionAplicada, r.empresa)}
                               </div>
                             )}
                           </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            {(g.cantidadSoportes > 0 || g.soporteDriveLink) ? (
-                              <button onClick={() => handleVerSoportesGasto(g)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }}>📎 {g.soporteDriveLink ? 'Drive' : g.cantidadSoportes}</button>
+                            {(r.cantidadSoportes > 0 || r.soporteDriveLink) ? (
+                              <button onClick={() => verSoportesFn(r)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }}>📎 {r.soporteDriveLink ? 'Drive' : r.cantidadSoportes}</button>
                             ) : (
                               <span style={{ color: '#6B6458', fontSize: '0.8rem' }}>—</span>
                             )}
                           </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') ? (
-                              <select value={g.estado} onChange={(e) => handleUpdateGasto(g.id, 'estado', e.target.value)} style={{ backgroundColor: getColorEstado(g.estado), color: '#221E15', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
+                            {esIngreso ? (
+                              <span style={{ backgroundColor: getColorEstado(r.estado), color: '#221E15', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{r.estado}</span>
+                            ) : (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') ? (
+                              <select value={r.estado} onChange={(e) => handleUpdateGasto(r.id, 'estado', e.target.value)} style={{ backgroundColor: getColorEstado(r.estado), color: '#221E15', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
                                 {estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}
                               </select>
                             ) : (
-                              <span style={{ backgroundColor: getColorEstado(g.estado), color: '#221E15', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.estado}</span>
+                              <span style={{ backgroundColor: getColorEstado(r.estado), color: '#221E15', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{r.estado}</span>
                             )}
                           </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') ? (() => {
-                              const candidatosVinculo = getPresupuestoCandidatos(g.empresa, g.ceco, g.responsable, g.detalle, presupuestoItems);
+                            {!esGasto ? (
+                              <span style={{ color: '#AFA897', fontSize: '0.75rem' }}>—</span>
+                            ) : (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') ? (() => {
+                              const candidatosVinculo = getPresupuestoCandidatos(r.empresa, r.ceco, r.responsable, r.detalle, presupuestoItems);
                               if (!candidatosVinculo.length) return <span style={{ color: '#AFA897', fontSize: '0.75rem' }}>—</span>;
                               return (
-                                <select value={g.presupuestoItemId || ''} onChange={(e) => handleVincularPresupuesto(g.id, e.target.value)} style={{ padding: '0.35rem 0.5rem', backgroundColor: g.presupuestoItemId ? 'rgba(47,158,82,0.12)' : '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#221E15', fontSize: '0.75rem', maxWidth: '160px' }}>
+                                <select value={r.presupuestoItemId || ''} onChange={(e) => handleVincularPresupuesto(r.id, e.target.value)} style={{ padding: '0.35rem 0.5rem', backgroundColor: r.presupuestoItemId ? 'rgba(47,158,82,0.12)' : '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#221E15', fontSize: '0.75rem', maxWidth: '160px' }}>
                                   <option value="">Sin vincular</option>
-                                  {candidatosVinculo.map(({ item: p }) => <option key={p.id} value={p.id}>{p.nombre}{p.ceco !== g.ceco ? ` · ${p.ceco}` : ''}</option>)}
+                                  {candidatosVinculo.map(({ item: p }) => <option key={p.id} value={p.id}>{p.nombre}{p.ceco !== r.ceco ? ` · ${p.ceco}` : ''}</option>)}
                                 </select>
                               );
                             })() : (
-                              g.presupuestoItemId ? <span style={{ color: '#2F9E52', fontSize: '0.75rem' }}>✅ Vinculado</span> : <span style={{ color: '#AFA897', fontSize: '0.75rem' }}>—</span>
+                              r.presupuestoItemId ? <span style={{ color: '#2F9E52', fontSize: '0.75rem' }}>✅ Vinculado</span> : <span style={{ color: '#AFA897', fontSize: '0.75rem' }}>—</span>
                             )}
                           </td>
                           {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
                             <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                              <button onClick={() => handleDeleteGasto(g.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
+                              <button onClick={() => deleteFn(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
                             </td>
                           )}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-            )}
-
-            {/* TABLA TRASLADOS */}
-            {newGasto.tipo === 'Traslado' && (
-              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🔄 Traslados Registrados ({gastosUsuario.filter(g => g.tipo === 'Traslado').length})</h2>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                    <thead style={{ backgroundColor: '#F8F6F1' }}>
-                      <tr style={{ borderBottom: '2px solid #C4A747' }}>
-                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
-                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta Salida</th>
-                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>→</th>
-                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta Destino</th>
-                        <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
-                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Soportes</th>
-                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
-                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {gastosUsuario.filter(g => g.tipo === 'Traslado').map(g => (
-                        <tr key={g.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
-                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{g.fecha}</td>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === g.responsableNombre)?.foto} nombre={g.responsableNombre} size={22} />{g.responsableNombre}</div></td>}
-                          <td style={{ padding: '0.75rem', color: '#2F9E52', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.cuentaSalida}</td>
-                          <td style={{ padding: '0.75rem', color: '#C4A747', textAlign: 'center', fontWeight: 'bold' }}>→</td>
-                          <td style={{ padding: '0.75rem', color: '#CC4B4B', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.cuentaDestino}</td>
-                          <td style={{ padding: '0.75rem', color: '#C4A747', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(g.valor, g.empresa)}</td>
-                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            {(g.cantidadSoportes > 0 || g.soporteDriveLink) ? (
-                              <button onClick={() => handleVerSoportesGasto(g)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }}>📎 {g.soporteDriveLink ? 'Drive' : g.cantidadSoportes}</button>
-                            ) : (
-                              <span style={{ color: '#6B6458', fontSize: '0.8rem' }}>—</span>
-                            )}
-                          </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') ? (
-                              <select value={g.estado} onChange={(e) => handleUpdateGasto(g.id, 'estado', e.target.value)} style={{ backgroundColor: getColorEstado(g.estado), color: '#221E15', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
-                                {estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}
-                              </select>
-                            ) : (
-                              <span style={{ backgroundColor: getColorEstado(g.estado), color: '#221E15', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{g.estado}</span>
-                            )}
-                          </td>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
-                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                              <button onClick={() => handleDeleteGasto(g.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* TABLA INGRESOS */}
-            {newGasto.tipo === 'Ingreso' && (
-              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>💰 Ingresos Registrados ({ingresosUsuario.length})</h2>
-                {cargandoIngresos && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando ingresos...</p>}
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                    <thead style={{ backgroundColor: '#F8F6F1' }}>
-                      <tr style={{ borderBottom: '2px solid #C4A747' }}>
-                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
-                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
-                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cuenta</th>
-                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Detalle</th>
-                        <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
-                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Soportes</th>
-                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
-                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ingresosUsuario.map(i => (
-                        <tr key={i.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
-                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{i.fecha}</td>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === i.responsableNombre)?.foto} nombre={i.responsableNombre} size={22} />{i.responsableNombre}</div></td>}
-                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><EmpresaLogo empresa={i.empresa} height={16} />{i.empresa}</div></td>
-                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{i.cuenta}</td>
-                          <td style={{ padding: '0.75rem', color: '#6B6458' }}>{i.detalle}</td>
-                          <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(i.valor, i.empresa)}</td>
-                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            {(i.cantidadSoportes > 0 || i.soporteDriveLink) ? (
-                              <button onClick={() => handleVerSoportesIngreso(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }}>📎 {i.soporteDriveLink ? 'Drive' : i.cantidadSoportes}</button>
-                            ) : (
-                              <span style={{ color: '#6B6458', fontSize: '0.8rem' }}>—</span>
-                            )}
-                          </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            <span style={{ backgroundColor: getColorEstado(i.estado), color: '#221E15', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{i.estado}</span>
-                          </td>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
-                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                              <button onClick={() => handleDeleteIngreso(i.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+            </div>
           </div>
         )}
 
@@ -5205,7 +5316,7 @@ const App = () => {
                             {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
                           </select>
                           <select value={newPresupuestoItem.ceco} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, ceco: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
-                            {cecos.map(c => <option key={c.codigo} value={c.codigo}>{c.nombre}</option>)}
+                            {cecosGasto.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
                           </select>
                           <select value={newPresupuestoItem.tipo} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, tipo: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
                             {tiposPresupuesto.map(t => <option key={t} value={t}>{t}</option>)}
@@ -5270,7 +5381,7 @@ const App = () => {
                             {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
                           </select>
                           <select value={newPresupuestoAnual.ceco} onChange={(e) => setNewPresupuestoAnual({...newPresupuestoAnual, ceco: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
-                            {cecos.map(c => <option key={c.codigo} value={c.codigo}>{c.nombre}</option>)}
+                            {cecosGasto.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
                           </select>
                           <input type="number" placeholder="Año" value={newPresupuestoAnual.anio} onChange={(e) => setNewPresupuestoAnual({...newPresupuestoAnual, anio: parseInt(e.target.value) || newPresupuestoAnual.anio})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
                           <input type="number" placeholder="Valor anual" value={newPresupuestoAnual.valorAnual} onChange={(e) => setNewPresupuestoAnual({...newPresupuestoAnual, valorAnual: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
