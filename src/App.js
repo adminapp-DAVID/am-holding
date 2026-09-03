@@ -5051,14 +5051,13 @@ const App = () => {
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Detalle</th>
                       <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
                       <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Soportes</th>
-                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
                       <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Presupuesto</th>
                       {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {registrosFinanzas.length === 0 ? (
-                      <tr><td colSpan={10} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin registros para este filtro.</td></tr>
+                      <tr><td colSpan={9} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin registros para este filtro.</td></tr>
                     ) : registrosFinanzas.map(r => {
                       const esGasto = r.tipo === 'Gasto';
                       const esTraslado = r.tipo === 'Traslado';
@@ -5097,17 +5096,6 @@ const App = () => {
                               <button onClick={() => verSoportesFn(r)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }}>📎 {r.soporteDriveLink ? 'Drive' : r.cantidadSoportes}</button>
                             ) : (
                               <span style={{ color: '#6B6458', fontSize: '0.8rem' }}>—</span>
-                            )}
-                          </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            {esIngreso ? (
-                              <span style={{ backgroundColor: getColorEstado(r.estado), color: '#221E15', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{r.estado}</span>
-                            ) : (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') ? (
-                              <select value={r.estado} onChange={(e) => handleUpdateGasto(r.id, 'estado', e.target.value)} style={{ backgroundColor: getColorEstado(r.estado), color: '#221E15', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
-                                {estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}
-                              </select>
-                            ) : (
-                              <span style={{ backgroundColor: getColorEstado(r.estado), color: '#221E15', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{r.estado}</span>
                             )}
                           </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
