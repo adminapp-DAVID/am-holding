@@ -328,6 +328,13 @@ const App = () => {
   const miPerfil = usuariosDB.find(u => u.id === user?.id) || null;
   const [miPerfilForm, setMiPerfilForm] = useState(null);
   const [guardandoMiPerfil, setGuardandoMiPerfil] = useState(false);
+  // Cambiar mi contraseña — formulario aparte, con su propio estado (no vive en miPerfilForm
+  // porque no se guarda en la tabla "usuarios": va directo a Supabase Auth).
+  const [mostrarCambiarPassword, setMostrarCambiarPassword] = useState(false);
+  const [passwordActual, setPasswordActual] = useState('');
+  const [passwordNueva, setPasswordNueva] = useState('');
+  const [passwordConfirmar, setPasswordConfirmar] = useState('');
+  const [cambiandoPassword, setCambiandoPassword] = useState(false);
   const [subiendoMiArchivo, setSubiendoMiArchivo] = useState(null); // 'foto' | 'documentoCedula' | 'documentoPasaporte' | null
   // Vista pública limitada (public.colaboradores_publico): nombre, foto, cargo y cumpleaños de
   // TODOS los usuarios, para que cualquiera pueda ver el directorio/cumpleaños del mes sin
@@ -1942,6 +1949,46 @@ const App = () => {
     }
     await cargarUsuarios();
     alert('✅ Perfil actualizado');
+  };
+
+  // CAMBIAR MI CONTRASEÑA — cada quien cambia solo la suya. Antes de aplicar la nueva se
+  // reautentica con la actual (signInWithPassword) para confirmar que quien está frente a la
+  // pantalla realmente la conoce; esto evita que una sesión abierta y desatendida alcance para
+  // cambiarla. El cambio en sí se hace con supabase.auth.updateUser, que solo puede tocar la
+  // cuenta de la sesión activa (no hace falta tabla ni política nueva).
+  const handleCambiarPassword = async () => {
+    if (!passwordActual || !passwordNueva || !passwordConfirmar) {
+      alert('Completa los 3 campos');
+      return;
+    }
+    if (passwordNueva.length < 6) {
+      alert('La nueva contraseña debe tener al menos 6 caracteres');
+      return;
+    }
+    if (passwordNueva !== passwordConfirmar) {
+      alert('La nueva contraseña y su confirmación no coinciden');
+      return;
+    }
+    setCambiandoPassword(true);
+    try {
+      const { error: authError } = await supabase.auth.signInWithPassword({ email: user.email, password: passwordActual });
+      if (authError) {
+        alert('❌ La contraseña actual no es correcta');
+        return;
+      }
+      const { error } = await supabase.auth.updateUser({ password: passwordNueva });
+      if (error) {
+        alert('❌ No se pudo cambiar la contraseña: ' + error.message);
+        return;
+      }
+      setPasswordActual('');
+      setPasswordNueva('');
+      setPasswordConfirmar('');
+      setMostrarCambiarPassword(false);
+      alert('✅ Contraseña actualizada. La próxima vez que inicies sesión, usa la nueva.');
+    } finally {
+      setCambiandoPassword(false);
+    }
   };
 
   const handleMiPerfilFoto = async (e) => {
@@ -3823,6 +3870,42 @@ const App = () => {
                 <button onClick={handleGuardarMiPerfil} disabled={guardandoMiPerfil} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoMiPerfil ? 'not-allowed' : 'pointer', opacity: guardandoMiPerfil ? 0.6 : 1 }}>
                   {guardandoMiPerfil ? '⏳ Guardando...' : 'Guardar Cambios'}
                 </button>
+              </div>
+
+              {/* SEGURIDAD — cambiar la contraseña de inicio de sesión, sin depender de Admin/Coordinadora */}
+              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginTop: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
+                <h2 style={{ color: '#C4A747', margin: '0 0 0.5rem 0' }}>🔒 Seguridad</h2>
+
+                {!mostrarCambiarPassword ? (
+                  <>
+                    <p style={{ color: '#6B6458', fontSize: '0.9rem', margin: '0 0 1rem 0' }}>Cambia la contraseña con la que inicias sesión.</p>
+                    <button onClick={() => setMostrarCambiarPassword(true)} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Cambiar mi contraseña</button>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                      <div>
+                        <label style={labelStyle}>Contraseña actual</label>
+                        <input type="password" value={passwordActual} onChange={(e) => setPasswordActual(e.target.value)} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Nueva contraseña</label>
+                        <input type="password" value={passwordNueva} onChange={(e) => setPasswordNueva(e.target.value)} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Confirmar nueva contraseña</label>
+                        <input type="password" value={passwordConfirmar} onChange={(e) => setPasswordConfirmar(e.target.value)} style={inputStyle} />
+                      </div>
+                    </div>
+                    <p style={{ color: '#8F8877', fontSize: '0.75rem', margin: '0 0 1rem 0' }}>Mínimo 6 caracteres.</p>
+                    <div style={{ display: 'flex', gap: '1rem' }}>
+                      <button onClick={handleCambiarPassword} disabled={cambiandoPassword} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: cambiandoPassword ? 'not-allowed' : 'pointer', opacity: cambiandoPassword ? 0.6 : 1 }}>
+                        {cambiandoPassword ? '⏳ Cambiando...' : 'Guardar nueva contraseña'}
+                      </button>
+                      <button onClick={() => { setMostrarCambiarPassword(false); setPasswordActual(''); setPasswordNueva(''); setPasswordConfirmar(''); }} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Cancelar</button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           );
