@@ -1163,13 +1163,46 @@ const App = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'soportes_pendientes' }, () => cargarSoportesPendientes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cecos' }, () => cargarCecos())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'usuarios' }, () => { cargarUsuarios(); cargarColaboradoresPublico(); })
-      .subscribe();
+      // Si el canal se cae (red inestable, la pestaña estuvo en segundo plano un rato largo,
+      // etc.) y luego reconecta, "SUBSCRIBED" se dispara de nuevo — aprovechamos ese momento
+      // para volver a traer todo. Así, aunque se haya perdido algún evento mientras el canal
+      // estaba caído, el usuario nunca se queda viendo datos desactualizados sin saberlo.
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          cargarSolicitudes();
+          cargarCuentasCobro();
+          cargarGastos();
+          cargarIngresos();
+          cargarPresupuestoItems();
+          cargarPresupuestoAnual();
+          cargarPresupuestoOverrides();
+          cargarDeducciones();
+          cargarSoportesPendientes();
+          cargarCecos();
+          cargarUsuarios();
+          cargarColaboradoresPublico();
+        }
+      });
 
     return () => {
       supabase.removeChannel(canalRealtime);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+
+  // Refuerzo además del Tiempo Real: cada vez que se entra a un módulo, se refresca su
+  // información desde Supabase. Así, si por lo que sea el canal de Tiempo Real se perdió un
+  // evento (p. ej. otro colaborador guardó algo mientras esta pestaña estaba en segundo
+  // plano), con solo hacer clic en el módulo ya se ve lo último — sin depender 100% del socket.
+  useEffect(() => {
+    if (!user) return;
+    if (currentView === 'solicitudes') cargarSolicitudes();
+    if (currentView === 'cuentasCobro') cargarCuentasCobro();
+    if (currentView === 'finanzas') { cargarGastos(); cargarIngresos(); }
+    if (currentView === 'presupuesto') { cargarPresupuestoItems(); cargarPresupuestoAnual(); cargarPresupuestoOverrides(); }
+    if (currentView === 'responsables') { cargarUsuarios(); cargarColaboradoresPublico(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentView]);
 
   // Al entrar a "Mi Perfil" se refresca el borrador con los datos más recientes guardados.
   useEffect(() => {
@@ -4131,25 +4164,30 @@ const App = () => {
                           )}
                         </td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                          {(s.tipo === 'Legalización' || s.tipo === 'Reembolso') && s.documentos?.length > 0 && (
-                            <>
-                              {user.rol === 'Administrador' && (
-                                <button onClick={() => handleGenerarPDF(s)} disabled={generandoPDF === s.id} style={{ background: 'none', border: 'none', cursor: 'pointer', color: generandoPDF === s.id ? '#8F8877' : '#6C63D1', fontSize: '1rem', marginRight: '0.5rem' }} title="PDF">
-                                  {generandoPDF === s.id ? '⏳' : '📄'}
-                                </button>
-                              )}
-                              {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente') && (
-                                <>
+                          {(s.tipo === 'Legalización' || s.tipo === 'Reembolso') && s.documentos?.length > 0 && (() => {
+                            const esDueño = s.responsableId === user.id;
+                            return (
+                              <>
+                                {(user.rol === 'Administrador' || esDueño) && (
+                                  <button onClick={() => handleGenerarPDF(s)} disabled={generandoPDF === s.id} style={{ background: 'none', border: 'none', cursor: 'pointer', color: generandoPDF === s.id ? '#8F8877' : '#6C63D1', fontSize: '1rem', marginRight: '0.5rem' }} title="PDF">
+                                    {generandoPDF === s.id ? '⏳' : '📄'}
+                                  </button>
+                                )}
+                                {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente') && (
                                   <button onClick={() => handleGenerarExcel(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }} title="Excel">
                                     📊
                                   </button>
-                                  <button onClick={() => handleVerSoportesSolicitud(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }} title="Ver Soportes">
+                                )}
+                                {/* Ver Soportes: los roles de gestión/auditoría lo ven en cualquier solicitud, y
+                                    el dueño (Responsable/Gerente incluidos) siempre puede ver lo que él mismo subió. */}
+                                {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente' || esDueño) && (
+                                  <button onClick={() => handleVerSoportesSolicitud(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }} title="Ver Soportes">
                                     📎
                                   </button>
-                                </>
-                              )}
-                            </>
-                          )}
+                                )}
+                              </>
+                            );
+                          })()}
                           {(user.rol === 'Responsable' || user.rol === 'Gerente' || user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
                             <button onClick={() => handleDeleteSolicitud(s.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }} title="Eliminar">✕</button>
                           )}
