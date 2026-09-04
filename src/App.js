@@ -4149,18 +4149,34 @@ const App = () => {
                       {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
                       <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
+                      <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Anticipo original</th>
+                      <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Dif. a Reembolsar</th>
                       <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Docs</th>
                       <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
                       <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {solicitudesUsuario.map(s => (
+                    {solicitudesUsuario.map(s => {
+                      // Legalización con anticipo vinculado: base para las 2 columnas nuevas y para
+                      // marcar el anticipo original como "ya legalizado" (solo visual, no toca s.estado).
+                      const esLegalizacionConAnticipo = s.tipo === 'Legalización' && s.valorAnticipoOriginal;
+                      const diferenciaReembolso = esLegalizacionConAnticipo ? (s.totalCalculado || 0) - parseFloat(s.valorAnticipoOriginal) : null;
+                      const legalizacionVinculada = s.tipo === 'Anticipo' ? solicitudesUsuario.find(x => x.tipo === 'Legalización' && x.anticipoId === s.id) : null;
+                      return (
                       <tr key={s.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.fecha}</td>
                         {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === s.responsableNombre)?.foto} nombre={s.responsableNombre} size={22} />{s.responsableNombre}</div></td>}
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
                         <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
+                        <td style={{ padding: '0.75rem', color: '#6B6458', textAlign: 'right' }}>{esLegalizacionConAnticipo ? formatMoney(parseFloat(s.valorAnticipoOriginal), s.empresa) : '—'}</td>
+                        <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: 'bold' }}>
+                          {esLegalizacionConAnticipo ? (
+                            <span style={{ color: diferenciaReembolso > 0 ? '#2F9E52' : diferenciaReembolso < 0 ? '#CC4B4B' : '#8F8877' }}>
+                              {diferenciaReembolso > 0 ? '+' : diferenciaReembolso < 0 ? '−' : ''}{formatMoney(Math.abs(diferenciaReembolso), s.empresa)}
+                            </span>
+                          ) : '—'}
+                        </td>
                         <td style={{ padding: '0.75rem', textAlign: 'center', color: s.documentos?.length > 0 ? '#2F9E52' : '#8F8877' }}>{s.documentos?.length || 0}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                           {canApprove ? (
@@ -4169,6 +4185,9 @@ const App = () => {
                             </select>
                           ) : (
                             <span style={{ backgroundColor: getColorEstado(s.estado), color: '#221E15', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{s.estado}</span>
+                          )}
+                          {legalizacionVinculada && (
+                            <div style={{ marginTop: '0.35rem', fontSize: '0.65rem', color: '#6C63D1', fontWeight: 'bold' }}>✅ Ya legalizado</div>
                           )}
                         </td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
@@ -4201,7 +4220,8 @@ const App = () => {
                           )}
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
