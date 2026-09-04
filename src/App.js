@@ -1,6 +1,11 @@
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect } from 'react';
 import jsPDF from 'jspdf';
+// Faltaba este import — doc.autoTable() (usado más abajo en handleGenerarPDF, para el PDF
+// individual de Legalización/Reembolso) es un plugin de jsPDF: sin esta línea, "autoTable"
+// no existe en el objeto doc y la llamada lanza un error que quedaba solo en la consola
+// (nunca visible para quien hace clic en el botón "📄 PDF").
+import 'jspdf-autotable';
 import JSZip from 'jszip';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import * as XLSX from 'xlsx';
@@ -1629,7 +1634,10 @@ const App = () => {
 
       doc.save(`${s.tipo}-${s.id}.pdf`);
     } catch (error) {
+      // Antes este error quedaba solo en la consola del navegador — quien hacía clic en
+      // "📄 PDF" no se enteraba de que había fallado. Ahora se avisa siempre.
       console.error('Error PDF:', error);
+      alert('❌ No se pudo generar el PDF: ' + error.message);
     }
     setGenerandoPDF(null);
   };
