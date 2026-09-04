@@ -274,7 +274,6 @@ const App = () => {
   // Los CECOs YA NO son una lista fija en el código — viven en la tabla public.cecos de Supabase
   // (cargarCecos/cecosDB más abajo) para que Administrador/Coordinadora Administrativa puedan
   // crear o editar códigos a futuro desde la propia app, sin necesidad de tocar código.
-  const categorias = ['Transporte', 'Hospedaje', 'Alimentación', 'Servicios', 'Equipos', 'Comunicación', 'Otros'];
   const cuentasPorEmpresa = {
     'AM SPORTS GROUP SAS': ['CUENTA BANCOLOMBIA', 'CUENTA BBVA'],
     'PRO INVESTMENTS GLOBAL SAS': ['CUENTA BANCOLOMBIA'],
@@ -4683,13 +4682,7 @@ const App = () => {
                 );
               })()}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <input type="number" placeholder="Valor" value={newGasto.valor} onChange={(e) => {setNewGasto({...newGasto, valor: e.target.value}); setNewIngreso({...newIngreso, valor: e.target.value});}} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }} />
-                <select value={newGasto.categoria} onChange={(e) => {setNewGasto({...newGasto, categoria: e.target.value}); setNewIngreso({...newIngreso, categoria: e.target.value});}} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box' }}>
-                  <option value="">Categoría</option>
-                  {categorias.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                </select>
-              </div>
+              <input type="number" placeholder="Valor" value={newGasto.valor} onChange={(e) => {setNewGasto({...newGasto, valor: e.target.value}); setNewIngreso({...newIngreso, valor: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', marginBottom: '1rem', boxSizing: 'border-box' }} />
 
               <input type="text" placeholder="Observaciones" value={newGasto.observaciones} onChange={(e) => {setNewGasto({...newGasto, observaciones: e.target.value}); setNewIngreso({...newIngreso, observaciones: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', marginBottom: '1rem', boxSizing: 'border-box' }} />
 
