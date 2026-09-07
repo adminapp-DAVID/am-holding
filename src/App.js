@@ -4194,7 +4194,7 @@ const App = () => {
                             const esDueño = s.responsableId === user.id;
                             return (
                               <>
-                                {(user.rol === 'Administrador' || esDueño) && (
+                                {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || esDueño) && (
                                   <button onClick={() => handleGenerarPDF(s)} disabled={generandoPDF === s.id} style={{ background: 'none', border: 'none', cursor: 'pointer', color: generandoPDF === s.id ? '#8F8877' : '#6C63D1', fontSize: '1rem', marginRight: '0.5rem' }} title="PDF">
                                     {generandoPDF === s.id ? '⏳' : '📄'}
                                   </button>
