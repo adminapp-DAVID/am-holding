@@ -86,14 +86,6 @@ const getPresupuestoCandidatos = (empresa, ceco, responsable, detalle, items) =>
   return conScore;
 };
 
-// Atajo: solo el mejor candidato (para autosugerir al escribir el gasto). Solo sugiere si hubo
-// coincidencia real de texto — si no, deja "Sin vincular" y la persona elige manualmente.
-const getPresupuestoSugerido = (empresa, ceco, responsable, detalle, items) => {
-  const candidatos = getPresupuestoCandidatos(empresa, ceco, responsable, detalle, items);
-  const mejor = candidatos[0];
-  return (mejor && mejor.score > 0) ? mejor.item.id : '';
-};
-
 // DEDUCCIONES — cuánto de una deducción (préstamo u otro descuento) aplica en un mes puntual, calculado
 // siempre a partir de fechaInicio/valorCuota/saldoTotal (nunca se guarda un historial de "ya se aplicó
 // este mes"): así el valor es siempre consistente sin importar cuándo se consulte, y no hay riesgo de
@@ -2536,22 +2528,17 @@ const App = () => {
 
     setGuardandoGasto(true);
     try {
-      const presupuestoItemIdFinal = newGasto.tipo === 'Gasto'
-        ? (newGasto.presupuestoItemId || getPresupuestoSugerido(newGasto.empresa, newGasto.ceco, newGasto.responsable, newGasto.detalle, presupuestoItems))
-        : '';
+      // Solo se vincula a un concepto de Presupuesto si la persona lo eligió a propósito en el
+      // desplegable "Vincular a Presupuesto" — la sugerencia por texto ya NO se aplica sola al
+      // guardar (antes sí, y eso además arrastraba un cambio silencioso de CECO, ver abajo).
+      const presupuestoItemIdFinal = newGasto.tipo === 'Gasto' ? (newGasto.presupuestoItemId || '') : '';
 
-      // Si el concepto vinculado pertenece a un CECO distinto al elegido en el formulario (caso típico
-      // de gastos fijos catalogados en otro CECO), el CECO del gasto se ajusta al del concepto — así el
-      // cruce en Presupuesto (que agrupa por empresa+CECO) reconoce el pago como hecho.
+      // El CECO que se guarda es siempre el que la persona eligió en el formulario — nunca se
+      // reemplaza en silencio por el del concepto de Presupuesto vinculado, aunque sean distintos
+      // (antes sí se ajustaba automáticamente; a pedido del usuario, el CECO manual manda siempre).
       // Los Traslados no eligen CECO en el formulario: siempre quedan con el mismo código fijo
       // (CEIN-003-ACPT, "Traslado Recibido").
-      let cecoFinal = newGasto.tipo === 'Traslado' ? CECO_TRASLADO_FIJO : newGasto.ceco;
-      if (presupuestoItemIdFinal) {
-        const conceptoVinculado = presupuestoItems.find(p => p.id === presupuestoItemIdFinal);
-        if (conceptoVinculado && conceptoVinculado.ceco && conceptoVinculado.ceco !== cecoFinal) {
-          cecoFinal = conceptoVinculado.ceco;
-        }
-      }
+      const cecoFinal = newGasto.tipo === 'Traslado' ? CECO_TRASLADO_FIJO : newGasto.ceco;
 
       // Si el gasto queda vinculado a un concepto de Presupuesto con deducciones activas ese mes
       // (préstamo u otro descuento), el valor bruto ingresado se convierte en Neto a Pagar: el
@@ -2760,24 +2747,16 @@ const App = () => {
   };
 
   // Vincular/desvincular un gasto ya registrado a un concepto de Presupuesto desde la tabla de Gastos.
-  // Si el concepto elegido pertenece a un CECO distinto al que tiene el gasto (caso de gastos fijos
-  // catalogados en otro CECO), también se ajusta el CECO del gasto — de lo contrario el cruce en
-  // Presupuesto (que agrupa por empresa+CECO) nunca lo va a reconocer como pagado. Los id de
-  // presupuestoItems son uuid de Postgres — NUNCA se parsean con parseInt/Number.
+  // El CECO del gasto ya NO se toca aquí (antes se ajustaba solo al del concepto si eran distintos) —
+  // a pedido del usuario, el CECO que quedó guardado en el gasto manda siempre y no cambia solo por
+  // vincularlo a un concepto de otro CECO. Los id de presupuestoItems son uuid de Postgres — NUNCA se
+  // parsean con parseInt/Number.
   const handleVincularPresupuesto = async (id, valorSeleccionado) => {
     const nuevoId = valorSeleccionado || null;
-    const concepto = nuevoId ? presupuestoItems.find(p => p.id === nuevoId) : null;
     const anteriores = gastos;
-    setGastos(gastos.map(g => {
-      if (g.id !== id) return g;
-      return { ...g, presupuestoItemId: nuevoId, ceco: (concepto && concepto.ceco) ? concepto.ceco : g.ceco };
-    }));
+    setGastos(gastos.map(g => (g.id === id ? { ...g, presupuestoItemId: nuevoId } : g)));
 
     const patch = { presupuesto_item_id: nuevoId };
-    if (concepto && concepto.ceco) {
-      const cecoId = await resolverCecoId(concepto.ceco);
-      if (cecoId) patch.ceco_id = cecoId;
-    }
     const { error } = await supabase.from('gastos').update(patch).eq('id', id);
     if (error) {
       console.error('Error vinculando presupuesto:', error);
@@ -4628,21 +4607,24 @@ const App = () => {
                 const candidatos = getPresupuestoCandidatos(newGasto.empresa, newGasto.ceco, newGasto.responsable, newGasto.detalle, presupuestoItems);
                 if (!candidatos.length) return null;
                 const sugeridoId = (candidatos[0] && candidatos[0].score > 0) ? candidatos[0].item.id : '';
-                const valorSeleccionado = newGasto.presupuestoItemId || sugeridoId || '';
+                // El CECO elegido arriba SIEMPRE es el que se guarda — vincular a un concepto de otro
+                // CECO ya no se lo cambia. La sugerencia por texto solo aparece marcada en la lista;
+                // hay que elegirla a propósito, no queda seleccionada sola.
+                const valorSeleccionado = newGasto.presupuestoItemId || '';
                 return (
                   <div style={{ marginBottom: '1rem' }}>
                     <label style={{ color: '#C4A747', fontWeight: 'bold', fontSize: '0.85rem' }}>Vincular a Presupuesto (opcional)</label>
                     <select value={valorSeleccionado} onChange={(e) => setNewGasto({...newGasto, presupuestoItemId: e.target.value || ''})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }}>
                       <option value="">Sin vincular</option>
-                      {candidatos.map(({ item: p }) => <option key={p.id} value={p.id}>{p.nombre}{p.ceco !== newGasto.ceco ? ` · ${p.ceco}` : ''} — {formatMoney(p.valorMensual, newGasto.empresa)}</option>)}
+                      {candidatos.map(({ item: p }) => <option key={p.id} value={p.id}>{p.nombre}{p.ceco !== newGasto.ceco ? ` · ${p.ceco}` : ''} — {formatMoney(p.valorMensual, newGasto.empresa)}{p.id === sugeridoId ? ' (Sugerido)' : ''}</option>)}
                     </select>
-                    {valorSeleccionado && sugeridoId === valorSeleccionado && !newGasto.presupuestoItemId && (
-                      <p style={{ fontSize: '0.75rem', color: '#6B6458', margin: '0.35rem 0 0 0' }}>💡 Sugerido automáticamente por proveedor/responsable — puedes cambiarlo.</p>
+                    {sugeridoId && !valorSeleccionado && (
+                      <p style={{ fontSize: '0.75rem', color: '#6B6458', margin: '0.35rem 0 0 0' }}>💡 Por proveedor/responsable, este gasto coincide con "{candidatos[0].item.nombre}" — selecciónalo en la lista si aplica. No se vincula solo.</p>
                     )}
                     {valorSeleccionado && (() => {
                       const seleccionado = candidatos.find(c => c.item.id === valorSeleccionado);
                       return seleccionado && !seleccionado.mismoCeco ? (
-                        <p style={{ fontSize: '0.75rem', color: '#C4A747', margin: '0.35rem 0 0 0' }}>⚠️ Este concepto está catalogado en {seleccionado.item.ceco}, distinto al CECO elegido arriba. Al guardar, el CECO del gasto se ajustará a {seleccionado.item.ceco} para que el Presupuesto lo reconozca como pagado.</p>
+                        <p style={{ fontSize: '0.75rem', color: '#C4A747', margin: '0.35rem 0 0 0' }}>ℹ️ Este concepto está catalogado en {seleccionado.item.ceco}. El gasto se guardará con el CECO que elegiste arriba ({newGasto.ceco}) — no se cambia solo.</p>
                       ) : null;
                     })()}
                   </div>
