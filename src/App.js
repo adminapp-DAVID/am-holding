@@ -283,6 +283,21 @@ const App = () => {
   const [authChecking, setAuthChecking] = useState(true); // true mientras se revisa si ya hay una sesión activa de Supabase
   const [loginError, setLoginError] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
+
+  // OLVIDÉ MI CONTRASEÑA — paso 1 (pantalla de login): pedir el link por correo.
+  const [mostrarOlvidoPassword, setMostrarOlvidoPassword] = useState(false);
+  const [emailRecuperacion, setEmailRecuperacion] = useState('');
+  const [enviandoRecuperacion, setEnviandoRecuperacion] = useState(false);
+  const [recuperacionEnviada, setRecuperacionEnviada] = useState(false);
+  // OLVIDÉ MI CONTRASEÑA — paso 2: la persona vuelve a la app desde el link del correo. Supabase
+  // agrega "type=recovery" a la URL — se detecta una sola vez, al cargar, para no dejarla entrar
+  // directo a la app con la sesión del link sin antes poner una contraseña nueva.
+  const [recuperandoPassword, setRecuperandoPassword] = useState(() =>
+    typeof window !== 'undefined' && (window.location.hash.includes('type=recovery') || window.location.search.includes('type=recovery'))
+  );
+  const [nuevaPasswordRecuperacion, setNuevaPasswordRecuperacion] = useState('');
+  const [confirmarPasswordRecuperacion, setConfirmarPasswordRecuperacion] = useState('');
+  const [guardandoPasswordRecuperacion, setGuardandoPasswordRecuperacion] = useState(false);
   const [currentView, setCurrentView] = useState('dashboard');
   // Solicitudes (Anticipo/Legalización/Reembolso) — conectado a Supabase (tabla public.solicitudes).
   // Los soportes de Legalización/Reembolso se siguen uniendo en un solo PDF consolidado
@@ -666,12 +681,86 @@ const App = () => {
     setUser(null);
   };
 
+  // OLVIDÉ MI CONTRASEÑA — paso 1: la persona pide el link de recuperación desde la pantalla de
+  // login. Supabase le manda un correo con un link de un solo uso que la trae de vuelta a esta
+  // misma app ya autenticada en modo "recovery" (ver el useEffect de sesión, abajo) para que
+  // ponga una nueva. El mensaje de éxito es siempre el mismo exista o no ese email en el sistema
+  // — evita que este formulario sirva para averiguar qué correos están registrados.
+  const handleEnviarRecuperacion = async () => {
+    if (!emailRecuperacion) {
+      alert('Ingresa tu email');
+      return;
+    }
+    setEnviandoRecuperacion(true);
+    try {
+      await supabase.auth.resetPasswordForEmail(emailRecuperacion, { redirectTo: window.location.origin });
+      setRecuperacionEnviada(true);
+    } finally {
+      setEnviandoRecuperacion(false);
+    }
+  };
+
+  // OLVIDÉ MI CONTRASEÑA — paso 2: ya con el link abierto (sesión "recovery" activa) define la
+  // contraseña nueva. Al confirmar queda con sesión iniciada de una vez — no hace falta volver a
+  // loguearse con la que acaba de poner.
+  const handleGuardarNuevaPasswordRecuperacion = async () => {
+    if (!nuevaPasswordRecuperacion || !confirmarPasswordRecuperacion) {
+      alert('Completa los 2 campos');
+      return;
+    }
+    if (nuevaPasswordRecuperacion.length < 6) {
+      alert('La nueva contraseña debe tener al menos 6 caracteres');
+      return;
+    }
+    if (nuevaPasswordRecuperacion !== confirmarPasswordRecuperacion) {
+      alert('La nueva contraseña y su confirmación no coinciden');
+      return;
+    }
+    setGuardandoPasswordRecuperacion(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: nuevaPasswordRecuperacion });
+      if (error) {
+        alert('❌ No se pudo actualizar la contraseña: ' + error.message);
+        return;
+      }
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const perfil = authUser ? await cargarPerfilUsuario(authUser) : null;
+      if (!perfil) {
+        alert('❌ Tu cuenta no tiene un perfil asignado en el sistema todavía. Contacta al administrador.');
+        await supabase.auth.signOut();
+        setRecuperandoPassword(false);
+        return;
+      }
+      setUser(perfil);
+      setNuevaPasswordRecuperacion('');
+      setConfirmarPasswordRecuperacion('');
+      setRecuperandoPassword(false);
+      alert('✅ Contraseña actualizada. Ya quedaste con la sesión iniciada.');
+    } finally {
+      setGuardandoPasswordRecuperacion(false);
+    }
+  };
+
   // Al cargar la app: revisa si ya hay una sesión activa (evita tener que
   // loguearse otra vez al refrescar la página) y escucha cambios de sesión.
   useEffect(() => {
     let activo = true;
 
+    // Si llegó desde el link de "Olvidé mi contraseña", Supabase agrega type=recovery a la URL.
+    // Se limpia de una vez para que un refresh de página no vuelva a activar este modo (el link
+    // de todas formas es de un solo uso).
+    const esRecuperacion = window.location.hash.includes('type=recovery') || window.location.search.includes('type=recovery');
+    if (esRecuperacion) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+
     supabase.auth.getSession().then(async ({ data: { session } }) => {
+      // No la logueamos de una con la sesión que trae el link — primero tiene que poner la
+      // contraseña nueva en la pantalla de recuperación (el estado inicial ya la muestra).
+      if (esRecuperacion) {
+        if (activo) setAuthChecking(false);
+        return;
+      }
       if (session?.user) {
         const perfil = await cargarPerfilUsuario(session.user);
         if (activo) {
@@ -685,6 +774,12 @@ const App = () => {
 
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!activo) return;
+      if (_event === 'PASSWORD_RECOVERY') {
+        setRecuperandoPassword(true);
+        setAuthChecking(false);
+        return;
+      }
+      if (esRecuperacion) return; // ya se maneja arriba
       if (session?.user) {
         const perfil = await cargarPerfilUsuario(session.user);
         setUser(perfil);
@@ -3555,6 +3650,24 @@ const App = () => {
     );
   }
 
+  // OLVIDÉ MI CONTRASEÑA — paso 2: pantalla para poner la contraseña nueva, mostrada al llegar
+  // desde el link que Supabase manda por correo. No depende de `user` — va antes que el login.
+  if (recuperandoPassword) {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: '#F8F6F1', backgroundImage: 'radial-gradient(circle at 15% 10%, rgba(196,167,71,0.10), transparent 45%), radial-gradient(circle at 85% 90%, rgba(196,167,71,0.08), transparent 45%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+        <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderTop: '4px solid #C4A747', borderRadius: '12px', padding: '3rem 2rem', textAlign: 'center', maxWidth: '500px', width: '100%', boxShadow: '0 20px 50px -12px rgba(34,30,21,0.18), 0 2px 8px rgba(34,30,21,0.06)' }}>
+          <img src={logoAmHolding} alt="AM HOLDING" style={{ height: '64px', width: 'auto', maxWidth: '100%', objectFit: 'contain' }} />
+          <h2 style={{ color: '#221E15', margin: '1.25rem 0 0.5rem 0' }}>Nueva contraseña</h2>
+          <p style={{ color: '#6B6458', margin: '0 0 2rem 0', fontSize: '0.9rem' }}>Escribe la nueva contraseña para tu cuenta.</p>
+
+          <input type="password" placeholder="Nueva contraseña" value={nuevaPasswordRecuperacion} onChange={(e) => setNuevaPasswordRecuperacion(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '1rem', boxSizing: 'border-box', borderRadius: '4px' }} />
+          <input type="password" placeholder="Confirmar nueva contraseña" value={confirmarPasswordRecuperacion} onChange={(e) => setConfirmarPasswordRecuperacion(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleGuardarNuevaPasswordRecuperacion()} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '1rem', boxSizing: 'border-box', borderRadius: '4px' }} />
+          <button onClick={handleGuardarNuevaPasswordRecuperacion} disabled={guardandoPasswordRecuperacion} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoPasswordRecuperacion ? 'default' : 'pointer', opacity: guardandoPasswordRecuperacion ? 0.7 : 1 }}>{guardandoPasswordRecuperacion ? 'Guardando...' : 'Guardar nueva contraseña'}</button>
+        </div>
+      </div>
+    );
+  }
+
   // LOGIN
   if (!user) {
     return (
@@ -3569,6 +3682,24 @@ const App = () => {
             <p style={{ color: '#CC4B4B', fontSize: '0.85rem', margin: '0 0 1rem 0' }}>{loginError}</p>
           )}
           <button onClick={handleLogin} disabled={loggingIn} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: loggingIn ? 'default' : 'pointer', opacity: loggingIn ? 0.7 : 1 }}>{loggingIn ? 'Entrando...' : 'Entrar'}</button>
+
+          <button onClick={() => { setMostrarOlvidoPassword(!mostrarOlvidoPassword); setRecuperacionEnviada(false); }} style={{ background: 'none', border: 'none', color: '#6B6458', fontSize: '0.8rem', cursor: 'pointer', marginTop: '1.25rem', textDecoration: 'underline', display: 'block', width: '100%', textAlign: 'center' }}>
+            ¿Olvidaste tu contraseña?
+          </button>
+
+          {mostrarOlvidoPassword && (
+            <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #E6E0D2', textAlign: 'left' }}>
+              {recuperacionEnviada ? (
+                <p style={{ color: '#2F9E52', fontSize: '0.85rem', margin: 0 }}>✅ Si ese correo está registrado, te llegó un link para poner una contraseña nueva. Revisa también Spam/Promociones.</p>
+              ) : (
+                <>
+                  <p style={{ color: '#6B6458', fontSize: '0.85rem', margin: '0 0 0.75rem 0' }}>Escribe tu email y te enviamos un link para poner una contraseña nueva.</p>
+                  <input type="email" placeholder="Tu email" value={emailRecuperacion} onChange={(e) => setEmailRecuperacion(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleEnviarRecuperacion()} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #C4A747', color: '#C4A747', marginBottom: '0.75rem', boxSizing: 'border-box', borderRadius: '4px' }} />
+                  <button onClick={handleEnviarRecuperacion} disabled={enviandoRecuperacion} style={{ width: '100%', padding: '0.65rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: enviandoRecuperacion ? 'default' : 'pointer', opacity: enviandoRecuperacion ? 0.7 : 1 }}>{enviandoRecuperacion ? 'Enviando...' : 'Enviar link de recuperación'}</button>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );
