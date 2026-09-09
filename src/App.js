@@ -326,13 +326,21 @@ const App = () => {
   const personasFinanzas = usuariosDB;
   // CECOs (Centros de Costo/Ingreso) — catálogo editable en Supabase (tabla public.cecos).
   // `cecos` = catálogo completo (activos e inactivos, se usa para mostrar el nombre de CECOs
-  // viejos en registros históricos). `cecosGasto`/`cecosIngreso` = solo los activos de cada
-  // tipo, para los desplegables del formulario de Finanzas (Gasto usa CECO-xxx, Ingreso usa
-  // CEIN-xxx; Traslado siempre usa el mismo código fijo CEIN-003-ACPT, sin desplegable).
+  // viejos en registros históricos). `cecosGasto`/`cecosIngreso`/`cecosTraslado` = solo los
+  // activos de cada tipo, para los desplegables del formulario de Finanzas (Gasto usa
+  // CECO-xxx, Ingreso usa CEIN-xxx, Traslado usa su propia categoría "Traslado").
   const cecos = cecosDB;
   const cecosGasto = cecosDB.filter(c => c.tipo === 'Gasto' && c.activo !== false).sort((a, b) => a.codigo.localeCompare(b.codigo));
   const cecosIngreso = cecosDB.filter(c => c.tipo === 'Ingreso' && c.activo !== false).sort((a, b) => a.codigo.localeCompare(b.codigo));
   const CECO_TRASLADO_FIJO = 'CEIN-003-ACPT';
+  // Traslado tenía un único código fijo (CEIN-003-ACPT, "Traslado Recibido") sin desplegable.
+  // Desde esta sesión, la persona elige entre los CECOs de la categoría "Traslado" (creados
+  // desde Gestión de CECOs) — CEIN-003-ACPT se deja como una opción más, sin romper los
+  // traslados históricos que ya lo usan, aunque su tipo en la base siga siendo "Ingreso".
+  const cecosTraslado = [
+    ...cecosDB.filter(c => c.tipo === 'Traslado' && c.activo !== false),
+    ...cecosDB.filter(c => c.codigo === CECO_TRASLADO_FIJO && c.tipo !== 'Traslado'),
+  ].sort((a, b) => a.codigo.localeCompare(b.codigo));
   // MI PERFIL — autoedición para cualquier rol. "miPerfil" se deriva de usuariosDB (que ya
   // trae solo la propia fila para roles no admin, gracias a la política RLS "cualquiera ve su
   // propia fila"); "miPerfilForm" es el borrador editable antes de guardar.
@@ -2616,6 +2624,10 @@ const App = () => {
         alert('Cuenta salida y cuenta destino son obligatorios para traslados');
         return;
       }
+      if (!newGasto.ceco) {
+        alert('CECO es obligatorio para traslados');
+        return;
+      }
     } else if (!newGasto.cuenta) {
       alert('Cuenta es obligatoria');
       return;
@@ -2631,9 +2643,9 @@ const App = () => {
       // El CECO que se guarda es siempre el que la persona eligió en el formulario — nunca se
       // reemplaza en silencio por el del concepto de Presupuesto vinculado, aunque sean distintos
       // (antes sí se ajustaba automáticamente; a pedido del usuario, el CECO manual manda siempre).
-      // Los Traslados no eligen CECO en el formulario: siempre quedan con el mismo código fijo
-      // (CEIN-003-ACPT, "Traslado Recibido").
-      const cecoFinal = newGasto.tipo === 'Traslado' ? CECO_TRASLADO_FIJO : newGasto.ceco;
+      // Desde esta sesión, Traslado también elige su propio CECO en el formulario (categoría
+      // "Traslado" en Gestión de CECOs) — antes quedaba fijo siempre en CEIN-003-ACPT.
+      const cecoFinal = newGasto.ceco;
 
       // Si el gasto queda vinculado a un concepto de Presupuesto con deducciones activas ese mes
       // (préstamo u otro descuento), el valor bruto ingresado se convierte en Neto a Pagar: el
@@ -3200,8 +3212,9 @@ const App = () => {
 
         for (const g of gastosAImportar) {
           if (!(g.empresa in empresaCache)) empresaCache[g.empresa] = await resolverEmpresaId(g.empresa);
-          // Traslado siempre queda con el mismo CECO fijo (CEIN-003-ACPT), igual que en el formulario.
-          const cecoFinal = g.tipo === 'Traslado' ? CECO_TRASLADO_FIJO : g.ceco;
+          // Traslado ya elige su propio CECO en el formulario (categoría "Traslado"); si el JSON
+          // histórico no trae `ceco` para un Traslado, se respalda en el código fijo de siempre.
+          const cecoFinal = g.tipo === 'Traslado' ? (g.ceco || CECO_TRASLADO_FIJO) : g.ceco;
           if (cecoFinal && !(cecoFinal in cecoCache)) cecoCache[cecoFinal] = await resolverCecoId(cecoFinal);
           const responsableId = personasFinanzas.find(r => r.nombre === g.responsable)?.id || null;
 
@@ -4722,12 +4735,15 @@ const App = () => {
                   </div>
                 )}
 
-                {/* Traslado no elige CECO: siempre queda con el mismo código fijo (CEIN-003-ACPT,
-                    "Traslado Recibido"). Se muestra de solo lectura para que quede claro en pantalla. */}
+                {/* Traslado elige su propio CECO, de la categoría "Traslado" en Gestión de CECOs
+                    (antes quedaba fijo siempre en CEIN-003-ACPT, ahora se deja como una opción más). */}
                 {newGasto.tipo === 'Traslado' && (
                   <div>
                     <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>CECO</label>
-                    <input type="text" value={CECO_TRASLADO_FIJO} disabled style={{ width: '100%', padding: '0.75rem', backgroundColor: '#EFEBE1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', boxSizing: 'border-box', marginTop: '0.5rem' }} />
+                    <select value={newGasto.ceco} onChange={(e) => setNewGasto({...newGasto, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                      <option value="">Seleccionar</option>
+                      {cecosTraslado.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
+                    </select>
                   </div>
                 )}
               </div>
@@ -4844,6 +4860,7 @@ const App = () => {
                     <select value={nuevoCeco.tipo} onChange={(e) => setNuevoCeco({...nuevoCeco, tipo: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }}>
                       <option value="Gasto">Gasto (CECO-xxx)</option>
                       <option value="Ingreso">Ingreso (CEIN-xxx)</option>
+                      <option value="Traslado">Traslado</option>
                     </select>
                     <button disabled={guardandoCeco} onClick={handleAddCeco} style={{ padding: '0.75rem 1.25rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoCeco ? 'not-allowed' : 'pointer', opacity: guardandoCeco ? 0.6 : 1, whiteSpace: 'nowrap' }}>+ Agregar</button>
                   </div>
@@ -4868,6 +4885,7 @@ const App = () => {
                               <select value={c.tipo} onChange={(e) => handleUpdateCeco(c.id, 'tipo', e.target.value)} style={{ padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E' }}>
                                 <option value="Gasto">Gasto</option>
                                 <option value="Ingreso">Ingreso</option>
+                                <option value="Traslado">Traslado</option>
                               </select>
                             </td>
                             <td style={{ padding: '0.75rem', textAlign: 'center' }}>
