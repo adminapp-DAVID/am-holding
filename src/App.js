@@ -362,6 +362,14 @@ const App = () => {
   const [editingResponsableOrigen, setEditingResponsableOrigen] = useState('responsables'); // 'responsables' | 'admin' — de qué lista viene el registro que se está editando
   const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', valorAnticipoOriginal: '', anticipoId: '', detalle: '', empresa: 'AM SPORTS GROUP SAS', documentos: [] });
   const [generandoPDF, setGenerandoPDF] = useState(null);
+  // Filtros del historial de Solicitudes: buscador de texto libre + selectores puntuales para
+  // Tipo/Estado/Empresa + rango de fechas — mismo patrón que se usó en el historial de Finanzas.
+  const [busquedaSolicitudes, setBusquedaSolicitudes] = useState('');
+  const [filtroSolicitudesTipo, setFiltroSolicitudesTipo] = useState('Todos');
+  const [filtroSolicitudesEstado, setFiltroSolicitudesEstado] = useState('Todos');
+  const [filtroSolicitudesEmpresa, setFiltroSolicitudesEmpresa] = useState('Todas');
+  const [filtroSolicitudesFechaInicio, setFiltroSolicitudesFechaInicio] = useState('');
+  const [filtroSolicitudesFechaFin, setFiltroSolicitudesFechaFin] = useState('');
   const [editingResponsableId, setEditingResponsableId] = useState(null);
   const responsableVacio = { nombre: '', email: '', empresa: 'AM SPORTS GROUP SAS', foto: '', cedula: '', telefono: '', fechaNacimiento: '', cargo: '', fechaIngreso: '', tipoVinculacion: '', contactoEmergenciaNombre: '', contactoEmergenciaTelefono: '', eps: '', arl: '', funciones: '', banco: '', tipoCuentaBancaria: '', numeroCuenta: '', titularCuenta: '', documentoCedula: null, documentoPasaporte: null };
   const [newResponsable, setNewResponsable] = useState(responsableVacio);
@@ -391,10 +399,18 @@ const App = () => {
   const [guardandoIngreso, setGuardandoIngreso] = useState(false);
   const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', soportes: [], presupuestoItemId: '', aplicarDeduccion: true });
   const [newIngreso, setNewIngreso] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Ingreso', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CEIN-001-ING', detalle: '', valor: '', categoria: '', estado: 'Pagado', observaciones: '', linkSoporte: '', cuenta: '', soportes: [] });
-  // Filtro de la lista histórica unificada de Finanzas (Gastos + Ingresos + Traslados en
-  // una sola tabla, en vez de las 3 tablas separadas que había antes).
+  // Filtros de la lista histórica unificada de Finanzas (Gastos + Ingresos + Traslados en
+  // una sola tabla, en vez de las 3 tablas separadas que había antes). `filtroTipoFinanzas`
+  // ya existía (pill de Todos/Gasto/Traslado/Ingreso); los demás se agregaron para poder
+  // filtrar por cualquier campo del historial sin llenar la pantalla de un selector por
+  // columna: un buscador de texto libre + selectores puntuales para Empresa/CECO + rango
+  // de fechas propio de la tabla (distinto del que ya existía para el Dashboard de arriba).
   const [filtroTipoFinanzas, setFiltroTipoFinanzas] = useState('Todos');
-  const [filtroFinanzas, setFiltroFinanzas] = useState({ mes: new Date().getMonth() + 1, empresa: 'Todos', tipo: 'Todos' });
+  const [busquedaFinanzas, setBusquedaFinanzas] = useState('');
+  const [filtroFinanzasEmpresa, setFiltroFinanzasEmpresa] = useState('Todas');
+  const [filtroFinanzasCeco, setFiltroFinanzasCeco] = useState('Todos');
+  const [filtroFinanzasFechaInicio, setFiltroFinanzasFechaInicio] = useState('');
+  const [filtroFinanzasFechaFin, setFiltroFinanzasFechaFin] = useState('');
   // Gestión de CECOs (Administrador y Coordinadora Administrativa) — crear/editar códigos
   // sin tocar código de la app. Panel colapsable dentro de Finanzas.
   const [mostrarGestionCecos, setMostrarGestionCecos] = useState(false);
@@ -1640,6 +1656,24 @@ const App = () => {
     : user?.rol === 'Contadora'
     ? solicitudes.filter(s => ['Aprobado', 'Pagado', 'Legalizado'].includes(s.estado))
     : solicitudes;
+
+  // Filtros del historial de Solicitudes (buscador + Tipo/Estado/Empresa + rango de fechas) —
+  // se aplican solo sobre la tabla del historial, nunca sobre `solicitudesUsuario` en sí (el
+  // Dashboard, los totales y las referencias cruzadas como "legalización vinculada" siguen
+  // viendo todas las solicitudes, filtradas solo por permiso de rol, no por este filtro de UI).
+  const solicitudesFiltradas = solicitudesUsuario.filter(s => {
+    if (filtroSolicitudesTipo !== 'Todos' && s.tipo !== filtroSolicitudesTipo) return false;
+    if (filtroSolicitudesEstado !== 'Todos' && s.estado !== filtroSolicitudesEstado) return false;
+    if (filtroSolicitudesEmpresa !== 'Todas' && s.empresa !== filtroSolicitudesEmpresa) return false;
+    if (filtroSolicitudesFechaInicio && s.fecha < filtroSolicitudesFechaInicio) return false;
+    if (filtroSolicitudesFechaFin && s.fecha > filtroSolicitudesFechaFin) return false;
+    if (busquedaSolicitudes.trim()) {
+      const q = busquedaSolicitudes.trim().toLowerCase();
+      const campos = [s.detalle, s.responsableNombre, s.empresa, s.tipo, s.estado].filter(Boolean).join(' ').toLowerCase();
+      if (!campos.includes(q)) return false;
+    }
+    return true;
+  });
 
   // Estadísticas Dashboard
   const statsEstado = {
@@ -3320,9 +3354,19 @@ const App = () => {
     ...ingresosUsuario.map(i => ({ ...i, tipo: 'Ingreso', _origen: 'ingreso' })),
   ].sort((a, b) => new Date(b.fecha) - new Date(a.fecha) || (b.id || 0) - (a.id || 0));
 
-  const registrosFinanzas = filtroTipoFinanzas === 'Todos'
-    ? registrosFinanzasTodos
-    : registrosFinanzasTodos.filter(r => r.tipo === filtroTipoFinanzas);
+  const registrosFinanzas = registrosFinanzasTodos.filter(r => {
+    if (filtroTipoFinanzas !== 'Todos' && r.tipo !== filtroTipoFinanzas) return false;
+    if (filtroFinanzasEmpresa !== 'Todas' && r.empresa !== filtroFinanzasEmpresa) return false;
+    if (filtroFinanzasCeco !== 'Todos' && r.ceco !== filtroFinanzasCeco) return false;
+    if (filtroFinanzasFechaInicio && r.fecha < filtroFinanzasFechaInicio) return false;
+    if (filtroFinanzasFechaFin && r.fecha > filtroFinanzasFechaFin) return false;
+    if (busquedaFinanzas.trim()) {
+      const q = busquedaFinanzas.trim().toLowerCase();
+      const campos = [r.detalle, r.responsableNombre, r.empresa, r.ceco, r.cuenta, r.observaciones].filter(Boolean).join(' ').toLowerCase();
+      if (!campos.includes(q)) return false;
+    }
+    return true;
+  });
 
   // Dashboard financiero — separado por moneda (ARKO en USD, el resto en COP).
   // Sumar pesos y dólares en un mismo total daría un número financieramente incorrecto.
@@ -4260,8 +4304,51 @@ const App = () => {
 
             <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
               <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>
-                📋 {(user.rol === 'Responsable' || user.rol === 'Gerente') ? 'Mis Solicitudes' : user.rol === 'Contadora' ? 'Solicitudes Auditadas' : 'Todas las Solicitudes'}
+                📋 {(user.rol === 'Responsable' || user.rol === 'Gerente') ? 'Mis Solicitudes' : user.rol === 'Contadora' ? 'Solicitudes Auditadas' : 'Todas las Solicitudes'} ({solicitudesFiltradas.length})
               </h2>
+
+              {/* FILTROS: buscador de texto libre + Tipo/Estado/(Empresa) + rango de fechas.
+                  Empresa solo se ofrece a los roles que de por sí ven varias empresas a la vez —
+                  Responsable/Gerente ya están limitados a la suya por `solicitudesUsuario`. */}
+              <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div style={{ flex: '1 1 220px', minWidth: '200px' }}>
+                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Buscar</label>
+                  <input type="text" placeholder="Colaborador, concepto, empresa..." value={busquedaSolicitudes} onChange={(e) => setBusquedaSolicitudes(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Tipo</label>
+                  <select value={filtroSolicitudesTipo} onChange={(e) => setFiltroSolicitudesTipo(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }}>
+                    <option value="Todos">Todos</option>
+                    {tiposSolicitud.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Estado</label>
+                  <select value={filtroSolicitudesEstado} onChange={(e) => setFiltroSolicitudesEstado(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }}>
+                    <option value="Todos">Todos</option>
+                    {estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}
+                  </select>
+                </div>
+                {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && (
+                  <div>
+                    <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Empresa</label>
+                    <select value={filtroSolicitudesEmpresa} onChange={(e) => setFiltroSolicitudesEmpresa(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }}>
+                      <option value="Todas">Todas</option>
+                      {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Desde</label>
+                  <input type="date" value={filtroSolicitudesFechaInicio} onChange={(e) => setFiltroSolicitudesFechaInicio(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Hasta</label>
+                  <input type="date" value={filtroSolicitudesFechaFin} onChange={(e) => setFiltroSolicitudesFechaFin(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }} />
+                </div>
+                <button onClick={() => { setBusquedaSolicitudes(''); setFiltroSolicitudesTipo('Todos'); setFiltroSolicitudesEstado('Todos'); setFiltroSolicitudesEmpresa('Todas'); setFiltroSolicitudesFechaInicio(''); setFiltroSolicitudesFechaFin(''); }} style={{ padding: '0.75rem 1.25rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>🔄 Reiniciar</button>
+              </div>
+
               {cargandoSolicitudes && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando solicitudes...</p>}
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
@@ -4279,9 +4366,14 @@ const App = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {solicitudesUsuario.map(s => {
+                    {solicitudesFiltradas.length === 0 ? (
+                      <tr><td colSpan={9} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin solicitudes para estos filtros.</td></tr>
+                    ) : solicitudesFiltradas.map(s => {
                       // Legalización con anticipo vinculado: base para las 2 columnas nuevas y para
                       // marcar el anticipo original como "ya legalizado" (solo visual, no toca s.estado).
+                      // Nota: la búsqueda del vínculo sigue mirando TODAS las solicitudes del usuario
+                      // (no solo las que pasan el filtro de la tabla), para no perder el aviso "✅ Ya
+                      // legalizado" en el Anticipo si su Legalización quedó oculta por el filtro.
                       const esLegalizacionConAnticipo = s.tipo === 'Legalización' && s.valorAnticipoOriginal;
                       const diferenciaReembolso = esLegalizacionConAnticipo ? (s.totalCalculado || 0) - parseFloat(s.valorAnticipoOriginal) : null;
                       const legalizacionVinculada = s.tipo === 'Anticipo' ? solicitudesUsuario.find(x => x.tipo === 'Legalización' && x.anticipoId === s.id) : null;
@@ -5190,6 +5282,39 @@ const App = () => {
                   ))}
                 </div>
               </div>
+
+              {/* FILTROS: buscador de texto libre + Empresa/CECO + rango de fechas propio de la
+                  tabla (distinto del filtro de fechas del Dashboard de arriba, que no la toca). */}
+              <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div style={{ flex: '1 1 220px', minWidth: '200px' }}>
+                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Buscar</label>
+                  <input type="text" placeholder="Colaborador, detalle, cuenta..." value={busquedaFinanzas} onChange={(e) => setBusquedaFinanzas(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Empresa</label>
+                  <select value={filtroFinanzasEmpresa} onChange={(e) => setFiltroFinanzasEmpresa(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }}>
+                    <option value="Todas">Todas</option>
+                    {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>CECO</label>
+                  <select value={filtroFinanzasCeco} onChange={(e) => setFiltroFinanzasCeco(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }}>
+                    <option value="Todos">Todos</option>
+                    {[...cecos].sort((a, b) => a.codigo.localeCompare(b.codigo)).map(c => <option key={c.codigo} value={c.codigo}>{c.codigo}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Desde</label>
+                  <input type="date" value={filtroFinanzasFechaInicio} onChange={(e) => setFiltroFinanzasFechaInicio(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Hasta</label>
+                  <input type="date" value={filtroFinanzasFechaFin} onChange={(e) => setFiltroFinanzasFechaFin(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }} />
+                </div>
+                <button onClick={() => { setBusquedaFinanzas(''); setFiltroFinanzasEmpresa('Todas'); setFiltroFinanzasCeco('Todos'); setFiltroFinanzasFechaInicio(''); setFiltroFinanzasFechaFin(''); }} style={{ padding: '0.75rem 1.25rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>🔄 Reiniciar</button>
+              </div>
+
               {(cargandoGastos || cargandoIngresos) && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando...</p>}
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
