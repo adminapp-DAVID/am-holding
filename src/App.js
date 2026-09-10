@@ -210,6 +210,13 @@ const App = () => {
 
   const formatMoney = (valor, empresa) => formatMoneyByMoneda(valor, getMoneda(empresa));
 
+  // Traslado: la Cuenta Destino se guarda como "EMPRESA: CUENTA" cuando cruza a otra empresa
+  // (ver el desplegable "Cuenta Destino" del formulario), o solo el nombre de la cuenta cuando
+  // el destino es la misma empresa de origen. Esta función resuelve la empresa del destino en
+  // ambos casos, para poder comparar su moneda contra la de la empresa de origen.
+  const getEmpresaDestinoTraslado = (cuentaDestino, empresaOrigen) =>
+    (cuentaDestino && cuentaDestino.includes(': ')) ? cuentaDestino.split(': ')[0] : empresaOrigen;
+
   // Data - DEBE ir primero
   const rolesSensibles = ['Administrador', 'Contadora', 'Coordinadora Administrativa'];
 
@@ -397,7 +404,7 @@ const App = () => {
   const [cargandoIngresos, setCargandoIngresos] = useState(true);
   const [guardandoGasto, setGuardandoGasto] = useState(false);
   const [guardandoIngreso, setGuardandoIngreso] = useState(false);
-  const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', soportes: [], presupuestoItemId: '', aplicarDeduccion: true });
+  const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', valorDestino: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', soportes: [], presupuestoItemId: '', aplicarDeduccion: true });
   const [newIngreso, setNewIngreso] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Ingreso', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CEIN-001-ING', detalle: '', valor: '', categoria: '', estado: 'Pagado', observaciones: '', linkSoporte: '', cuenta: '', soportes: [] });
   // Filtros de la lista histórica unificada de Finanzas (Gastos + Ingresos + Traslados en
   // una sola tabla, en vez de las 3 tablas separadas que había antes). `filtroTipoFinanzas`
@@ -1134,6 +1141,7 @@ const App = () => {
     cuentaDestino: row.cuenta_destino || '',
     detalle: row.detalle || '',
     valor: row.valor,
+    valorDestino: row.valor_destino,
     valorBruto: row.valor_bruto,
     deduccionAplicada: row.deduccion_aplicada,
     categoria: row.categoria || '',
@@ -1148,7 +1156,7 @@ const App = () => {
     setCargandoGastos(true);
     const { data, error } = await supabase
       .from('gastos')
-      .select('id, fecha, tipo, cuenta, cuenta_salida, cuenta_destino, detalle, valor, valor_bruto, deduccion_aplicada, categoria, estado, observaciones, presupuesto_item_id, soporte_drive_link, responsable_id, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
+      .select('id, fecha, tipo, cuenta, cuenta_salida, cuenta_destino, detalle, valor, valor_destino, valor_bruto, deduccion_aplicada, categoria, estado, observaciones, presupuesto_item_id, soporte_drive_link, responsable_id, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
       .order('fecha', { ascending: false });
     if (error) {
       console.error('Error cargando gastos:', error);
@@ -2685,6 +2693,17 @@ const App = () => {
         alert('CECO es obligatorio para traslados');
         return;
       }
+      // Traslado entre monedas distintas (hoy en la práctica: ARKO en USD hacia/desde el resto
+      // de la holding en COP) — el valor que sale (campo "Valor") y el valor que entra a la
+      // cuenta destino ("Valor en Cuenta Destino") son montos distintos en monedas distintas,
+      // no la misma cifra convertida sola. Se piden los dos por separado.
+      const empresaDestinoTraslado = getEmpresaDestinoTraslado(newGasto.cuentaDestino, newGasto.empresa);
+      if (getMoneda(newGasto.empresa) !== getMoneda(empresaDestinoTraslado)) {
+        if (!newGasto.valorDestino || parseFloat(newGasto.valorDestino) <= 0) {
+          alert(`El valor en la cuenta destino (${getMoneda(empresaDestinoTraslado)}) es obligatorio para traslados entre monedas distintas`);
+          return;
+        }
+      }
     } else if (!newGasto.cuenta) {
       alert('Cuenta es obligatoria');
       return;
@@ -2710,6 +2729,15 @@ const App = () => {
       let valorFinal = newGasto.valor;
       let valorBrutoFinal = null;
       let deduccionAplicadaFinal = null;
+
+      // Traslado entre monedas distintas: el valor que entra a la cuenta destino se guarda
+      // aparte (columna valor_destino) — es el que alimenta el lado "entrada" del historial.
+      // Si origen y destino comparten moneda, no aplica y queda null (el lado "entrada" usa el
+      // mismo valor de siempre, ver registrosFinanzasTodos).
+      const empresaDestinoTraslado = newGasto.tipo === 'Traslado' ? getEmpresaDestinoTraslado(newGasto.cuentaDestino, newGasto.empresa) : null;
+      const valorDestinoFinal = (newGasto.tipo === 'Traslado' && getMoneda(newGasto.empresa) !== getMoneda(empresaDestinoTraslado))
+        ? newGasto.valorDestino
+        : null;
       if (newGasto.tipo === 'Gasto' && presupuestoItemIdFinal && newGasto.aplicarDeduccion !== false) {
         const [anioGasto, mesGasto] = (newGasto.fecha || '').split('-').map(n => parseInt(n));
         if (anioGasto && mesGasto) {
@@ -2741,6 +2769,7 @@ const App = () => {
           cuenta_destino: newGasto.cuentaDestino || null,
           detalle: newGasto.detalle,
           valor: valorFinal,
+          valor_destino: valorDestinoFinal,
           valor_bruto: valorBrutoFinal,
           deduccion_aplicada: deduccionAplicadaFinal,
           categoria: newGasto.categoria || null,
@@ -2772,6 +2801,7 @@ const App = () => {
         cuenta: '',
         detalle: '',
         valor: '',
+        valorDestino: '',
         categoria: '',
         estado: 'Pendiente',
         observaciones: '',
@@ -3286,6 +3316,7 @@ const App = () => {
             cuenta_destino: g.cuentaDestino || null,
             detalle: g.detalle || '',
             valor: g.valor,
+            valor_destino: g.valorDestino || null,
             valor_bruto: g.valorBruto || null,
             deduccion_aplicada: g.deduccionAplicada || null,
             categoria: g.categoria || null,
@@ -3369,9 +3400,18 @@ const App = () => {
       const [empresaDestino, cuentaDestinoNombre] = g.cuentaDestino && g.cuentaDestino.includes(': ')
         ? g.cuentaDestino.split(': ')
         : [g.empresa, g.cuentaDestino];
+      // Cuando el traslado cruza de moneda (hoy en la práctica: ARKO en USD hacia/desde el
+      // resto de la holding en COP), el valor que entra a la cuenta destino (valorDestino, en
+      // la moneda del destino) es distinto del que sale (valor, en la moneda de origen) — el
+      // lado "entrada" debe mostrar valorDestino, no el mismo número reetiquetado. Si el
+      // traslado es entre cuentas de la misma moneda (o es un registro histórico sin
+      // valorDestino), se usa el mismo valor de siempre.
+      const valorEntrada = (g.valorDestino !== null && g.valorDestino !== undefined && g.valorDestino !== '')
+        ? g.valorDestino
+        : g.valor;
       return [
         { ...g, _origen: 'gasto', _ladoTraslado: 'salida', empresa: g.empresa, cuenta: g.cuentaSalida },
-        { ...g, _origen: 'gasto', _ladoTraslado: 'entrada', empresa: empresaDestino, cuenta: cuentaDestinoNombre },
+        { ...g, _origen: 'gasto', _ladoTraslado: 'entrada', empresa: empresaDestino, cuenta: cuentaDestinoNombre, valor: valorEntrada },
       ];
     }),
     ...ingresosUsuario.map(i => ({ ...i, tipo: 'Ingreso', _origen: 'ingreso' })),
@@ -4930,7 +4970,19 @@ const App = () => {
                 );
               })()}
 
-              <input type="number" placeholder="Valor" value={newGasto.valor} onChange={(e) => {setNewGasto({...newGasto, valor: e.target.value}); setNewIngreso({...newIngreso, valor: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', marginBottom: '1rem', boxSizing: 'border-box' }} />
+              {newGasto.tipo === 'Traslado' && <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Valor (Salida — {getMoneda(newGasto.empresa)})</label>}
+              <input type="number" placeholder="Valor" value={newGasto.valor} onChange={(e) => {setNewGasto({...newGasto, valor: e.target.value}); setNewIngreso({...newIngreso, valor: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', marginBottom: '1rem', boxSizing: 'border-box', marginTop: newGasto.tipo === 'Traslado' ? '0.5rem' : 0 }} />
+
+              {/* Traslado entre monedas distintas (ej. ARKO en USD hacia/desde el resto de la
+                  holding en COP): el valor que sale (arriba) y el que entra a la cuenta destino
+                  son montos distintos en monedas distintas, no la misma cifra convertida. Este
+                  campo solo aparece cuando origen y destino tienen monedas diferentes. */}
+              {newGasto.tipo === 'Traslado' && newGasto.cuentaDestino && getMoneda(newGasto.empresa) !== getMoneda(getEmpresaDestinoTraslado(newGasto.cuentaDestino, newGasto.empresa)) && (
+                <div>
+                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Valor en Cuenta Destino ({getMoneda(getEmpresaDestinoTraslado(newGasto.cuentaDestino, newGasto.empresa))})</label>
+                  <input type="number" placeholder={`Valor en ${getMoneda(getEmpresaDestinoTraslado(newGasto.cuentaDestino, newGasto.empresa))}`} value={newGasto.valorDestino} onChange={(e) => setNewGasto({...newGasto, valorDestino: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', marginBottom: '1rem', boxSizing: 'border-box', marginTop: '0.5rem' }} />
+                </div>
+              )}
 
               <input type="text" placeholder="Observaciones" value={newGasto.observaciones} onChange={(e) => {setNewGasto({...newGasto, observaciones: e.target.value}); setNewIngreso({...newIngreso, observaciones: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', marginBottom: '1rem', boxSizing: 'border-box' }} />
 
