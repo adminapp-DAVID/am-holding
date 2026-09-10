@@ -222,7 +222,8 @@ const App = () => {
 
   const empresas = ['AM SPORTS GROUP SAS', 'PRO INVESTMENTS GLOBAL SAS', 'PRONOVA CAPITAL SAS', 'FOR SEVEN MEDIA SAS', 'ARKO'];
   const estadosSolicitud = ['Pendiente', 'Aprobado', 'Pagado', 'Legalizado'];
-  const tiposSolicitud = ['Anticipo', 'Legalización', 'Reembolso'];
+  const tiposSolicitud = ['Anticipo', 'Legalización', 'Reembolso', 'Pago a Tercero'];
+  const paisesTercero = ['Colombia', 'Estados Unidos', 'España', 'México', 'Argentina', 'Brasil', 'Chile', 'Perú', 'Ecuador', 'Panamá', 'Otro'];
   const tiposSoporte = ['Factura/Electrónica', 'Recibo/Entradas', 'Consignación', 'Cuenta de Cobro', 'Otro'];
   const tiposPresupuesto = ['Nómina', 'Prestación de Servicio', 'Honorarios', 'Gasto de Representación', 'Arriendo', 'Servicios Públicos', 'Telecomunicaciones', 'Seguridad Social', 'Donación', 'Otro'];
 
@@ -323,6 +324,10 @@ const App = () => {
   // CECOs — catálogo dinámico desde public.cecos (ver comentario más abajo, junto a `cecos`).
   const [cecosDB, setCecosDB] = useState([]);
   const [cargandoCecos, setCargandoCecos] = useState(true);
+  // Terceros guardados (catálogo reutilizable de personas/empresas a quienes se les hace un
+  // "Pago a Tercero") — se guarda una vez y queda disponible para todos, para no volver a
+  // digitar nombre/DNI/datos bancarios cada vez que se repite el pago a la misma persona.
+  const [tercerosDB, setTercerosDB] = useState([]);
   const responsables = usuariosDB.filter(u => u.rol === 'Responsable');
   const usuariosAdmin = usuariosDB.filter(u => u.rol !== 'Responsable');
   // Lista aparte para Finanzas: un Gasto/Ingreso/Traslado puede quedar a nombre de
@@ -367,7 +372,11 @@ const App = () => {
   // exponer cédula, banco ni documentos de nadie (eso solo lo ve Admin/Coordinadora o el dueño).
   const [colaboradoresPublico, setColaboradoresPublico] = useState([]);
   const [editingResponsableOrigen, setEditingResponsableOrigen] = useState('responsables'); // 'responsables' | 'admin' — de qué lista viene el registro que se está editando
-  const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', valorAnticipoOriginal: '', anticipoId: '', detalle: '', empresa: 'AM SPORTS GROUP SAS', documentos: [] });
+  const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', valorAnticipoOriginal: '', anticipoId: '', detalle: '', empresa: 'AM SPORTS GROUP SAS', documentos: [], moneda: 'COP', terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false });
+  // Soportes de "Pago a Tercero" — archivos simples adjuntos (foto/PDF/etc.), cada uno una fila
+  // propia en public.soportes (igual que los de Gasto/Ingreso), a diferencia de los de
+  // Legalización/Reembolso que se unen en un solo PDF al guardar.
+  const [soportesTerceroTemp, setSoportesTerceroTemp] = useState([]);
   const [generandoPDF, setGenerandoPDF] = useState(null);
   // Filtros del historial de Solicitudes: buscador de texto libre + selectores puntuales para
   // Tipo/Estado/Empresa + rango de fechas — mismo patrón que se usó en el historial de Finanzas.
@@ -893,7 +902,13 @@ const App = () => {
     responsableId: row.responsable_id,
     responsableNombre: row.usuarios?.nombre || '',
     documentos: row.documentos || [],
-    estado: row.estado
+    estado: row.estado,
+    // "Pago a Tercero": moneda propia del pago (no depende de la empresa, ver Sección 23) y
+    // datos del tercero guardados en un solo JSONB (nombre, dni, paisOrigen, banco, tipoCuenta,
+    // numeroCuenta) — igual que "documentos", para no sumar media docena de columnas nuevas.
+    moneda: row.moneda_pago || '',
+    terceroInfo: row.tercero_info || null,
+    terceroId: row.tercero_id || ''
   });
 
   const cargarSolicitudes = async () => {
@@ -904,7 +919,7 @@ const App = () => {
       // aprobado_por_id (Sección 19), hay 3 FKs de solicitudes hacia usuarios. Sin indicar
       // por cuál columna se hace el embed, PostgREST no sabe cuál usar y el select entero
       // falla con "more than one relationship was found" (deja el historial vacío).
-      .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
+      .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -1241,6 +1256,22 @@ const App = () => {
     setColaboradoresPublico(data || []);
   };
 
+  // Catálogo de Terceros guardados, para el selector "Tercero guardado" del formulario de
+  // Pago a Tercero — solo los activos (uno "eliminado" queda desactivado, nunca se borra, para
+  // no romper el vínculo con los Pagos a Tercero históricos que ya lo usaron).
+  const cargarTerceros = async () => {
+    const { data, error } = await supabase
+      .from('terceros')
+      .select('id, nombre, dni, pais_origen, banco, tipo_cuenta, numero_cuenta, activo')
+      .eq('activo', true)
+      .order('nombre');
+    if (error) {
+      console.error('Error cargando terceros:', error);
+      return;
+    }
+    setTercerosDB(data || []);
+  };
+
   // Trae el listado de usuarios y de solicitudes apenas hay sesión activa (login o restauración de sesión).
   useEffect(() => {
     if (user) {
@@ -1253,6 +1284,7 @@ const App = () => {
       cargarPresupuesto();
       cargarSoportesPendientes();
       cargarCecos();
+      cargarTerceros();
     } else {
       setUsuariosDB([]);
       setSolicitudes([]);
@@ -1266,6 +1298,7 @@ const App = () => {
       setDeducciones([]);
       setSoportesPendientes([]);
       setCecosDB([]);
+      setTercerosDB([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
@@ -1291,6 +1324,7 @@ const App = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'deducciones' }, () => cargarDeducciones())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'soportes_pendientes' }, () => cargarSoportesPendientes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cecos' }, () => cargarCecos())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'terceros' }, () => cargarTerceros())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'usuarios' }, () => { cargarUsuarios(); cargarColaboradoresPublico(); })
       // Si el canal se cae (red inestable, la pestaña estuvo en segundo plano un rato largo,
       // etc.) y luego reconecta, "SUBSCRIBED" se dispara de nuevo — aprovechamos ese momento
@@ -1308,6 +1342,7 @@ const App = () => {
           cargarDeducciones();
           cargarSoportesPendientes();
           cargarCecos();
+          cargarTerceros();
           cargarUsuarios();
           cargarColaboradoresPublico();
         }
@@ -1380,6 +1415,31 @@ const App = () => {
 
   const handleRemoveSoporteLegalizacion = (id) => {
     setSoportesLegalizacionTemp(soportesLegalizacionTemp.filter(s => s.id !== id));
+  };
+
+  // Soportes de "Pago a Tercero" — a diferencia de Legalización/Reembolso, NO se unen en un
+  // solo PDF: cada archivo (foto, PDF, etc.) queda como su propio soporte, igual que en Gasto.
+  const handleAddSoporteTercero = (e) => {
+    const files = Array.from(e.target.files);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const nuevoSoporte = {
+          id: Date.now() + Math.random(),
+          nombre: file.name,
+          tipo: file.type,
+          tamaño: file.size,
+          data: event.target.result
+        };
+        setSoportesTerceroTemp(prev => [...prev, nuevoSoporte]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const handleRemoveSoporteTercero = (id) => {
+    setSoportesTerceroTemp(soportesTerceroTemp.filter(s => s.id !== id));
   };
 
   // BANDEJA DE SOPORTES — lee el archivo elegido a memoria (igual que el resto de uploads)
@@ -1532,6 +1592,21 @@ const App = () => {
       return;
     }
 
+    if (newSolicitud.tipo === 'Pago a Tercero') {
+      if (!newSolicitud.terceroNombre || !newSolicitud.terceroDni) {
+        alert('Nombre y DNI/Documento del tercero son obligatorios');
+        return;
+      }
+      if (!newSolicitud.valor || parseFloat(newSolicitud.valor) <= 0) {
+        alert('El valor a pagar debe ser mayor a cero');
+        return;
+      }
+      if (!newSolicitud.moneda) {
+        alert('Selecciona la moneda del pago');
+        return;
+      }
+    }
+
     const totalCalculado = newSolicitud.documentos.reduce((sum, doc) => sum + (parseFloat(doc.valor) || 0), 0);
     const empresaNombre = (user.rol === 'Responsable' || user.rol === 'Gerente') ? user.empresa : newSolicitud.empresa;
 
@@ -1555,12 +1630,67 @@ const App = () => {
         ? solicitudes.find(a => a.id === newSolicitud.anticipoId)
         : null;
 
+      // Pago a Tercero: la moneda es la que se elige en el formulario (independiente de la
+      // empresa que paga — puede ser una empresa en COP pagando a alguien en USD, o al revés),
+      // y los datos del tercero van en un solo JSONB para no sumar media docena de columnas.
+      const terceroInfoFinal = newSolicitud.tipo === 'Pago a Tercero' ? {
+        nombre: newSolicitud.terceroNombre,
+        dni: newSolicitud.terceroDni,
+        paisOrigen: newSolicitud.terceroPaisOrigen || null,
+        banco: newSolicitud.terceroBanco || null,
+        tipoCuenta: newSolicitud.terceroTipoCuenta || null,
+        numeroCuenta: newSolicitud.terceroNumeroCuenta || null,
+      } : null;
+
+      // Catálogo reutilizable de terceros (public.terceros): si se eligió "Nuevo tercero" y
+      // quedó marcado "Guardar", se crea ahí para que la próxima vez que se le pague a la
+      // misma persona baste con elegirlo del desplegable y digitar solo el Valor. Si se eligió
+      // uno ya guardado y se marcó "Actualizar", se sincronizan sus datos con lo editado aquí.
+      // Ninguna de las dos cosas bloquea el guardado del pago si falla — el pago igual se
+      // registra, solo que el tercero no queda (o no se actualiza) en el catálogo.
+      let terceroIdFinal = newSolicitud.terceroId || null;
+      if (newSolicitud.tipo === 'Pago a Tercero') {
+        if (!terceroIdFinal && newSolicitud.guardarTercero) {
+          const { data: nuevoTercero, error: terceroError } = await supabase
+            .from('terceros')
+            .insert({
+              nombre: newSolicitud.terceroNombre,
+              dni: newSolicitud.terceroDni,
+              pais_origen: newSolicitud.terceroPaisOrigen || null,
+              banco: newSolicitud.terceroBanco || null,
+              tipo_cuenta: newSolicitud.terceroTipoCuenta || null,
+              numero_cuenta: newSolicitud.terceroNumeroCuenta || null,
+              creado_por: user.id
+            })
+            .select('id')
+            .single();
+          if (terceroError) {
+            console.error('Error guardando el tercero para reutilizar:', terceroError);
+          } else {
+            terceroIdFinal = nuevoTercero.id;
+          }
+        } else if (terceroIdFinal && newSolicitud.actualizarTercero) {
+          const { error: updateError } = await supabase
+            .from('terceros')
+            .update({
+              nombre: newSolicitud.terceroNombre,
+              dni: newSolicitud.terceroDni,
+              pais_origen: newSolicitud.terceroPaisOrigen || null,
+              banco: newSolicitud.terceroBanco || null,
+              tipo_cuenta: newSolicitud.terceroTipoCuenta || null,
+              numero_cuenta: newSolicitud.terceroNumeroCuenta || null,
+            })
+            .eq('id', terceroIdFinal);
+          if (updateError) console.error('Error actualizando los datos guardados del tercero:', updateError);
+        }
+      }
+
       const { data: inserted, error } = await supabase
         .from('solicitudes')
         .insert({
           fecha: newSolicitud.fecha,
           tipo: newSolicitud.tipo,
-          valor: newSolicitud.tipo === 'Anticipo' ? (parseFloat(newSolicitud.valor) || 0) : 0,
+          valor: (newSolicitud.tipo === 'Anticipo' || newSolicitud.tipo === 'Pago a Tercero') ? (parseFloat(newSolicitud.valor) || 0) : 0,
           total_calculado: totalCalculado,
           detalle: newSolicitud.detalle || null,
           empresa_id: empresaId,
@@ -1568,6 +1698,9 @@ const App = () => {
           documentos: newSolicitud.documentos,
           anticipo_id: anticipoVinculado ? anticipoVinculado.id : null,
           valor_anticipo_original: newSolicitud.tipo === 'Legalización' ? (parseFloat(newSolicitud.valorAnticipoOriginal) || null) : null,
+          moneda_pago: newSolicitud.tipo === 'Pago a Tercero' ? newSolicitud.moneda : null,
+          tercero_info: terceroInfoFinal,
+          tercero_id: terceroIdFinal,
           estado: 'Pendiente'
         })
         .select('id')
@@ -1597,6 +1730,14 @@ const App = () => {
         }
       }
 
+      // Soportes de Pago a Tercero: cada archivo queda como su propia fila en public.soportes
+      // (sin unirse en un PDF), igual que en Gasto/Ingreso.
+      if (soportesTerceroTemp.length > 0) {
+        for (const soporte of soportesTerceroTemp) {
+          await subirSoporteEntidad(soporte, 'solicitud', inserted.id);
+        }
+      }
+
       // Los recibos de la bandeja que se usaron para prellenar este formulario quedan marcados
       // "usado" y ligados a esta solicitud — recién ahora que se guardó con éxito.
       if (pendientesEnUso.length > 0) {
@@ -1610,6 +1751,9 @@ const App = () => {
       }
 
       await cargarSolicitudes();
+      if (newSolicitud.tipo === 'Pago a Tercero' && (newSolicitud.guardarTercero || newSolicitud.actualizarTercero)) {
+        await cargarTerceros();
+      }
 
       setNewSolicitud({
         fecha: new Date().toISOString().split('T')[0],
@@ -1619,9 +1763,20 @@ const App = () => {
         anticipoId: '',
         detalle: '',
         empresa: 'AM SPORTS GROUP SAS',
-        documentos: []
+        documentos: [],
+        moneda: 'COP',
+        terceroId: '',
+        terceroNombre: '',
+        terceroDni: '',
+        terceroPaisOrigen: '',
+        terceroBanco: '',
+        terceroTipoCuenta: '',
+        terceroNumeroCuenta: '',
+        guardarTercero: true,
+        actualizarTercero: false
       });
       setSoportesLegalizacionTemp([]);
+      setSoportesTerceroTemp([]);
       alert('✅ Solicitud creada');
     } finally {
       setGuardandoSolicitud(false);
@@ -1687,7 +1842,7 @@ const App = () => {
       // que no son suyas (RLS de public.usuarios), así que también se busca por
       // colaboradores_publico, que sí es legible por cualquier rol.
       const nombreColaborador = colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre;
-      const campos = [s.detalle, nombreColaborador, s.empresa, s.tipo, s.estado].filter(Boolean).join(' ').toLowerCase();
+      const campos = [s.detalle, nombreColaborador, s.empresa, s.tipo, s.estado, s.terceroInfo?.nombre, s.terceroInfo?.dni].filter(Boolean).join(' ').toLowerCase();
       if (!campos.includes(q)) return false;
     }
     return true;
@@ -1702,10 +1857,13 @@ const App = () => {
   };
 
   const totalSolicitudes = solicitudesUsuario.length;
-  const montoSolicitud = (s) => s.tipo === 'Anticipo' ? parseFloat(s.valor) || 0 : s.totalCalculado || 0;
-  // Montos separados por moneda: sumar pesos y dólares directamente daría un número sin sentido
-  const totalMontoCOP = solicitudesUsuario.filter(s => getMoneda(s.empresa) === 'COP').reduce((sum, s) => sum + montoSolicitud(s), 0);
-  const totalMontoUSD = solicitudesUsuario.filter(s => getMoneda(s.empresa) === 'USD').reduce((sum, s) => sum + montoSolicitud(s), 0);
+  const montoSolicitud = (s) => (s.tipo === 'Anticipo' || s.tipo === 'Pago a Tercero') ? parseFloat(s.valor) || 0 : s.totalCalculado || 0;
+  // Montos separados por moneda: sumar pesos y dólares directamente daría un número sin sentido.
+  // "Pago a Tercero" tiene su propia moneda (independiente de la empresa que paga), así que se
+  // agrupa por esa moneda en vez de la de la empresa.
+  const monedaSolicitud = (s) => s.tipo === 'Pago a Tercero' ? (s.moneda || getMoneda(s.empresa)) : getMoneda(s.empresa);
+  const totalMontoCOP = solicitudesUsuario.filter(s => monedaSolicitud(s) === 'COP').reduce((sum, s) => sum + montoSolicitud(s), 0);
+  const totalMontoUSD = solicitudesUsuario.filter(s => monedaSolicitud(s) === 'USD').reduce((sum, s) => sum + montoSolicitud(s), 0);
 
   const statsPorEmpresa = empresas.map(emp => ({
     empresa: emp,
@@ -3683,16 +3841,18 @@ const App = () => {
   };
 
   const downloadReporteSolicitudes = () => {
-    const headers = ['Fecha', 'Tipo', 'Empresa', 'Concepto', 'Valor', 'Moneda', 'Estado', 'Responsable'];
+    const headers = ['Fecha', 'Tipo', 'Empresa', 'Concepto', 'Valor', 'Moneda', 'Estado', 'Responsable', 'Tercero', 'DNI Tercero'];
     const datos = solicitudes.map(s => [
       s.fecha,
       s.tipo,
       s.empresa,
       s.detalle,
-      s.valor || s.totalCalculado || '-',
-      getMoneda(s.empresa),
+      (s.tipo === 'Pago a Tercero' ? parseFloat(s.valor) || 0 : (s.valor || s.totalCalculado)) || '-',
+      s.tipo === 'Pago a Tercero' ? (s.moneda || getMoneda(s.empresa)) : getMoneda(s.empresa),
       s.estado,
-      s.responsableNombre || '-'
+      s.responsableNombre || '-',
+      s.terceroInfo?.nombre || '',
+      s.terceroInfo?.dni || ''
     ]).sort((a, b) => new Date(b[0]) - new Date(a[0]));
 
     let csv = headers.join(',') + '\n';
@@ -3963,7 +4123,7 @@ const App = () => {
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.fecha}</td>
                         {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={colaboradoresPublico.find(c => c.id === s.responsableId)?.foto_url} nombre={colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre} size={22} />{colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—'}</div></td>}
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
-                        <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
+                        <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{s.tipo === 'Pago a Tercero' ? formatMoneyByMoneda(parseFloat(s.valor) || 0, s.moneda || getMoneda(s.empresa)) : formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                           <span style={{ backgroundColor: getColorEstado(s.estado), color: '#221E15', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{s.estado}</span>
                         </td>
@@ -4272,6 +4432,7 @@ const App = () => {
                     <option value="Anticipo">Anticipo</option>
                     <option value="Legalización">Legalización</option>
                     <option value="Reembolso">Reembolso</option>
+                    <option value="Pago a Tercero">Pago a Tercero</option>
                   </select>
                   {user.rol !== 'Responsable' && user.rol !== 'Gerente' && (
                     <select value={newSolicitud.empresa} onChange={(e) => setNewSolicitud({...newSolicitud, empresa: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }}>
@@ -4283,6 +4444,18 @@ const App = () => {
                   )}
                   {newSolicitud.tipo === 'Legalización' && (
                     <input type="number" placeholder={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} disabled={!!newSolicitud.anticipoId} value={newSolicitud.valorAnticipoOriginal} onChange={(e) => setNewSolicitud({...newSolicitud, valorAnticipoOriginal: e.target.value})} style={{ padding: '0.75rem', backgroundColor: newSolicitud.anticipoId ? '#EDEAE0' : '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
+                  )}
+                  {/* Pago a Tercero: la moneda del pago se elige aparte — no depende de la empresa
+                      que paga, a diferencia de los demás tipos (puede ser una empresa en COP
+                      pagando a un tercero en USD, o al revés). */}
+                  {newSolicitud.tipo === 'Pago a Tercero' && (
+                    <>
+                      <select value={newSolicitud.moneda} onChange={(e) => setNewSolicitud({...newSolicitud, moneda: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }}>
+                        <option value="COP">Pesos Colombianos (COP)</option>
+                        <option value="USD">Dólares (USD)</option>
+                      </select>
+                      <input type="number" placeholder={`Valor a Pagar (${newSolicitud.moneda})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
+                    </>
                   )}
                 </div>
 
@@ -4305,6 +4478,82 @@ const App = () => {
                 })()}
 
                 <input type="text" placeholder="Concepto" value={newSolicitud.detalle} onChange={(e) => setNewSolicitud({...newSolicitud, detalle: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', marginBottom: '1rem', boxSizing: 'border-box' }} />
+
+                {newSolicitud.tipo === 'Pago a Tercero' && (
+                  <>
+                    <div style={{ marginBottom: '1rem', backgroundColor: '#F8F6F1', padding: '1rem', borderRadius: '4px', border: '1px solid #E6E0D2' }}>
+                      <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0', fontSize: '1rem' }}>Información del Tercero</h3>
+
+                      {/* Elegir un tercero ya guardado prellena todo lo de abajo — así, si el pago se
+                          repite, solo hace falta ingresar el Valor. */}
+                      <div style={{ marginBottom: '0.75rem' }}>
+                        <select value={newSolicitud.terceroId} onChange={(e) => {
+                          const id = e.target.value;
+                          if (!id) {
+                            setNewSolicitud({...newSolicitud, terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false});
+                            return;
+                          }
+                          const t = tercerosDB.find(x => x.id === id);
+                          setNewSolicitud({...newSolicitud, terceroId: id, terceroNombre: t?.nombre || '', terceroDni: t?.dni || '', terceroPaisOrigen: t?.pais_origen || '', terceroBanco: t?.banco || '', terceroTipoCuenta: t?.tipo_cuenta || '', terceroNumeroCuenta: t?.numero_cuenta || '', guardarTercero: false, actualizarTercero: false});
+                        }} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }}>
+                          <option value="">➕ Nuevo tercero</option>
+                          {tercerosDB.map(t => <option key={t.id} value={t.id}>{t.nombre} — {t.dni}</option>)}
+                        </select>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                        <input type="text" placeholder="Nombre completo *" value={newSolicitud.terceroNombre} onChange={(e) => setNewSolicitud({...newSolicitud, terceroNombre: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
+                        <input type="text" placeholder="DNI / Documento *" value={newSolicitud.terceroDni} onChange={(e) => setNewSolicitud({...newSolicitud, terceroDni: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
+                        <select value={newSolicitud.terceroPaisOrigen} onChange={(e) => setNewSolicitud({...newSolicitud, terceroPaisOrigen: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }}>
+                          <option value="">País de origen</option>
+                          {paisesTercero.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                        <input type="text" placeholder="Banco" value={newSolicitud.terceroBanco} onChange={(e) => setNewSolicitud({...newSolicitud, terceroBanco: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
+                        <select value={newSolicitud.terceroTipoCuenta} onChange={(e) => setNewSolicitud({...newSolicitud, terceroTipoCuenta: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }}>
+                          <option value="">Tipo de cuenta</option>
+                          <option value="Ahorros">Ahorros</option>
+                          <option value="Corriente">Corriente</option>
+                        </select>
+                        <input type="text" placeholder="Número de cuenta" value={newSolicitud.terceroNumeroCuenta} onChange={(e) => setNewSolicitud({...newSolicitud, terceroNumeroCuenta: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
+                      </div>
+
+                      {!newSolicitud.terceroId ? (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#221E15', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={newSolicitud.guardarTercero} onChange={(e) => setNewSolicitud({...newSolicitud, guardarTercero: e.target.checked})} />
+                          💾 Guardar este tercero para futuros pagos (la próxima vez solo se ingresa el valor)
+                        </label>
+                      ) : (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#221E15', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={newSolicitud.actualizarTercero} onChange={(e) => setNewSolicitud({...newSolicitud, actualizarTercero: e.target.checked})} />
+                          🔄 Actualizar los datos guardados de este tercero con lo que edité arriba
+                        </label>
+                      )}
+                    </div>
+
+                    {/* SOPORTES — archivos simples (foto, PDF, etc.), sin unirse en un solo PDF */}
+                    <div style={{ marginBottom: '1rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem' }}>
+                      <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>📎 Soportes (foto, PDF, etc.)</label>
+                      <input type="file" multiple onChange={handleAddSoporteTercero} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '1rem', boxSizing: 'border-box', cursor: 'pointer' }} />
+
+                      {soportesTerceroTemp.length > 0 && (
+                        <div style={{ marginTop: '1rem' }}>
+                          <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.8rem' }}>Archivos cargados: {soportesTerceroTemp.length}</p>
+                          {soportesTerceroTemp.map(soporte => (
+                            <div key={soporte.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ flex: 1 }}>
+                                <p style={{ color: '#C4A747', margin: '0 0 0.25rem 0', fontSize: '0.8rem', fontWeight: 'bold' }}>{soporte.nombre}</p>
+                                <p style={{ color: '#6B6458', margin: 0, fontSize: '0.75rem' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
+                              </div>
+                              <button onClick={() => handleRemoveSoporteTercero(soporte.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem', padding: '0.5rem' }}>🗑️</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
 
                 {(newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso') && (
                   <>
@@ -4424,6 +4673,7 @@ const App = () => {
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
                       {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Concepto</th>
                       <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
                       <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Anticipo original</th>
                       <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Dif. a Reembolsar</th>
@@ -4434,7 +4684,7 @@ const App = () => {
                   </thead>
                   <tbody>
                     {solicitudesFiltradas.length === 0 ? (
-                      <tr><td colSpan={9} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin solicitudes para estos filtros.</td></tr>
+                      <tr><td colSpan={10} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin solicitudes para estos filtros.</td></tr>
                     ) : solicitudesFiltradas.map(s => {
                       // Legalización con anticipo vinculado: base para las 2 columnas nuevas y para
                       // marcar el anticipo original como "ya legalizado" (solo visual, no toca s.estado).
@@ -4449,7 +4699,13 @@ const App = () => {
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.fecha}</td>
                         {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={colaboradoresPublico.find(c => c.id === s.responsableId)?.foto_url} nombre={colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre} size={22} />{colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—'}</div></td>}
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
-                        <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
+                        <td style={{ padding: '0.75rem', color: '#6B6458' }}>
+                          {s.detalle || '—'}
+                          {s.tipo === 'Pago a Tercero' && s.terceroInfo?.nombre && (
+                            <div style={{ fontSize: '0.7rem', color: '#8F8877' }}>👤 {s.terceroInfo.nombre}{s.terceroInfo.dni ? ` · ${s.terceroInfo.dni}` : ''}</div>
+                          )}
+                        </td>
+                        <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{s.tipo === 'Pago a Tercero' ? formatMoneyByMoneda(parseFloat(s.valor) || 0, s.moneda || getMoneda(s.empresa)) : formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
                         <td style={{ padding: '0.75rem', color: '#6B6458', textAlign: 'right' }}>{esLegalizacionConAnticipo ? formatMoney(parseFloat(s.valorAnticipoOriginal), s.empresa) : '—'}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: 'bold' }}>
                           {esLegalizacionConAnticipo ? (
@@ -4494,6 +4750,16 @@ const App = () => {
                                   </button>
                                 )}
                               </>
+                            );
+                          })()}
+                          {/* Pago a Tercero: sus soportes son archivos simples (no se desglosan como
+                              Legalización/Reembolso), así que solo necesita el botón "Ver Soportes". */}
+                          {s.tipo === 'Pago a Tercero' && (() => {
+                            const esDueño = s.responsableId === user.id;
+                            return (user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente' || esDueño) && (
+                              <button onClick={() => handleVerSoportesSolicitud(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }} title="Ver Soportes">
+                                📎
+                              </button>
                             );
                           })()}
                           {(user.rol === 'Responsable' || user.rol === 'Gerente' || user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
