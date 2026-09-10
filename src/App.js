@@ -1705,14 +1705,27 @@ const App = () => {
     monto: solicitudesUsuario.filter(s => s.empresa === emp).reduce((sum, s) => sum + montoSolicitud(s), 0)
   })).filter(s => s.cantidad > 0);
 
-  const topResponsables = responsables
-    .map(resp => ({
-      nombre: resp.nombre,
-      empresa: resp.empresa,
-      cantidad: solicitudesUsuario.filter(s => s.responsableId === resp.id).length,
-      monto: solicitudesUsuario.filter(s => s.responsableId === resp.id).reduce((sum, s) => sum + montoSolicitud(s), 0)
-    }))
-    .filter(s => s.cantidad > 0)
+  // Antes se armaba iterando `responsables` (= usuariosDB filtrado a rol Responsable), pero
+  // usuariosDB se carga leyendo public.usuarios directo — RLS solo deja a Administrador/
+  // Coordinadora leer TODAS las filas; para Contadora `responsables` quedaba vacío (solo puede
+  // leer su propia fila, que no es rol Responsable) y el widget completo desaparecía. Ahora se
+  // arma agrupando `solicitudesUsuario` por responsableId (que sí ve completo) y resolviendo
+  // nombre/empresa contra colaboradores_publico, legible por cualquier rol — mismo patrón que
+  // el fix de la columna Colaborador en Finanzas/Solicitudes. Efecto colateral menor: ya no se
+  // filtra estrictamente a rol Responsable, sino a quien haya creado solicitudes (con Gerente
+  // creando las suyas propias desde el rediseño de permisos, tiene sentido que también cuente).
+  const topResponsables = Object.values(
+    solicitudesUsuario.reduce((acc, s) => {
+      if (!s.responsableId) return acc;
+      if (!acc[s.responsableId]) {
+        const cp = colaboradoresPublico.find(c => c.id === s.responsableId);
+        acc[s.responsableId] = { nombre: cp?.nombre || s.responsableNombre || '—', empresa: cp?.empresa || s.empresa, cantidad: 0, monto: 0 };
+      }
+      acc[s.responsableId].cantidad += 1;
+      acc[s.responsableId].monto += montoSolicitud(s);
+      return acc;
+    }, {})
+  )
     .sort((a, b) => b.cantidad - a.cantidad)
     .slice(0, 5);
 
