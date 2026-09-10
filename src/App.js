@@ -1123,6 +1123,11 @@ const App = () => {
     empresa: row.empresas?.nombre || '',
     responsable: row.usuarios?.nombre || '',
     responsableNombre: row.usuarios?.nombre || '',
+    // `usuarios ( nombre )` viene vacío cuando quien consulta no tiene permiso de RLS para leer
+    // la fila de OTRA persona en public.usuarios (le pasa a Contadora y Gerente, que solo pueden
+    // leer su propia fila) — responsableId permite resolver el nombre/foto por colaboradores_publico
+    // en el render, que sí es legible por cualquier rol autenticado (ver historial de Finanzas).
+    responsableId: row.responsable_id || '',
     ceco: row.cecos?.codigo || '',
     cuenta: row.cuenta || '',
     cuentaSalida: row.cuenta_salida || '',
@@ -1143,7 +1148,7 @@ const App = () => {
     setCargandoGastos(true);
     const { data, error } = await supabase
       .from('gastos')
-      .select('id, fecha, tipo, cuenta, cuenta_salida, cuenta_destino, detalle, valor, valor_bruto, deduccion_aplicada, categoria, estado, observaciones, presupuesto_item_id, soporte_drive_link, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
+      .select('id, fecha, tipo, cuenta, cuenta_salida, cuenta_destino, detalle, valor, valor_bruto, deduccion_aplicada, categoria, estado, observaciones, presupuesto_item_id, soporte_drive_link, responsable_id, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
       .order('fecha', { ascending: false });
     if (error) {
       console.error('Error cargando gastos:', error);
@@ -1166,6 +1171,7 @@ const App = () => {
     empresa: row.empresas?.nombre || '',
     responsable: row.usuarios?.nombre || '',
     responsableNombre: row.usuarios?.nombre || '',
+    responsableId: row.responsable_id || '',
     ceco: row.cecos?.codigo || '',
     cuenta: row.cuenta || '',
     detalle: row.detalle || '',
@@ -1181,7 +1187,7 @@ const App = () => {
     setCargandoIngresos(true);
     const { data, error } = await supabase
       .from('ingresos')
-      .select('id, fecha, tipo, cuenta, detalle, valor, categoria, estado, observaciones, soporte_drive_link, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
+      .select('id, fecha, tipo, cuenta, detalle, valor, categoria, estado, observaciones, soporte_drive_link, responsable_id, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
       .order('fecha', { ascending: false });
     if (error) {
       console.error('Error cargando ingresos:', error);
@@ -1669,7 +1675,11 @@ const App = () => {
     if (filtroSolicitudesFechaFin && s.fecha > filtroSolicitudesFechaFin) return false;
     if (busquedaSolicitudes.trim()) {
       const q = busquedaSolicitudes.trim().toLowerCase();
-      const campos = [s.detalle, s.responsableNombre, s.empresa, s.tipo, s.estado].filter(Boolean).join(' ').toLowerCase();
+      // Igual que en Finanzas: s.responsableNombre viene vacío para Contadora en solicitudes
+      // que no son suyas (RLS de public.usuarios), así que también se busca por
+      // colaboradores_publico, que sí es legible por cualquier rol.
+      const nombreColaborador = colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre;
+      const campos = [s.detalle, nombreColaborador, s.empresa, s.tipo, s.estado].filter(Boolean).join(' ').toLowerCase();
       if (!campos.includes(q)) return false;
     }
     return true;
@@ -3362,7 +3372,11 @@ const App = () => {
     if (filtroFinanzasFechaFin && r.fecha > filtroFinanzasFechaFin) return false;
     if (busquedaFinanzas.trim()) {
       const q = busquedaFinanzas.trim().toLowerCase();
-      const campos = [r.detalle, r.responsableNombre, r.empresa, r.ceco, r.cuenta, r.observaciones].filter(Boolean).join(' ').toLowerCase();
+      // El nombre del colaborador se busca también por colaboradores_publico, no solo por
+      // r.responsableNombre — ese último viene vacío para Contadora/Gerente en filas que no
+      // son propias (ver nota junto al <td> de Colaborador más abajo).
+      const nombreColaborador = colaboradoresPublico.find(c => c.id === r.responsableId)?.nombre || r.responsableNombre;
+      const campos = [r.detalle, nombreColaborador, r.empresa, r.ceco, r.cuenta, r.observaciones].filter(Boolean).join(' ').toLowerCase();
       if (!campos.includes(q)) return false;
     }
     return true;
@@ -3894,7 +3908,7 @@ const App = () => {
                     {ultimasSolicitudes.map(s => (
                       <tr key={s.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.fecha}</td>
-                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === s.responsableNombre)?.foto} nombre={s.responsableNombre} size={22} />{s.responsableNombre}</div></td>}
+                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={colaboradoresPublico.find(c => c.id === s.responsableId)?.foto_url} nombre={colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre} size={22} />{colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—'}</div></td>}
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
                         <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
@@ -4380,7 +4394,7 @@ const App = () => {
                       return (
                       <tr key={s.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.fecha}</td>
-                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === s.responsableNombre)?.foto} nombre={s.responsableNombre} size={22} />{s.responsableNombre}</div></td>}
+                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={colaboradoresPublico.find(c => c.id === s.responsableId)?.foto_url} nombre={colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre} size={22} />{colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—'}</div></td>}
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
                         <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
                         <td style={{ padding: '0.75rem', color: '#6B6458', textAlign: 'right' }}>{esLegalizacionConAnticipo ? formatMoney(parseFloat(s.valorAnticipoOriginal), s.empresa) : '—'}</td>
@@ -5345,6 +5359,13 @@ const App = () => {
                       const iconoTipo = esGasto ? '💸' : (esTraslado ? '🔄' : '💰');
                       const verSoportesFn = esIngreso ? handleVerSoportesIngreso : handleVerSoportesGasto;
                       const deleteFn = esIngreso ? handleDeleteIngreso : handleDeleteGasto;
+                      // Nombre/foto del colaborador: se resuelven por colaboradores_publico (id), no por
+                      // personasFinanzas/responsableNombre — esos dependen de leer la fila de la OTRA
+                      // persona en public.usuarios, que RLS solo permite a Administrador/Coordinadora.
+                      // Contadora y Gerente ven el historial completo pero antes les salía "?" sin nombre
+                      // en cualquier fila que no fuera la suya propia.
+                      const colaboradorInfo = colaboradoresPublico.find(c => c.id === r.responsableId);
+                      const nombreColaborador = colaboradorInfo?.nombre || r.responsableNombre || '—';
                       return (
                         <tr key={`${r.tipo}-${r.id}${r._ladoTraslado ? '-' + r._ladoTraslado : ''}`} style={{ borderBottom: '1px solid #E6E0D2' }}>
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{r.fecha}</td>
@@ -5353,7 +5374,7 @@ const App = () => {
                             {esSalidaTraslado && <span style={{ color: '#CC4B4B', fontWeight: 'bold' }}> · Salida</span>}
                             {esEntradaTraslado && <span style={{ color: '#2F9E52', fontWeight: 'bold' }}> · Entrada</span>}
                           </td>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={personasFinanzas.find(p => p.nombre === r.responsableNombre)?.foto} nombre={r.responsableNombre} size={22} />{r.responsableNombre}</div></td>}
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={colaboradorInfo?.foto_url} nombre={nombreColaborador} size={22} />{nombreColaborador}</div></td>}
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><EmpresaLogo empresa={r.empresa} height={16} />{r.empresa}</div></td>
                           <td style={{ padding: '0.75rem', fontSize: '0.8rem' }}>
                             <span style={{ color: '#C4A747', fontWeight: 'bold' }}>{r.ceco}</span>
