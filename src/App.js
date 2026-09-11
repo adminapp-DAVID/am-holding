@@ -4427,7 +4427,7 @@ const App = () => {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem', opacity: isReadOnly ? 0.5 : 1, pointerEvents: isReadOnly ? 'none' : 'auto' }}>
                   <input type="date" value={newSolicitud.fecha} onChange={(e) => setNewSolicitud({...newSolicitud, fecha: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
                   <select value={newSolicitud.tipo} onChange={(e) => setNewSolicitud({...newSolicitud, tipo: e.target.value, documentos: []})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }}>
-                    <option value="">Tipo</option>
+                    <option value="">Seleccionar Tipo</option>
                     <option value="Anticipo">Anticipo</option>
                     <option value="Legalización">Legalización</option>
                     <option value="Reembolso">Reembolso</option>
