@@ -223,7 +223,6 @@ const App = () => {
   const empresas = ['AM SPORTS GROUP SAS', 'PRO INVESTMENTS GLOBAL SAS', 'PRONOVA CAPITAL SAS', 'FOR SEVEN MEDIA SAS', 'ARKO'];
   const estadosSolicitud = ['Pendiente', 'Aprobado', 'Pagado', 'Legalizado'];
   const tiposSolicitud = ['Anticipo', 'Legalización', 'Reembolso', 'Pago a Tercero'];
-  const paisesTercero = ['Colombia', 'Estados Unidos', 'España', 'México', 'Argentina', 'Brasil', 'Chile', 'Perú', 'Ecuador', 'Panamá', 'Otro'];
   const tiposSoporte = ['Factura/Electrónica', 'Recibo/Entradas', 'Consignación', 'Cuenta de Cobro', 'Otro'];
   const tiposPresupuesto = ['Nómina', 'Prestación de Servicio', 'Honorarios', 'Gasto de Representación', 'Arriendo', 'Servicios Públicos', 'Telecomunicaciones', 'Seguridad Social', 'Donación', 'Otro'];
 
@@ -4504,10 +4503,7 @@ const App = () => {
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
                         <input type="text" placeholder="Nombre completo *" value={newSolicitud.terceroNombre} onChange={(e) => setNewSolicitud({...newSolicitud, terceroNombre: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
                         <input type="text" placeholder="DNI / Documento *" value={newSolicitud.terceroDni} onChange={(e) => setNewSolicitud({...newSolicitud, terceroDni: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
-                        <select value={newSolicitud.terceroPaisOrigen} onChange={(e) => setNewSolicitud({...newSolicitud, terceroPaisOrigen: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }}>
-                          <option value="">País de origen</option>
-                          {paisesTercero.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
+                        <input type="text" placeholder="País de origen" value={newSolicitud.terceroPaisOrigen} onChange={(e) => setNewSolicitud({...newSolicitud, terceroPaisOrigen: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
                         <input type="text" placeholder="Banco" value={newSolicitud.terceroBanco} onChange={(e) => setNewSolicitud({...newSolicitud, terceroBanco: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
