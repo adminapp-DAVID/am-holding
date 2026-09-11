@@ -1663,12 +1663,18 @@ const App = () => {
               banco: newSolicitud.terceroBanco || null,
               tipo_cuenta: newSolicitud.terceroTipoCuenta || null,
               numero_cuenta: newSolicitud.terceroNumeroCuenta || null,
+              // Explícito y no solo confiado al DEFAULT de la columna: si esta fila queda con
+              // activo = null (p. ej. porque la tabla se creó sin default en esa columna),
+              // cargarTerceros() la filtra con .eq('activo', true) y el tercero nunca aparece
+              // en el desplegable "Tercero guardado" — aunque el insert haya funcionado bien.
+              activo: true,
               creado_por: user.id
             })
             .select('id')
             .single();
           if (terceroError) {
             console.error('Error guardando el tercero para reutilizar:', terceroError);
+            alert('⚠️ La solicitud se guardó, pero el tercero NO quedó guardado para futuros pagos: ' + terceroError.message);
           } else {
             terceroIdFinal = nuevoTercero.id;
           }
@@ -1684,7 +1690,10 @@ const App = () => {
               numero_cuenta: newSolicitud.terceroNumeroCuenta || null,
             })
             .eq('id', terceroIdFinal);
-          if (updateError) console.error('Error actualizando los datos guardados del tercero:', updateError);
+          if (updateError) {
+            console.error('Error actualizando los datos guardados del tercero:', updateError);
+            alert('⚠️ La solicitud se guardó, pero no se pudieron actualizar los datos guardados del tercero: ' + updateError.message);
+          }
         }
       }
 
