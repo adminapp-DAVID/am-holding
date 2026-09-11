@@ -449,6 +449,10 @@ const App = () => {
   // se guarda con éxito, nunca antes.
   const [pendientesEnUso, setPendientesEnUso] = useState([]);
   const [verSoportes, setVerSoportes] = useState(null);
+  // Pago a Tercero: la coordinadora administrativa necesita ver de un vistazo los datos
+  // bancarios del tercero para poder pagar — este modal muestra esa ficha sin tener que
+  // abrir el PDF ni "Ver Soportes". Guarda la solicitud completa (trae terceroInfo embebido).
+  const [verDetalleTercero, setVerDetalleTercero] = useState(null);
   const [mostrarImportar, setMostrarImportar] = useState(false);
   const [archivoImportacion, setArchivoImportacion] = useState(null);
   const [filtroFechaInicio, setFiltroFechaInicio] = useState('2026-01-01');
@@ -1737,6 +1741,34 @@ const App = () => {
         }
       }
 
+      // Pago a Tercero: se genera automáticamente la ficha PDF (datos de la solicitud + del
+      // tercero + cuenta bancaria) y se sube a "Ver Soportes" junto a los adjuntos del
+      // colaborador — así la Coordinadora Administrativa tiene TODO lo que necesita para
+      // ejecutar el pago en un solo lugar, sin depender de que alguien lo pida aparte.
+      if (newSolicitud.tipo === 'Pago a Tercero') {
+        try {
+          const pdfDoc = construirPDFPagoTercero({
+            empresa: empresaNombre,
+            empresaNit: NIT_EMPRESAS[empresaNombre] || '',
+            fecha: newSolicitud.fecha,
+            responsableNombre: user.nombre,
+            detalle: newSolicitud.detalle,
+            valor: parseFloat(newSolicitud.valor) || 0,
+            moneda: newSolicitud.moneda,
+            tercero: terceroInfoFinal || {},
+            estado: 'Pendiente'
+          });
+          await subirSoporteEntidad({
+            nombre: `Pago_a_Tercero_${(newSolicitud.terceroNombre || 'tercero').replace(/\s+/g, '_')}.pdf`,
+            tipo: 'application/pdf',
+            data: pdfDoc.output('datauristring')
+          }, 'solicitud', inserted.id);
+        } catch (pdfError) {
+          console.error('Error generando el PDF de Pago a Tercero:', pdfError);
+          alert('⚠️ La solicitud se guardó, pero hubo un error generando el PDF automático.');
+        }
+      }
+
       // Los recibos de la bandeja que se usaron para prellenar este formulario quedan marcados
       // "usado" y ligados a esta solicitud — recién ahora que se guardó con éxito.
       if (pendientesEnUso.length > 0) {
@@ -1956,6 +1988,99 @@ const App = () => {
       alert('❌ No se pudo generar el PDF: ' + error.message);
     }
     setGenerandoPDF(null);
+  };
+
+  // Ficha PDF de "Pago a Tercero" — pensada para que la coordinadora administrativa tenga en
+  // un solo documento TODO lo que necesita para ejecutar el pago (quién solicita, a quién se le
+  // paga, cuánto, y a qué cuenta bancaria consignar). Devuelve el jsPDF ya diligenciado; quien
+  // llama decide si lo descarga (doc.save) o lo sube a Storage (doc.output('datauristring')) —
+  // así se reutiliza tanto para el adjunto automático al guardar como para el botón de descarga.
+  const construirPDFPagoTercero = (datos) => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margen = 15;
+    const alto = 200;
+    let y = margen + 12;
+
+    doc.setDrawColor(196, 167, 71);
+    doc.setLineWidth(0.8);
+    doc.rect(margen, margen, pageWidth - margen * 2, alto);
+
+    doc.setFontSize(14);
+    doc.setFont(undefined, 'bold');
+    doc.text('SOLICITUD DE PAGO A TERCERO', pageWidth / 2, y, { align: 'center' });
+    y += 9;
+    doc.setLineWidth(0.3);
+    doc.line(margen + 5, y, pageWidth - margen - 5, y);
+    y += 10;
+
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    doc.text(`Empresa que paga: ${datos.empresa || '—'}${datos.empresaNit ? ' — NIT ' + datos.empresaNit : ''}`, margen + 5, y);
+    y += 7;
+    doc.text(`Fecha: ${datos.fecha || '—'}`, margen + 5, y);
+    doc.text(`Solicitado por: ${datos.responsableNombre || '—'}`, pageWidth / 2 - 10, y);
+    y += 10;
+
+    doc.setFont(undefined, 'bold');
+    doc.text('Concepto', margen + 5, y);
+    y += 6;
+    doc.setFont(undefined, 'normal');
+    const concepto = doc.splitTextToSize(datos.detalle || '—', pageWidth - margen * 2 - 10);
+    doc.text(concepto, margen + 5, y);
+    y += concepto.length * 5.5 + 6;
+
+    doc.setFont(undefined, 'bold');
+    doc.text('Valor a pagar:', margen + 5, y);
+    doc.setFontSize(12);
+    doc.setTextColor(47, 158, 82);
+    doc.text(formatMoneyByMoneda(datos.valor, datos.moneda), margen + 42, y);
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+    y += 12;
+
+    doc.setFont(undefined, 'bold');
+    doc.text('Datos del tercero', margen + 5, y);
+    y += 7;
+    doc.setFont(undefined, 'normal');
+    doc.text(`Nombre: ${datos.tercero.nombre || '—'}`, margen + 5, y);
+    y += 6;
+    doc.text(`DNI / Documento: ${datos.tercero.dni || '—'}`, margen + 5, y);
+    doc.text(`País de origen: ${datos.tercero.paisOrigen || '—'}`, pageWidth / 2 - 10, y);
+    y += 10;
+
+    doc.setFont(undefined, 'bold');
+    doc.text('Datos bancarios para el pago', margen + 5, y);
+    y += 7;
+    doc.setFont(undefined, 'normal');
+    doc.text(`Banco: ${datos.tercero.banco || '—'}`, margen + 5, y);
+    y += 6;
+    doc.text(`Tipo de cuenta: ${datos.tercero.tipoCuenta || '—'}`, margen + 5, y);
+    y += 6;
+    doc.text(`Número de cuenta: ${datos.tercero.numeroCuenta || '—'}`, margen + 5, y);
+    y += 12;
+
+    doc.setFont(undefined, 'bold');
+    doc.text(`Estado: ${datos.estado || 'Pendiente'}`, margen + 5, y);
+
+    return doc;
+  };
+
+  // Botón "📄 PDF" del historial — vuelve a generar y descargar la misma ficha (la solicitud
+  // ya trae terceroInfo embebido, no hace falta ninguna consulta adicional).
+  const handleGenerarPDFPagoTercero = (s) => {
+    const doc = construirPDFPagoTercero({
+      empresa: s.empresa,
+      empresaNit: NIT_EMPRESAS[s.empresa] || '',
+      fecha: s.fecha,
+      responsableNombre: s.responsableNombre,
+      detalle: s.detalle,
+      valor: parseFloat(s.valor) || 0,
+      moneda: s.moneda || getMoneda(s.empresa),
+      tercero: s.terceroInfo || {},
+      estado: s.estado
+    });
+    doc.save(`Pago_a_Tercero_${(s.terceroInfo?.nombre || 'tercero').replace(/\s+/g, '_')}_${s.id}.pdf`);
   };
 
   // Trae los soportes (archivos) de una solicitud desde public.soportes y abre el modal
@@ -4748,14 +4873,26 @@ const App = () => {
                               </>
                             );
                           })()}
-                          {/* Pago a Tercero: sus soportes son archivos simples (no se desglosan como
-                              Legalización/Reembolso), así que solo necesita el botón "Ver Soportes". */}
+                          {/* Pago a Tercero: "Ver Detalle" muestra al instante los datos del tercero y su
+                              cuenta bancaria (sin descargar nada) para que quien vaya a pagar no tenga
+                              que adivinar dónde consignar; "📄" regenera la misma ficha en PDF; sus
+                              soportes son archivos simples (no se desglosan como Legalización/Reembolso),
+                              así que solo necesitan el botón "Ver Soportes". */}
                           {s.tipo === 'Pago a Tercero' && (() => {
                             const esDueño = s.responsableId === user.id;
-                            return (user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente' || esDueño) && (
-                              <button onClick={() => handleVerSoportesSolicitud(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }} title="Ver Soportes">
-                                📎
-                              </button>
+                            const puedeVer = user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente' || esDueño;
+                            return puedeVer && (
+                              <>
+                                <button onClick={() => setVerDetalleTercero(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#C4A747', fontSize: '1rem', marginRight: '0.5rem' }} title="Ver Detalle del Tercero">
+                                  🔍
+                                </button>
+                                <button onClick={() => handleGenerarPDFPagoTercero(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.5rem' }} title="PDF">
+                                  📄
+                                </button>
+                                <button onClick={() => handleVerSoportesSolicitud(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }} title="Ver Soportes">
+                                  📎
+                                </button>
+                              </>
                             );
                           })()}
                           {(user.rol === 'Responsable' || user.rol === 'Gerente' || user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
@@ -6322,6 +6459,50 @@ const App = () => {
               <div style={{ display: 'flex', gap: '1rem' }}>
                 <button onClick={() => setMostrarImportar(false)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
                   Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL VER DETALLE DEL TERCERO — para que la Coordinadora Administrativa pueda
+            ejecutar el pago sin abrir el PDF ni buscar en "Ver Soportes". */}
+        {verDetalleTercero && (
+          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
+            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '460px', width: '90%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
+              <h2 style={{ color: '#C4A747', marginBottom: '1.25rem' }}>👤 Detalle del Pago a Tercero</h2>
+              {(() => {
+                const t = verDetalleTercero.terceroInfo || {};
+                const fila = (label, valor) => (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', padding: '0.5rem 0', borderBottom: '1px solid #F0ECE1' }}>
+                    <span style={{ color: '#8F8877', fontSize: '0.8rem' }}>{label}</span>
+                    <span style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem', textAlign: 'right' }}>{valor || '—'}</span>
+                  </div>
+                );
+                return (
+                  <div>
+                    {fila('Empresa que paga', verDetalleTercero.empresa)}
+                    {fila('Fecha', verDetalleTercero.fecha)}
+                    {fila('Solicitado por', verDetalleTercero.responsableNombre)}
+                    {fila('Concepto', verDetalleTercero.detalle)}
+                    {fila('Valor a pagar', formatMoneyByMoneda(parseFloat(verDetalleTercero.valor) || 0, verDetalleTercero.moneda || getMoneda(verDetalleTercero.empresa)))}
+                    <div style={{ margin: '1rem 0 0.25rem 0', color: '#C4A747', fontWeight: 'bold', fontSize: '0.8rem' }}>DATOS DEL TERCERO</div>
+                    {fila('Nombre', t.nombre)}
+                    {fila('DNI / Documento', t.dni)}
+                    {fila('País de origen', t.paisOrigen)}
+                    <div style={{ margin: '1rem 0 0.25rem 0', color: '#C4A747', fontWeight: 'bold', fontSize: '0.8rem' }}>DATOS BANCARIOS PARA EL PAGO</div>
+                    {fila('Banco', t.banco)}
+                    {fila('Tipo de cuenta', t.tipoCuenta)}
+                    {fila('Número de cuenta', t.numeroCuenta)}
+                  </div>
+                );
+              })()}
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
+                <button onClick={() => handleGenerarPDFPagoTercero(verDetalleTercero)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  📄 Descargar PDF
+                </button>
+                <button onClick={() => setVerDetalleTercero(null)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  Cerrar
                 </button>
               </div>
             </div>
