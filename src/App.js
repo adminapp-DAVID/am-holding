@@ -1275,6 +1275,27 @@ const App = () => {
     setTercerosDB(data || []);
   };
 
+  // Elimina un tercero del catálogo reutilizable — borrado lógico (activo=false), nunca se
+  // borra la fila, para no romper el vínculo con los Pagos a Tercero ya hechos a esa persona
+  // (tercero_id queda apuntando a una fila que sigue existiendo, solo que ya no sale en el
+  // desplegable "Tercero guardado" de aquí en adelante). Restringido en la UI a Admin/
+  // Coordinadora Administrativa, los mismos roles que ya pueden editar terceros según la RLS.
+  const handleEliminarTercero = async (id) => {
+    if (!window.confirm('¿Eliminar este tercero del catálogo? Ya no aparecerá en el desplegable para futuros pagos — los pagos que ya se le hicieron no se ven afectados.')) return;
+    const { error } = await supabase.from('terceros').update({ activo: false }).eq('id', id);
+    if (error) {
+      console.error('Error eliminando tercero del catálogo:', error);
+      alert('❌ No se pudo eliminar el tercero del catálogo: ' + error.message);
+      return;
+    }
+    // Si era el que estaba elegido en el formulario, se limpia para no dejarlo "seleccionado"
+    // apuntando a un tercero que ya no está en la lista.
+    if (newSolicitud.terceroId === id) {
+      setNewSolicitud({...newSolicitud, terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false});
+    }
+    await cargarTerceros();
+  };
+
   // Trae el listado de usuarios y de solicitudes apenas hay sesión activa (login o restauración de sesión).
   useEffect(() => {
     if (user) {
@@ -4619,7 +4640,7 @@ const App = () => {
 
                       {/* Elegir un tercero ya guardado prellena todo lo de abajo — así, si el pago se
                           repite, solo hace falta ingresar el Valor. */}
-                      <div style={{ marginBottom: '0.75rem' }}>
+                      <div style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.5rem' }}>
                         <select value={newSolicitud.terceroId} onChange={(e) => {
                           const id = e.target.value;
                           if (!id) {
@@ -4627,11 +4648,23 @@ const App = () => {
                             return;
                           }
                           const t = tercerosDB.find(x => x.id === id);
-                          setNewSolicitud({...newSolicitud, terceroId: id, terceroNombre: t?.nombre || '', terceroDni: t?.dni || '', terceroPaisOrigen: t?.pais_origen || '', terceroBanco: t?.banco || '', terceroTipoCuenta: t?.tipo_cuenta || '', terceroNumeroCuenta: t?.numero_cuenta || '', guardarTercero: false, actualizarTercero: false});
-                        }} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }}>
+                          // "Actualizar" queda marcada por defecto al elegir un tercero guardado: si se
+                          // edita Nombre/DNI/banco/etc. abajo, el catálogo compartido se sincroniza solo
+                          // al guardar (se puede desmarcar si esta vez NO se quiere tocar el catálogo).
+                          setNewSolicitud({...newSolicitud, terceroId: id, terceroNombre: t?.nombre || '', terceroDni: t?.dni || '', terceroPaisOrigen: t?.pais_origen || '', terceroBanco: t?.banco || '', terceroTipoCuenta: t?.tipo_cuenta || '', terceroNumeroCuenta: t?.numero_cuenta || '', guardarTercero: false, actualizarTercero: true});
+                        }} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }}>
                           <option value="">➕ Nuevo tercero</option>
                           {tercerosDB.map(t => <option key={t.id} value={t.id}>{t.nombre} — {t.dni}</option>)}
                         </select>
+                        {/* Eliminar del catálogo: solo Admin/Coordinadora, mismos roles que ya pueden
+                            editar terceros en Supabase (RLS) — evita mostrar un botón que a otros roles
+                            les fallaría al hacer clic. Es un borrado lógico (activo=false, nunca se
+                            borra la fila) para no romper el vínculo con pagos históricos que ya lo usaron. */}
+                        {newSolicitud.terceroId && (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
+                          <button type="button" onClick={() => handleEliminarTercero(newSolicitud.terceroId)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#CC4B4B', cursor: 'pointer', fontSize: '0.85rem' }} title="Eliminar este tercero del catálogo">
+                            🗑️
+                          </button>
+                        )}
                       </div>
 
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
