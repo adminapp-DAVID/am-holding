@@ -455,6 +455,10 @@ const App = () => {
   const [verDetalleTercero, setVerDetalleTercero] = useState(null);
   const [mostrarImportar, setMostrarImportar] = useState(false);
   const [archivoImportacion, setArchivoImportacion] = useState(null);
+  // Informe de Finanzas (vista previa + PDF) — null cuando el modal está cerrado; mientras está
+  // abierto guarda { datos, graficas } ya calculados una sola vez (ver construirDatosInformeFinanzas).
+  const [informeFinanzas, setInformeFinanzas] = useState(null);
+  const [generandoInformePDF, setGenerandoInformePDF] = useState(false);
   const [filtroFechaInicio, setFiltroFechaInicio] = useState('2026-01-01');
   const [filtroFechaFin, setFiltroFechaFin] = useState(new Date().toISOString().split('T')[0]);
 
@@ -3912,6 +3916,388 @@ const App = () => {
     return true;
   });
 
+  // ============================================================
+  // INFORME DE FINANZAS (PDF con vista previa) — construido a partir del filtro actualmente
+  // aplicado al Historial (`registrosFinanzas`). Una sola función arma TODOS los datos y
+  // gráficas, y la usan tanto "Ver Informe" (vista previa en pantalla) como la descarga del
+  // PDF — así nunca pueden mostrar cosas distintas entre sí.
+  // ============================================================
+  const LIMITE_FILAS_TABLA_INFORME = 150;
+  const COLOR_INGRESO_INFORME = '#2F9E52';
+  const COLOR_GASTO_INFORME = '#CC4B4B';
+  const COLORES_CATEGORIA_INFORME = ['#C4A747', '#6C63D1', '#3B72D9', '#2F9E52', '#CC4B4B', '#8F8877', '#D4A5A5', '#7FB3B0'];
+
+  // Dibuja una gráfica de barras (una o más series) sobre un <canvas> creado en memoria — sin
+  // depender de ninguna librería de gráficas — y devuelve el PNG como data URL, listo para
+  // mostrarse en la vista previa (<img>) o insertarse en el PDF (doc.addImage).
+  const dibujarGraficaBarras = (labels, series, opciones = {}) => {
+    const ancho = opciones.ancho || 700;
+    const alto = opciones.alto || 320;
+    const canvas = document.createElement('canvas');
+    canvas.width = ancho;
+    canvas.height = alto;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, ancho, alto);
+
+    const margenIzq = 85, margenDer = 20, margenSup = 34, margenInf = 50;
+    const areaAncho = ancho - margenIzq - margenDer;
+    const areaAlto = alto - margenSup - margenInf;
+    const formatoValor = opciones.formatoValor || ((v) => Math.round(v).toLocaleString('es-CO'));
+
+    const todosValores = series.flatMap(s => s.valores);
+    const maxValor = Math.max(...todosValores, 1);
+
+    ctx.strokeStyle = '#E6E0D2';
+    ctx.fillStyle = '#8F8877';
+    ctx.font = '11px Arial';
+    ctx.textAlign = 'right';
+    const pasos = 4;
+    for (let i = 0; i <= pasos; i++) {
+      const yLinea = margenSup + areaAlto - (areaAlto * i / pasos);
+      const valor = maxValor * i / pasos;
+      ctx.beginPath();
+      ctx.moveTo(margenIzq, yLinea);
+      ctx.lineTo(ancho - margenDer, yLinea);
+      ctx.stroke();
+      ctx.fillText(formatoValor(valor), margenIzq - 8, yLinea + 4);
+    }
+
+    if (labels.length === 0) {
+      ctx.fillStyle = '#AFA897';
+      ctx.textAlign = 'center';
+      ctx.fillText('Sin datos para este filtro', ancho / 2, alto / 2);
+      return canvas.toDataURL('image/png');
+    }
+
+    const grupoAncho = areaAncho / labels.length;
+    const numSeries = series.length;
+    const barraAncho = Math.max((grupoAncho * 0.55) / numSeries, 4);
+    labels.forEach((label, i) => {
+      const xGrupo = margenIzq + i * grupoAncho + grupoAncho * 0.22;
+      series.forEach((s, si) => {
+        const valor = s.valores[i] || 0;
+        const h = (valor / maxValor) * areaAlto;
+        const x = xGrupo + si * (barraAncho + 3);
+        const yBarra = margenSup + areaAlto - h;
+        ctx.fillStyle = s.color;
+        ctx.fillRect(x, yBarra, barraAncho, h);
+      });
+      ctx.fillStyle = '#332D1E';
+      ctx.textAlign = 'center';
+      ctx.font = '10px Arial';
+      const xEtiqueta = margenIzq + i * grupoAncho + grupoAncho / 2;
+      ctx.fillText(label.length > 14 ? label.substring(0, 13) + '…' : label, xEtiqueta, alto - margenInf + 16);
+    });
+
+    let xLeyenda = margenIzq;
+    series.forEach(s => {
+      ctx.fillStyle = s.color;
+      ctx.fillRect(xLeyenda, 8, 10, 10);
+      ctx.fillStyle = '#332D1E';
+      ctx.textAlign = 'left';
+      ctx.font = 'bold 10px Arial';
+      ctx.fillText(s.nombre, xLeyenda + 14, 17);
+      xLeyenda += ctx.measureText(s.nombre).width + 40;
+    });
+
+    return canvas.toDataURL('image/png');
+  };
+
+  // Gráfica de torta (distribución) — mismo principio, sin librería externa.
+  const dibujarGraficaTorta = (datosTorta, opciones = {}) => {
+    const size = opciones.size || 260;
+    const anchoLeyenda = 210;
+    const canvas = document.createElement('canvas');
+    canvas.width = size + anchoLeyenda;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const total = datosTorta.reduce((sum, d) => sum + d.valor, 0) || 1;
+    const cx = size / 2, cy = size / 2, r = size / 2 - 16;
+    let anguloInicial = -Math.PI / 2;
+    datosTorta.forEach(d => {
+      const porcion = d.valor / total;
+      const anguloFinal = anguloInicial + porcion * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, r, anguloInicial, anguloFinal);
+      ctx.closePath();
+      ctx.fillStyle = d.color;
+      ctx.fill();
+      anguloInicial = anguloFinal;
+    });
+
+    let yLeyenda = 16;
+    datosTorta.forEach(d => {
+      ctx.fillStyle = d.color;
+      ctx.fillRect(size + 16, yLeyenda, 10, 10);
+      ctx.fillStyle = '#332D1E';
+      ctx.font = '10px Arial';
+      ctx.textAlign = 'left';
+      const pct = ((d.valor / total) * 100).toFixed(1);
+      const nombreCorto = d.nombre.length > 20 ? d.nombre.substring(0, 19) + '…' : d.nombre;
+      ctx.fillText(`${nombreCorto} (${pct}%)`, size + 32, yLeyenda + 9);
+      yLeyenda += 20;
+    });
+
+    return canvas.toDataURL('image/png');
+  };
+
+  // Arma el resumen, las gráficas (como datos, no imágenes todavía) y la tabla del Informe —
+  // todo a partir de `registrosFinanzas` (el filtro que se está viendo en pantalla ahora mismo).
+  const construirDatosInformeFinanzas = () => {
+    const datos = registrosFinanzas;
+    const monedasPresentes = [...new Set(datos.map(r => getMoneda(r.empresa)))].sort();
+
+    const filtrosTexto = [
+      (filtroFinanzasFechaInicio || filtroFinanzasFechaFin) ? `Fecha: ${filtroFinanzasFechaInicio || '…'} a ${filtroFinanzasFechaFin || '…'}` : 'Fecha: histórico completo',
+      `Empresa: ${filtroFinanzasEmpresa}`,
+      `CECO: ${filtroFinanzasCeco}`,
+      `Tipo: ${filtroTipoFinanzas}`,
+      ...(busquedaFinanzas.trim() ? [`Búsqueda: "${busquedaFinanzas.trim()}"`] : [])
+    ];
+
+    const etiquetaMes = (m) => {
+      const [anio, mesNum] = m.split('-');
+      const nombreMes = MESES_ES[parseInt(mesNum, 10) - 1] || mesNum;
+      return `${nombreMes.substring(0, 3)} ${anio}`;
+    };
+
+    const porMoneda = monedasPresentes.map(moneda => {
+      const filas = datos.filter(r => getMoneda(r.empresa) === moneda);
+      const ingresos = filas.filter(r => r.tipo === 'Ingreso').reduce((s, r) => s + (parseFloat(r.valor) || 0), 0);
+      const gastos = filas.filter(r => r.tipo === 'Gasto').reduce((s, r) => s + (parseFloat(r.valor) || 0), 0);
+      const trasladoSalida = filas.filter(r => r.tipo === 'Traslado' && r._ladoTraslado === 'salida').reduce((s, r) => s + (parseFloat(r.valor) || 0), 0);
+      // Cada Traslado aparece como 2 filas (salida/entrada) en registrosFinanzas — se cuenta una
+      // sola vez por su id real, para no duplicar el conteo de movimientos.
+      const idsTrasladoUnicos = new Set(filas.filter(r => r.tipo === 'Traslado').map(r => r.id));
+      const cantidadMovimientos = filas.filter(r => r.tipo !== 'Traslado').length + idsTrasladoUnicos.size;
+
+      const meses = {};
+      filas.forEach(r => {
+        if (r.tipo === 'Traslado') return;
+        const mes = (r.fecha || '').substring(0, 7);
+        if (!mes) return;
+        if (!meses[mes]) meses[mes] = { ingresos: 0, gastos: 0 };
+        if (r.tipo === 'Ingreso') meses[mes].ingresos += parseFloat(r.valor) || 0;
+        if (r.tipo === 'Gasto') meses[mes].gastos += parseFloat(r.valor) || 0;
+      });
+      const mesesOrdenados = Object.keys(meses).sort();
+      const graficaMensual = {
+        labels: mesesOrdenados.map(etiquetaMes),
+        series: [
+          { nombre: 'Ingresos', color: COLOR_INGRESO_INFORME, valores: mesesOrdenados.map(m => meses[m].ingresos) },
+          { nombre: 'Gastos', color: COLOR_GASTO_INFORME, valores: mesesOrdenados.map(m => meses[m].gastos) },
+        ]
+      };
+
+      const empresasMoneda = empresas.filter(e => getMoneda(e) === moneda);
+      const graficaEmpresa = {
+        labels: empresasMoneda,
+        series: [
+          { nombre: 'Ingresos', color: COLOR_INGRESO_INFORME, valores: empresasMoneda.map(e => filas.filter(r => r.empresa === e && r.tipo === 'Ingreso').reduce((s, r) => s + (parseFloat(r.valor) || 0), 0)) },
+          { nombre: 'Gastos', color: COLOR_GASTO_INFORME, valores: empresasMoneda.map(e => filas.filter(r => r.empresa === e && r.tipo === 'Gasto').reduce((s, r) => s + (parseFloat(r.valor) || 0), 0)) },
+        ]
+      };
+
+      const categoriasMap = {};
+      filas.filter(r => r.tipo === 'Gasto').forEach(r => {
+        const clave = r.categoria || r.ceco || 'Sin categoría';
+        categoriasMap[clave] = (categoriasMap[clave] || 0) + (parseFloat(r.valor) || 0);
+      });
+      const categoriasOrdenadas = Object.entries(categoriasMap).sort((a, b) => b[1] - a[1]);
+      const topCategorias = categoriasOrdenadas.slice(0, 6);
+      const restoValor = categoriasOrdenadas.slice(6).reduce((s, [, v]) => s + v, 0);
+      const distribucionCategoria = [
+        ...topCategorias.map(([nombre, valor], i) => ({ nombre, valor, color: COLORES_CATEGORIA_INFORME[i % COLORES_CATEGORIA_INFORME.length] })),
+        ...(restoValor > 0 ? [{ nombre: 'Otros', valor: restoValor, color: '#AFA897' }] : [])
+      ];
+
+      return { moneda, ingresos, gastos, neto: ingresos - gastos, trasladoSalida, cantidadTraslados: idsTrasladoUnicos.size, cantidadMovimientos, graficaMensual, graficaEmpresa, distribucionCategoria };
+    });
+
+    const truncado = datos.length > LIMITE_FILAS_TABLA_INFORME;
+    const filasTabla = (truncado ? datos.slice(0, LIMITE_FILAS_TABLA_INFORME) : datos).map(r => ({
+      fecha: r.fecha,
+      tipo: r._ladoTraslado ? `Traslado (${r._ladoTraslado})` : r.tipo,
+      colaborador: colaboradoresPublico.find(c => c.id === r.responsableId)?.nombre || r.responsableNombre || '—',
+      empresa: r.empresa,
+      cecoCuenta: r.ceco || r.cuenta || '—',
+      detalle: r.detalle || '—',
+      valorTexto: formatMoneyByMoneda(r.valor, getMoneda(r.empresa))
+    }));
+
+    return {
+      generadoPor: user.nombre,
+      fechaGeneracion: new Date().toISOString(),
+      filtrosTexto,
+      empresaFiltro: filtroFinanzasEmpresa,
+      totalRegistros: datos.length,
+      porMoneda,
+      filasTabla,
+      truncado
+    };
+  };
+
+  // Abre la vista previa del Informe ("👁️ Ver Informe") — calcula todo UNA vez (datos +
+  // imágenes de las gráficas) y lo deja en estado; tanto la vista previa como el botón
+  // "Descargar PDF" de adentro usan este mismo resultado, sin volver a calcularlo.
+  const handleAbrirInformeFinanzas = () => {
+    const datos = construirDatosInformeFinanzas();
+    const graficas = datos.porMoneda.map(pm => ({
+      moneda: pm.moneda,
+      imgMensual: dibujarGraficaBarras(pm.graficaMensual.labels, pm.graficaMensual.series, { formatoValor: (v) => formatMoneyByMoneda(v, pm.moneda) }),
+      imgEmpresa: dibujarGraficaBarras(pm.graficaEmpresa.labels, pm.graficaEmpresa.series, { formatoValor: (v) => formatMoneyByMoneda(v, pm.moneda) }),
+      imgCategoria: pm.distribucionCategoria.length > 0 ? dibujarGraficaTorta(pm.distribucionCategoria) : null,
+    }));
+    setInformeFinanzas({ datos, graficas });
+  };
+
+  // Genera y descarga el PDF a partir de lo que ya está calculado en `informeFinanzas` (lo que
+  // se ve en la vista previa) — así el PDF nunca puede mostrar algo distinto de lo previsualizado.
+  const handleDescargarInformeFinanzas = async () => {
+    if (!informeFinanzas) return;
+    setGenerandoInformePDF(true);
+    try {
+      const { datos, graficas } = informeFinanzas;
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margen = 15;
+      let y = margen;
+
+      // Portada: logo de la empresa filtrada, o de todas las que aparecen en los datos si el
+      // filtro es "Todas" — igual que en la carátula de mergeSoportesToPDF.
+      const empresasEnDatos = [...new Set(datos.filasTabla.map(r => r.empresa))];
+      const empresasParaLogo = datos.empresaFiltro !== 'Todas' ? [datos.empresaFiltro] : empresasEnDatos;
+      let xLogo = margen;
+      for (const emp of empresasParaLogo) {
+        const logoSrc = EMPRESA_LOGOS[emp];
+        if (!logoSrc) continue;
+        try {
+          const logoBytes = new Uint8Array(await fetch(logoSrc).then(r => r.arrayBuffer()));
+          const logoDataUrl = uint8ArrayToDataUrl(logoBytes, 'image/png');
+          doc.addImage(logoDataUrl, 'PNG', xLogo, y, 28, 14, undefined, 'FAST');
+          xLogo += 34;
+        } catch (logoError) {
+          console.warn('No se pudo insertar el logo de', emp, logoError);
+        }
+      }
+      y += 22;
+
+      doc.setFontSize(18);
+      doc.setFont(undefined, 'bold');
+      doc.text('INFORME FINANCIERO', margen, y);
+      y += 8;
+      doc.setFontSize(9);
+      doc.setFont(undefined, 'normal');
+      doc.setTextColor(107, 100, 88);
+      datos.filtrosTexto.forEach(linea => { doc.text(linea, margen, y); y += 5; });
+      doc.text(`Generado por ${datos.generadoPor} — ${new Date(datos.fechaGeneracion).toLocaleString('es-CO')}`, margen, y);
+      doc.setTextColor(0, 0, 0);
+      y += 10;
+
+      for (const pm of datos.porMoneda) {
+        const g = graficas.find(x => x.moneda === pm.moneda);
+        if (y > 235) { doc.addPage(); y = margen; }
+
+        doc.setFontSize(12);
+        doc.setFont(undefined, 'bold');
+        doc.setTextColor(196, 167, 71);
+        doc.text(`Resumen (${pm.moneda})`, margen, y);
+        doc.setTextColor(0, 0, 0);
+        y += 6;
+
+        doc.autoTable({
+          startY: y,
+          head: [['Ingresos', 'Gastos', 'Neto', 'Traslados', 'Movimientos']],
+          body: [[
+            formatMoneyByMoneda(pm.ingresos, pm.moneda),
+            formatMoneyByMoneda(pm.gastos, pm.moneda),
+            formatMoneyByMoneda(pm.neto, pm.moneda),
+            `${pm.cantidadTraslados} (${formatMoneyByMoneda(pm.trasladoSalida, pm.moneda)})`,
+            String(pm.cantidadMovimientos)
+          ]],
+          margin: margen,
+          theme: 'grid',
+          styles: { fontSize: 9 }
+        });
+        y = doc.lastAutoTable.finalY + 10;
+
+        if (y > 195) { doc.addPage(); y = margen; }
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'bold');
+        doc.text(`Ingresos vs Gastos por mes (${pm.moneda})`, margen, y);
+        y += 4;
+        doc.addImage(g.imgMensual, 'PNG', margen, y, pageWidth - margen * 2, 70);
+        y += 76;
+
+        if (y > 195) { doc.addPage(); y = margen; }
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'bold');
+        doc.text(`Ingresos vs Gastos por empresa (${pm.moneda})`, margen, y);
+        y += 4;
+        doc.addImage(g.imgEmpresa, 'PNG', margen, y, pageWidth - margen * 2, 70);
+        y += 76;
+
+        if (g.imgCategoria) {
+          if (y > 185) { doc.addPage(); y = margen; }
+          doc.setFontSize(10);
+          doc.setFont(undefined, 'bold');
+          doc.text(`Distribución del Gasto por Categoría/CECO (${pm.moneda})`, margen, y);
+          y += 4;
+          doc.addImage(g.imgCategoria, 'PNG', margen, y, 130, 60);
+          y += 66;
+        }
+      }
+
+      doc.addPage();
+      y = margen;
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(196, 167, 71);
+      doc.text('Detalle de Movimientos', margen, y);
+      doc.setTextColor(0, 0, 0);
+      y += 4;
+      if (datos.truncado) {
+        y += 5;
+        doc.setFontSize(8);
+        doc.setFont(undefined, 'normal');
+        doc.setTextColor(204, 75, 75);
+        doc.text(`Mostrando ${datos.filasTabla.length} de ${datos.totalRegistros} movimientos — acota el filtro para ver el detalle completo.`, margen, y);
+        doc.setTextColor(0, 0, 0);
+      }
+
+      doc.autoTable({
+        startY: y + 6,
+        head: [['Fecha', 'Tipo', 'Colaborador', 'Empresa', 'CECO/Cuenta', 'Detalle', 'Valor']],
+        body: datos.filasTabla.map(f => [f.fecha, f.tipo, f.colaborador, f.empresa, f.cecoCuenta, f.detalle, f.valorTexto]),
+        margin: margen,
+        theme: 'grid',
+        styles: { fontSize: 7.5 },
+        headStyles: { fillColor: [196, 167, 71], textColor: [34, 30, 21] }
+      });
+
+      const totalPaginas = doc.internal.getNumberOfPages();
+      for (let p = 1; p <= totalPaginas; p++) {
+        doc.setPage(p);
+        doc.setFontSize(8);
+        doc.setTextColor(143, 136, 119);
+        doc.text(`Página ${p} de ${totalPaginas}`, pageWidth - margen, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+        doc.text('AM Holding — Sistema Financiero', margen, doc.internal.pageSize.getHeight() - 8);
+      }
+
+      doc.save(`Informe_Finanzas_${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (error) {
+      console.error('Error generando el Informe de Finanzas:', error);
+      alert('❌ No se pudo generar el Informe PDF: ' + error.message);
+    } finally {
+      setGenerandoInformePDF(false);
+    }
+  };
+
   // Dashboard financiero — separado por moneda (ARKO en USD, el resto en COP).
   // Sumar pesos y dólares en un mismo total daría un número financieramente incorrecto.
   const gastosBase = user?.rol === 'Responsable' ? gastosUsuario : gastos;
@@ -5959,12 +6345,17 @@ const App = () => {
             <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
                 <h2 style={{ color: '#C4A747', margin: 0 }}>📋 Historial de Finanzas ({registrosFinanzas.length})</h2>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
                   {['Todos', 'Gasto', 'Traslado', 'Ingreso'].map(t => (
                     <button key={t} onClick={() => setFiltroTipoFinanzas(t)} style={{ padding: '0.4rem 0.9rem', borderRadius: '4px', border: filtroTipoFinanzas === t ? '1px solid #C4A747' : '1px solid #E6E0D2', backgroundColor: filtroTipoFinanzas === t ? '#C4A747' : '#F8F6F1', color: filtroTipoFinanzas === t ? '#221E15' : '#6B6458', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}>
                       {t === 'Gasto' ? '💸 Gasto' : t === 'Traslado' ? '🔄 Traslado' : t === 'Ingreso' ? '💰 Ingreso' : 'Todos'}
                     </button>
                   ))}
+                  {/* Informe PDF del filtro actualmente aplicado — resumen, gráficas y tabla,
+                      con vista previa antes de descargar (ver modal más abajo). */}
+                  <button onClick={handleAbrirInformeFinanzas} disabled={registrosFinanzas.length === 0} style={{ padding: '0.4rem 0.9rem', borderRadius: '4px', border: '1px solid #6C63D1', backgroundColor: registrosFinanzas.length === 0 ? '#E6E0D2' : '#6C63D1', color: '#FFFFFF', fontWeight: 'bold', fontSize: '0.8rem', cursor: registrosFinanzas.length === 0 ? 'not-allowed' : 'pointer' }}>
+                    👁️ Ver Informe
+                  </button>
                 </div>
               </div>
 
@@ -6730,6 +7121,74 @@ const App = () => {
                   📄 Descargar PDF
                 </button>
                 <button onClick={() => setVerDetalleTercero(null)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL INFORME DE FINANZAS — vista previa (resumen + gráficas + tabla) del filtro
+            actualmente aplicado, antes de descargar el PDF. Usa exactamente lo mismo que arma
+            handleDescargarInformeFinanzas, así que lo que se ve aquí es lo que trae el PDF. */}
+        {informeFinanzas && (
+          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
+            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '820px', width: '95%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+                <div>
+                  <h2 style={{ color: '#C4A747', margin: '0 0 0.35rem 0' }}>👁️ Informe Financiero — Vista Previa</h2>
+                  <p style={{ color: '#8F8877', margin: 0, fontSize: '0.8rem' }}>{informeFinanzas.datos.filtrosTexto.join(' · ')}</p>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  {informeFinanzas.datos.empresaFiltro !== 'Todas' && <EmpresaLogo empresa={informeFinanzas.datos.empresaFiltro} height={32} />}
+                </div>
+              </div>
+
+              {informeFinanzas.datos.porMoneda.length === 0 && (
+                <p style={{ color: '#AFA897', textAlign: 'center', padding: '2rem 0' }}>Sin registros para este filtro.</p>
+              )}
+
+              {informeFinanzas.datos.porMoneda.map(pm => {
+                const g = informeFinanzas.graficas.find(x => x.moneda === pm.moneda);
+                return (
+                  <div key={pm.moneda} style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #E6E0D2' }}>
+                    <h3 style={{ color: '#221E15', margin: '0 0 1rem 0', fontSize: '1rem' }}>Resumen ({pm.moneda})</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                      {[
+                        { label: 'Ingresos', valor: pm.ingresos, color: '#2F9E52' },
+                        { label: 'Gastos', valor: pm.gastos, color: '#CC4B4B' },
+                        { label: 'Neto', valor: pm.neto, color: pm.neto >= 0 ? '#2F9E52' : '#CC4B4B' },
+                        { label: 'Movimientos', valor: null, texto: String(pm.cantidadMovimientos), color: '#6C63D1' },
+                      ].map(card => (
+                        <div key={card.label} style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '6px', padding: '0.85rem' }}>
+                          <p style={{ margin: '0 0 0.35rem 0', color: '#8F8877', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{card.label}</p>
+                          <p style={{ margin: 0, color: card.color, fontWeight: 'bold', fontSize: '1rem' }}>{card.texto || formatMoneyByMoneda(card.valor, pm.moneda)}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <img src={g.imgMensual} alt={`Ingresos vs Gastos por mes (${pm.moneda})`} style={{ width: '100%', border: '1px solid #E6E0D2', borderRadius: '4px', marginBottom: '1rem' }} />
+                    <img src={g.imgEmpresa} alt={`Ingresos vs Gastos por empresa (${pm.moneda})`} style={{ width: '100%', border: '1px solid #E6E0D2', borderRadius: '4px', marginBottom: '1rem' }} />
+                    {g.imgCategoria && (
+                      <img src={g.imgCategoria} alt={`Distribución por categoría (${pm.moneda})`} style={{ maxWidth: '100%', border: '1px solid #E6E0D2', borderRadius: '4px' }} />
+                    )}
+                  </div>
+                );
+              })}
+
+              {informeFinanzas.datos.totalRegistros > 0 && (
+                <p style={{ color: informeFinanzas.datos.truncado ? '#CC4B4B' : '#8F8877', fontSize: '0.8rem', marginTop: '1.5rem' }}>
+                  {informeFinanzas.datos.truncado
+                    ? `⚠️ El PDF incluirá el detalle de ${informeFinanzas.datos.filasTabla.length} de ${informeFinanzas.datos.totalRegistros} movimientos (límite ${LIMITE_FILAS_TABLA_INFORME}) — acota el filtro para verlos todos.`
+                    : `El PDF incluirá el detalle completo de los ${informeFinanzas.datos.totalRegistros} movimiento(s).`}
+                </p>
+              )}
+
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+                <button onClick={handleDescargarInformeFinanzas} disabled={generandoInformePDF} style={{ flex: 1, padding: '0.75rem', backgroundColor: generandoInformePDF ? '#D8D2C2' : '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: generandoInformePDF ? 'not-allowed' : 'pointer' }}>
+                  {generandoInformePDF ? '⏳ Generando...' : '⬇️ Descargar PDF'}
+                </button>
+                <button onClick={() => setInformeFinanzas(null)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
                   Cerrar
                 </button>
               </div>
