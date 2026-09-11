@@ -3657,6 +3657,171 @@ const App = () => {
     reader.readAsText(file);
   };
 
+  // Plantilla en blanco para el importador combinado de abajo — mismas columnas que espera
+  // handleImportarExcel, con una fila de ejemplo de cada tipo de movimiento. Se la entrega a
+  // quien vaya a convertir un extracto bancario (a mano, o pidiéndole a Claude que lo haga) para
+  // que sepa exactamente en qué formato dejar el resultado antes de subirlo.
+  const handleDescargarPlantillaImportacion = () => {
+    const encabezados = ['Movimiento', 'Fecha', 'Empresa', 'Responsable', 'CECO', 'Cuenta', 'Cuenta Salida', 'Cuenta Destino', 'Detalle', 'Valor', 'Valor Destino', 'Categoria', 'Estado', 'Observaciones'];
+    const ejemplos = [
+      ['Gasto', '2026-01-15', 'AM SPORTS GROUP SAS', '', '', 'Bancolombia Ahorros', '', '', 'Pago proveedor X', 350000, '', 'Operativo', 'Pendiente', ''],
+      ['Ingreso', '2026-01-16', 'AM SPORTS GROUP SAS', '', '', 'Bancolombia Ahorros', '', '', 'Pago cliente Y', 1200000, '', 'Ventas', 'Pendiente', ''],
+      ['Traslado', '2026-01-17', 'ARKO', '', '', '', 'Cuenta USD ARKO', 'AM SPORTS GROUP SAS: Bancolombia Ahorros', 'Traslado de fondos', 500, 2000000, '', 'Pendiente', '']
+    ];
+    const ws = XLSX.utils.aoa_to_sheet([encabezados, ...ejemplos]);
+    ws['!cols'] = encabezados.map(() => ({ wch: 20 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Plantilla');
+    XLSX.writeFile(wb, 'plantilla_importar_finanzas.xlsx');
+  };
+
+  // Importa Gastos, Ingresos y Traslados desde UN SOLO archivo Excel/CSV — la columna
+  // "Movimiento" decide a qué tabla va cada fila. Pensado para el flujo: se lee un extracto
+  // bancario (a mano, o pidiéndole a Claude que lo convierta) y el resultado se sube aquí tal
+  // cual, ya en las columnas de handleDescargarPlantillaImportacion. El importador JSON de
+  // arriba (handleImportarGastos) sigue funcionando aparte, para quien ya tenga archivos en ese
+  // formato de una migración anterior.
+  // Valida TODO el archivo antes de insertar cualquier fila — si algo no cuadra, no se guarda
+  // nada (para no dejar la contabilidad a medias) y se muestra la lista completa de errores.
+  const handleImportarExcel = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const wb = XLSX.read(event.target.result, { type: 'array', cellDates: true });
+        const hoja = wb.Sheets[wb.SheetNames[0]];
+        const filas = XLSX.utils.sheet_to_json(hoja, { defval: '' });
+
+        if (filas.length === 0) {
+          alert('❌ El archivo no tiene filas de datos.');
+          return;
+        }
+
+        const formatearFecha = (valor) => {
+          if (valor instanceof Date) return valor.toISOString().split('T')[0];
+          return String(valor || '').trim();
+        };
+
+        const errores = [];
+        const filasValidas = filas.map((fila, idx) => {
+          const numFila = idx + 2; // +2: la fila 1 de Excel es el encabezado
+          const movimiento = String(fila['Movimiento'] || '').trim();
+          const movimientoNorm = movimiento.charAt(0).toUpperCase() + movimiento.slice(1).toLowerCase();
+          const fecha = formatearFecha(fila['Fecha']);
+          const empresa = String(fila['Empresa'] || '').trim();
+          const valor = parseFloat(fila['Valor']);
+
+          if (!['Gasto', 'Ingreso', 'Traslado'].includes(movimientoNorm)) {
+            errores.push(`Fila ${numFila}: "Movimiento" debe ser Gasto, Ingreso o Traslado (llegó "${movimiento}")`);
+          }
+          if (!fecha) errores.push(`Fila ${numFila}: falta la Fecha`);
+          if (!empresa || !empresas.includes(empresa)) {
+            errores.push(`Fila ${numFila}: "Empresa" no coincide con ninguna empresa de la holding (llegó "${empresa}")`);
+          }
+          if (!fila['Valor'] || isNaN(valor) || valor <= 0) {
+            errores.push(`Fila ${numFila}: "Valor" debe ser un número mayor a cero`);
+          }
+          if (movimientoNorm === 'Traslado' && !String(fila['Cuenta Salida'] || '').trim()) {
+            errores.push(`Fila ${numFila}: un Traslado necesita "Cuenta Salida"`);
+          }
+          if (movimientoNorm === 'Traslado' && !String(fila['Cuenta Destino'] || '').trim()) {
+            errores.push(`Fila ${numFila}: un Traslado necesita "Cuenta Destino"`);
+          }
+          if (movimientoNorm !== 'Traslado' && !String(fila['Cuenta'] || '').trim()) {
+            errores.push(`Fila ${numFila}: falta "Cuenta"`);
+          }
+
+          const responsableNombre = String(fila['Responsable'] || '').trim();
+          if (responsableNombre && !personasFinanzas.some(r => r.nombre === responsableNombre)) {
+            errores.push(`Fila ${numFila}: el Responsable "${responsableNombre}" no existe en el sistema — déjalo vacío o corrige el nombre exacto`);
+          }
+          const cecoCodigo = String(fila['CECO'] || '').trim();
+          if (cecoCodigo && !cecosDB.some(c => c.codigo === cecoCodigo)) {
+            errores.push(`Fila ${numFila}: el CECO "${cecoCodigo}" no existe en el catálogo — déjalo vacío o corrige el código exacto`);
+          }
+
+          return {
+            numFila, movimiento: movimientoNorm, fecha, empresa, responsableNombre, cecoCodigo,
+            cuenta: String(fila['Cuenta'] || '').trim() || null,
+            cuentaSalida: String(fila['Cuenta Salida'] || '').trim() || null,
+            cuentaDestino: String(fila['Cuenta Destino'] || '').trim() || null,
+            detalle: String(fila['Detalle'] || '').trim(),
+            valor,
+            valorDestino: fila['Valor Destino'] ? parseFloat(fila['Valor Destino']) : null,
+            categoria: String(fila['Categoria'] || '').trim() || null,
+            estado: String(fila['Estado'] || '').trim() || 'Pendiente',
+            observaciones: String(fila['Observaciones'] || '').trim() || null
+          };
+        });
+
+        if (errores.length > 0) {
+          alert(`❌ No se importó nada — corrige estos ${errores.length} problema(s) en el archivo y vuelve a intentar:\n\n${errores.slice(0, 25).join('\n')}${errores.length > 25 ? `\n… y ${errores.length - 25} más.` : ''}`);
+          return;
+        }
+
+        // Todas las filas son válidas: recién ahora se resuelven los ids de Supabase y se
+        // separan por tabla destino (mismo patrón de caché que handleImportarGastos, para no
+        // repetir la misma consulta de empresa/CECO fila tras fila).
+        const empresaCache = {};
+        const cecoCache = {};
+        const filasGastos = [];
+        const filasIngresos = [];
+
+        for (const f of filasValidas) {
+          if (!(f.empresa in empresaCache)) empresaCache[f.empresa] = await resolverEmpresaId(f.empresa);
+          const cecoFinal = f.movimiento === 'Traslado' ? (f.cecoCodigo || CECO_TRASLADO_FIJO) : f.cecoCodigo;
+          if (cecoFinal && !(cecoFinal in cecoCache)) cecoCache[cecoFinal] = await resolverCecoId(cecoFinal);
+          const responsableId = f.responsableNombre ? (personasFinanzas.find(r => r.nombre === f.responsableNombre)?.id || null) : null;
+          const empresaId = empresaCache[f.empresa] || null;
+          const cecoId = cecoFinal ? (cecoCache[cecoFinal] || null) : null;
+
+          if (f.movimiento === 'Ingreso') {
+            filasIngresos.push({
+              fecha: f.fecha, tipo: 'Ingreso', empresa_id: empresaId, responsable_id: responsableId,
+              ceco_id: cecoId, cuenta: f.cuenta, detalle: f.detalle, valor: f.valor,
+              categoria: f.categoria, estado: f.estado, observaciones: f.observaciones
+            });
+          } else {
+            filasGastos.push({
+              fecha: f.fecha, tipo: f.movimiento, empresa_id: empresaId, responsable_id: responsableId,
+              ceco_id: cecoId, cuenta: f.cuenta, cuenta_salida: f.cuentaSalida, cuenta_destino: f.cuentaDestino,
+              detalle: f.detalle, valor: f.valor, valor_destino: f.valorDestino, valor_bruto: null,
+              deduccion_aplicada: null, categoria: f.categoria, estado: f.estado,
+              observaciones: f.observaciones, presupuesto_item_id: null, soporte_drive_link: null
+            });
+          }
+        }
+
+        if (filasGastos.length > 0) {
+          const { error } = await supabase.from('gastos').insert(filasGastos);
+          if (error) {
+            console.error('Error importando gastos/traslados desde Excel:', error);
+            alert('❌ No se pudieron importar los Gastos/Traslados: ' + error.message);
+            return;
+          }
+        }
+        if (filasIngresos.length > 0) {
+          const { error } = await supabase.from('ingresos').insert(filasIngresos);
+          if (error) {
+            console.error('Error importando ingresos desde Excel:', error);
+            alert('❌ No se pudieron importar los Ingresos: ' + error.message);
+            return;
+          }
+        }
+
+        await Promise.all([cargarGastos(), cargarIngresos()]);
+        setMostrarImportar(false);
+        alert(`✅ Importados ${filasGastos.length} Gasto(s)/Traslado(s) y ${filasIngresos.length} Ingreso(s).`);
+      } catch (error) {
+        console.error('Error procesando el Excel:', error);
+        alert('❌ Error al procesar el archivo: ' + error.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
   const handleViewSoportes = (soportes) => {
     setVerSoportes(soportes);
   };
@@ -6473,30 +6638,51 @@ const App = () => {
         {/* MODAL IMPORTAR HISTÓRICO */}
         {mostrarImportar && (
           <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
-            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '500px', width: '90%', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-              <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📥 Importar Histórico de Gastos</h2>
-              
+            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '520px', width: '90%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
+              <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📥 Importar Histórico</h2>
+
+              {/* OPCIÓN PRINCIPAL: Excel/CSV combinado (Gastos + Ingresos + Traslados) */}
               <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem', marginBottom: '1.5rem' }}>
                 <p style={{ color: '#6B6458', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>
-                  ⚠️ Esto agregará todos los registros del archivo JSON al histórico.
+                  ⚠️ Esto agregará todos los registros del archivo al histórico — Gastos, Ingresos y Traslados en un mismo Excel (columna "Movimiento" indica a cuál va cada fila).
                 </p>
                 <p style={{ color: '#6B6458', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>
-                  Registros actuales: <strong style={{ color: '#C4A747' }}>{gastos.length}</strong>
+                  Registros actuales: <strong style={{ color: '#C4A747' }}>{gastos.length} Gastos/Traslados</strong> · <strong style={{ color: '#C4A747' }}>{ingresos.length} Ingresos</strong>
                 </p>
-                
+
                 <label style={{ display: 'block', marginBottom: '1rem' }}>
-                  <input 
-                    type="file" 
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    onChange={handleImportarExcel}
+                    style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', cursor: 'pointer' }}
+                  />
+                </label>
+
+                <button type="button" onClick={handleDescargarPlantillaImportacion} style={{ width: '100%', padding: '0.6rem', backgroundColor: '#FFFFFF', border: '1px solid #C4A747', borderRadius: '4px', color: '#C4A747', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
+                  ⬇️ Descargar plantilla en blanco
+                </button>
+                <p style={{ color: '#6B6458', margin: '0.75rem 0 0 0', fontSize: '0.8rem' }}>
+                  Si no sabes cómo dejar el Excel en este formato, súbele el extracto bancario o la planilla original a Claude en el chat del proyecto y pídele que te lo entregue en la plantilla — luego solo subes el resultado aquí.
+                </p>
+              </div>
+
+              {/* OPCIÓN ANTIGUA: JSON, solo Gastos/Traslados — se deja disponible para quien
+                  todavía tenga archivos generados en ese formato de una migración anterior. */}
+              <details style={{ marginBottom: '1.5rem' }}>
+                <summary style={{ color: '#8F8877', fontSize: '0.8rem', cursor: 'pointer' }}>Formato anterior (JSON, solo Gastos/Traslados)</summary>
+                <div style={{ marginTop: '0.75rem' }}>
+                  <input
+                    type="file"
                     accept=".json"
                     onChange={handleImportarGastos}
                     style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', cursor: 'pointer' }}
                   />
-                </label>
-                
-                <p style={{ color: '#6B6458', margin: 0, fontSize: '0.8rem' }}>
-                  📄 Carga el archivo <code style={{ color: '#C4A747' }}>gastos_importar.json</code> generado desde DBAMHolding
-                </p>
-              </div>
+                  <p style={{ color: '#6B6458', margin: '0.5rem 0 0 0', fontSize: '0.8rem' }}>
+                    📄 Carga el archivo <code style={{ color: '#C4A747' }}>gastos_importar.json</code> generado desde DBAMHolding
+                  </p>
+                </div>
+              </details>
 
               <div style={{ display: 'flex', gap: '1rem' }}>
                 <button onClick={() => setMostrarImportar(false)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
