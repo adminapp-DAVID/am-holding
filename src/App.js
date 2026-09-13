@@ -515,7 +515,12 @@ const App = () => {
   const deduccionVacia = { presupuestoItemId: '', tipo: 'Préstamo', valorCuota: '', saldoTotal: '', fechaInicio: new Date().toISOString().split('T')[0], observaciones: '', activo: true };
   const [newDeduccion, setNewDeduccion] = useState(deduccionVacia);
   const [editingDeduccionId, setEditingDeduccionId] = useState(null);
-  const [newPresupuestoItem, setNewPresupuestoItem] = useState({ empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-001-GF', nombre: '', tipo: 'Nómina', valorMensual: '', diaLimitePago: '', activo: true });
+  const [newPresupuestoItem, setNewPresupuestoItem] = useState({ empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-001-GF', nombre: '', tipo: 'Nómina', valorMensual: '', diaLimitePago: '', activo: true, responsableId: '' });
+  // Presupuesto -> Finanzas en lote: conceptos "Pendiente" marcados en la pestaña Mensual para
+  // confirmar su pago de una sola vez (ver confirmarPagoLotePresupuesto más abajo).
+  const [seleccionPresupuestoPendientes, setSeleccionPresupuestoPendientes] = useState([]);
+  const [confirmarPagoLotePresupuesto, setConfirmarPagoLotePresupuesto] = useState(null);
+  const [guardandoPagoLotePresupuesto, setGuardandoPagoLotePresupuesto] = useState(false);
   const [newPresupuestoAnual, setNewPresupuestoAnual] = useState({ empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-001-GF', anio: new Date().getFullYear(), valorAnual: '' });
   const [presupuestoTab, setPresupuestoTab] = useState('mensual');
   const [filtroPresupuesto, setFiltroPresupuesto] = useState({ empresa: 'AM SPORTS GROUP SAS', mes: new Date().getMonth() + 1, anio: new Date().getFullYear() });
@@ -1121,13 +1126,18 @@ const App = () => {
     tipo: row.tipo || '',
     valorMensual: row.valor_mensual,
     diaLimitePago: row.dia_limite_pago != null ? String(row.dia_limite_pago) : '',
-    activo: row.activo
+    activo: row.activo,
+    // Vincula el concepto a un colaborador real (usuarios) — permite que el Gasto generado
+    // automáticamente al "Marcar Pagado" en la pestaña Mensual quede con responsable_id
+    // correcto, sin tener que emparejar por el texto libre de "nombre" cada mes.
+    responsableId: row.responsable_id || '',
+    responsableNombre: row.usuarios?.nombre || ''
   });
 
   const cargarPresupuestoItems = async () => {
     const { data, error } = await supabase
       .from('presupuesto_items')
-      .select('id, nombre, tipo, valor_mensual, dia_limite_pago, activo, empresas ( nombre ), cecos ( codigo )')
+      .select('id, nombre, tipo, valor_mensual, dia_limite_pago, activo, responsable_id, empresas ( nombre ), cecos ( codigo ), usuarios ( nombre )')
       .order('created_at', { ascending: true });
     if (error) {
       console.error('Error cargando presupuesto_items:', error);
@@ -1552,6 +1562,13 @@ const App = () => {
     if (currentView === 'responsables') { cargarUsuarios(); cargarColaboradoresPublico(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentView]);
+
+  // Limpia la selección de "Marcar Pagado en lote" de Presupuesto al cambiar de Empresa/Mes/Año
+  // — evita arrastrar ids marcados en un mes hacia otro por accidente (seleccionPresupuestoValida
+  // ya los filtra igual, esto solo evita la confusión de ver casillas premarcadas al cambiar filtro).
+  useEffect(() => {
+    setSeleccionPresupuestoPendientes([]);
+  }, [filtroPresupuesto.empresa, filtroPresupuesto.mes, filtroPresupuesto.anio]);
 
   // Al entrar a "Mi Perfil" se refresca el borrador con los datos más recientes guardados.
   useEffect(() => {
@@ -3753,6 +3770,7 @@ const App = () => {
       tipo: newPresupuestoItem.tipo || null,
       valor_mensual: newPresupuestoItem.valorMensual,
       dia_limite_pago: newPresupuestoItem.diaLimitePago ? parseInt(newPresupuestoItem.diaLimitePago) : null,
+      responsable_id: newPresupuestoItem.responsableId || null,
       activo: true
     });
     if (error) {
@@ -3761,7 +3779,7 @@ const App = () => {
       return;
     }
     await cargarPresupuestoItems();
-    setNewPresupuestoItem({ empresa: newPresupuestoItem.empresa, ceco: newPresupuestoItem.ceco, nombre: '', tipo: newPresupuestoItem.tipo, valorMensual: '', diaLimitePago: '', activo: true });
+    setNewPresupuestoItem({ empresa: newPresupuestoItem.empresa, ceco: newPresupuestoItem.ceco, nombre: '', tipo: newPresupuestoItem.tipo, valorMensual: '', diaLimitePago: '', activo: true, responsableId: '' });
   };
 
   const handleUpdatePresupuestoItem = async (id, campo, valor) => {
@@ -3775,6 +3793,22 @@ const App = () => {
     }
   };
 
+  // El Responsable vive en dos columnas distintas entre el estado local (responsableId) y la
+  // fila de Supabase (responsable_id) — a diferencia de "activo", que se llama igual en ambos
+  // lados y por eso puede reusar handleUpdatePresupuestoItem tal cual — así que necesita su
+  // propio handler para no confundir el nombre de columna al hacer el update.
+  const handleUpdatePresupuestoItemResponsable = async (id, responsableId) => {
+    const anteriores = presupuestoItems;
+    const responsableNombre = personasFinanzas.find(u => u.id === responsableId)?.nombre || '';
+    setPresupuestoItems(presupuestoItems.map(p => p.id === id ? { ...p, responsableId, responsableNombre } : p));
+    const { error } = await supabase.from('presupuesto_items').update({ responsable_id: responsableId || null }).eq('id', id);
+    if (error) {
+      console.error('Error actualizando el responsable del concepto de presupuesto:', error);
+      alert('❌ No se pudo actualizar el responsable: ' + error.message);
+      setPresupuestoItems(anteriores);
+    }
+  };
+
   const handleDeletePresupuestoItem = async (id) => {
     if (!window.confirm('¿Eliminar este concepto de presupuesto? Los gastos ya vinculados a él no se borran.')) return;
     const { error } = await supabase.from('presupuesto_items').delete().eq('id', id);
@@ -3784,6 +3818,124 @@ const App = () => {
       return;
     }
     setPresupuestoItems(presupuestoItems.filter(p => p.id !== id));
+  };
+
+  // PRESUPUESTO -> FINANZAS EN LOTE: mismo espíritu que la Opción C de Solicitudes (Confirmar
+  // Pago pide Cuenta + Comprobante y genera el Gasto solo), pero pensado para el día de pago
+  // masivo (ej. nómina del 16): se eligen varios conceptos "Pendiente" del mes, se confirma una
+  // sola Cuenta y Fecha para todos, y cada uno lleva su propio comprobante (con la opción de
+  // aplicar el mismo archivo a todos de una vez si el banco entregó un solo comprobante para
+  // todo el lote).
+
+  // Aplica UN comprobante a TODOS los conceptos seleccionados de una vez — para cuando el banco
+  // entrega un solo extracto/comprobante que cubre todo el lote de pagos.
+  const handleSeleccionarComprobantePresupuestoTodos = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const archivo = { nombre: file.name, tipo: file.type, data: event.target.result };
+      setConfirmarPagoLotePresupuesto(prev => prev ? { ...prev, comprobantes: Object.fromEntries(prev.items.map(it => [it.id, archivo])) } : prev);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // Comprobante individual de un concepto puntual dentro del lote (sobrescribe el que se haya
+  // aplicado a todos, si el pago de ESE concepto en particular vino en un comprobante aparte).
+  const handleSeleccionarComprobantePresupuestoItem = (itemId, e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setConfirmarPagoLotePresupuesto(prev => prev ? { ...prev, comprobantes: { ...prev.comprobantes, [itemId]: { nombre: file.name, tipo: file.type, data: event.target.result } } } : prev);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // Confirma el lote: valida Cuenta/Fecha/comprobantes, y genera un Gasto por cada concepto
+  // (releyendo justo antes de insertar si ya quedó pagado ese mes, por si alguien más lo generó
+  // mientras el modal estaba abierto — no duplica). Sigue con el resto aunque uno falle, y al
+  // final informa cuántos se lograron y cuáles no.
+  const handleConfirmarPagoLotePresupuesto = async () => {
+    if (!confirmarPagoLotePresupuesto) return;
+    const { items, cuenta, fecha, comprobantes } = confirmarPagoLotePresupuesto;
+    if (!cuenta) {
+      alert('Elige con qué cuenta de la empresa se pagó');
+      return;
+    }
+    if (!fecha) {
+      alert('Elige la fecha del pago');
+      return;
+    }
+    const faltantes = items.filter(it => !comprobantes[it.id]);
+    if (faltantes.length > 0) {
+      alert('Falta el comprobante de: ' + faltantes.map(f => f.nombre).join(', '));
+      return;
+    }
+
+    setGuardandoPagoLotePresupuesto(true);
+    try {
+      const empresaId = await resolverEmpresaId(filtroPresupuesto.empresa);
+      const mesStr = `${filtroPresupuesto.anio}-${String(filtroPresupuesto.mes).padStart(2, '0')}`;
+      let generados = 0;
+      const fallidos = [];
+
+      for (const item of items) {
+        try {
+          // Releer en vez de confiar en el estado local: evita duplicar si el concepto ya
+          // quedó pagado (otra persona, u otra pestaña) mientras este modal seguía abierto.
+          const { data: gastosDelConcepto, error: errorLectura } = await supabase
+            .from('gastos')
+            .select('id, fecha')
+            .eq('presupuesto_item_id', item.id);
+          if (errorLectura) throw errorLectura;
+          if ((gastosDelConcepto || []).some(g => g.fecha && g.fecha.substring(0, 7) === mesStr)) {
+            fallidos.push(`${item.nombre} (ya estaba pagado este mes)`);
+            continue;
+          }
+
+          const cecoId = await resolverCecoId(item.ceco);
+          const { data: nuevoGasto, error: errorGasto } = await supabase
+            .from('gastos')
+            .insert({
+              fecha,
+              tipo: 'Gasto',
+              empresa_id: empresaId,
+              responsable_id: item.responsableId || null,
+              ceco_id: cecoId,
+              cuenta,
+              detalle: item.nombre,
+              valor: item.netoAPagar,
+              valor_bruto: item.valorEsperado,
+              deduccion_aplicada: item.totalDeducciones > 0 ? item.totalDeducciones : null,
+              categoria: item.tipo || null,
+              estado: 'Pagado',
+              observaciones: 'Generado automáticamente desde Presupuesto (Mensual) al marcar pagado.',
+              presupuesto_item_id: item.id
+            })
+            .select('id')
+            .single();
+          if (errorGasto) throw errorGasto;
+
+          await subirSoporteEntidad(comprobantes[item.id], 'gasto', nuevoGasto.id);
+          generados++;
+        } catch (errorItem) {
+          console.error(`Error registrando en Finanzas el concepto "${item.nombre}":`, errorItem);
+          fallidos.push(`${item.nombre}: ${errorItem.message || 'error inesperado'}`);
+        }
+      }
+
+      await cargarGastos();
+      setSeleccionPresupuestoPendientes([]);
+      setConfirmarPagoLotePresupuesto(null);
+      alert(fallidos.length > 0
+        ? `✅ ${generados} concepto(s) registrados en Finanzas.\n⚠️ No se pudieron registrar: ${fallidos.join('; ')}`
+        : `✅ ${generados} concepto(s) registrados en Finanzas.`);
+    } finally {
+      setGuardandoPagoLotePresupuesto(false);
+    }
   };
 
   const handleAddPresupuestoAnual = async () => {
@@ -4964,6 +5116,13 @@ const App = () => {
     else { acc.totalPendiente += item.valorEsperado; acc.itemsPendientes += 1; }
     return acc;
   }, { totalPresupuestado: 0, totalPagado: 0, totalPendiente: 0, totalDeducciones: 0, totalNeto: 0, itemsPagados: 0, itemsPendientes: 0 });
+
+  // Filtra la selección contra los "Pendiente" realmente visibles ahora mismo (mismo mes/año/
+  // empresa) — así, si el usuario cambia el filtro con casillas marcadas, o algún seleccionado
+  // ya se pagó (otra persona, otra pestaña), no arrastra ids fantasma al modal de confirmación.
+  const seleccionPresupuestoValida = seleccionPresupuestoPendientes.filter(id =>
+    presupuestoMensualDetalle.some(item => item.id === id && !item.pagado)
+  );
 
   // Vista anual: ejecución acumulada del año por CECO (empresa filtrada) contra el techo anual cargado manualmente.
   const presupuestoAnualDetalle = (() => {
@@ -7247,10 +7406,19 @@ const App = () => {
                         <div style={{ width: `${presupuestoMensualTotales.totalPresupuestado > 0 ? (presupuestoMensualTotales.totalPagado / presupuestoMensualTotales.totalPresupuestado) * 100 : 0}%`, height: '100%', backgroundColor: '#2F9E52' }} />
                       </div>
 
+                      {puedeEditarPresupuesto && presupuestoMensualTotales.itemsPendientes > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                          <button onClick={() => setConfirmarPagoLotePresupuesto({ items: presupuestoMensualDetalle.filter(i => seleccionPresupuestoValida.includes(i.id)), cuenta: '', fecha: new Date().toISOString().split('T')[0], comprobantes: {} })} disabled={seleccionPresupuestoValida.length === 0} style={{ padding: '0.6rem 1.25rem', backgroundColor: seleccionPresupuestoValida.length === 0 ? '#D8D2C2' : '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: seleccionPresupuestoValida.length === 0 ? 'not-allowed' : 'pointer', fontSize: '0.85rem' }}>
+                            ✅ Marcar Pagado {seleccionPresupuestoValida.length > 0 ? `(${seleccionPresupuestoValida.length})` : ''}
+                          </button>
+                          <span style={{ color: '#8F8877', fontSize: '0.8rem' }}>Marca las casillas de los conceptos que ya pagaste para registrarlos juntos en Finanzas.</span>
+                        </div>
+                      )}
                       <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                           <thead>
                             <tr style={{ borderBottom: '2px solid #E6E0D2' }}>
+                              {puedeEditarPresupuesto && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}></th>}
                               <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Concepto</th>
                               <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
                               <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
@@ -7264,6 +7432,15 @@ const App = () => {
                           <tbody>
                             {presupuestoMensualDetalle.map(item => (
                               <tr key={item.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                                {puedeEditarPresupuesto && (
+                                  <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                                    {!item.pagado && (
+                                      <input type="checkbox" checked={seleccionPresupuestoValida.includes(item.id)} onChange={(e) => {
+                                        setSeleccionPresupuestoPendientes(prev => e.target.checked ? [...prev, item.id] : prev.filter(id => id !== item.id));
+                                      }} />
+                                    )}
+                                  </td>
+                                )}
                                 <td style={{ padding: '0.75rem', color: '#221E15' }}>{item.nombre}</td>
                                 <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{cecos.find(c => c.codigo === item.ceco)?.nombre || item.ceco}</td>
                                 <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{item.tipo}</td>
@@ -7468,12 +7645,17 @@ const App = () => {
                             {tiposPresupuesto.map(t => <option key={t} value={t}>{t}</option>)}
                           </select>
                           <input type="number" placeholder="Día límite de pago" value={newPresupuestoItem.diaLimitePago} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, diaLimitePago: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
+                          <select value={newPresupuestoItem.responsableId} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, responsableId: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
+                            <option value="">Sin vincular a colaborador</option>
+                            {[...personasFinanzas].sort((a, b) => a.nombre.localeCompare(b.nombre)).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                          </select>
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: '1rem' }}>
                           <input type="text" placeholder="Nombre / Responsable / Concepto" value={newPresupuestoItem.nombre} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, nombre: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
                           <input type="number" placeholder="Valor mensual" value={newPresupuestoItem.valorMensual} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, valorMensual: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
                           <button onClick={handleAddPresupuestoItem} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>+ Agregar</button>
                         </div>
+                        <p style={{ color: '#8F8877', fontSize: '0.75rem', marginTop: '0.75rem', marginBottom: 0 }}>Vincular el colaborador es opcional, pero permite que el Gasto que se genere al "Marcar Pagado" en la pestaña Mensual quede con el Responsable correcto desde el primer clic.</p>
                       </div>
                     )}
 
@@ -7485,6 +7667,7 @@ const App = () => {
                             <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
                             <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Concepto</th>
                             <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
+                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th>
                             <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor Mensual</th>
                             <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Día Límite</th>
                             <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Activo</th>
@@ -7493,13 +7676,21 @@ const App = () => {
                         </thead>
                         <tbody>
                           {presupuestoItems.length === 0 ? (
-                            <tr><td colSpan={puedeEditarPresupuesto ? 8 : 7} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin conceptos cargados todavía.</td></tr>
+                            <tr><td colSpan={puedeEditarPresupuesto ? 9 : 8} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin conceptos cargados todavía.</td></tr>
                           ) : presupuestoItems.map(item => (
                             <tr key={item.id} style={{ borderBottom: '1px solid #E6E0D2', opacity: item.activo === false ? 0.5 : 1 }}>
                               <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{item.empresa}</td>
                               <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{cecos.find(c => c.codigo === item.ceco)?.nombre || item.ceco}</td>
                               <td style={{ padding: '0.75rem', color: '#221E15' }}>{item.nombre}</td>
                               <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{item.tipo}</td>
+                              <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>
+                                {puedeEditarPresupuesto ? (
+                                  <select value={item.responsableId} onChange={(e) => handleUpdatePresupuestoItemResponsable(item.id, e.target.value)} style={{ padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E' }}>
+                                    <option value="">Sin vincular</option>
+                                    {[...personasFinanzas].sort((a, b) => a.nombre.localeCompare(b.nombre)).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                                  </select>
+                                ) : (item.responsableNombre || '—')}
+                              </td>
                               <td style={{ padding: '0.75rem', textAlign: 'right', color: '#221E15' }}>{formatMoney(item.valorMensual, item.empresa)}</td>
                               <td style={{ padding: '0.75rem', textAlign: 'center', color: '#6B6458' }}>{item.diaLimitePago || '-'}</td>
                               <td style={{ padding: '0.75rem', textAlign: 'center' }}>
@@ -7816,6 +8007,66 @@ const App = () => {
           </div>
           );
         })()}
+
+        {/* MODAL CONFIRMAR PAGO EN LOTE (Presupuesto -> Finanzas) — para los conceptos
+            "Pendiente" marcados en la pestaña Mensual: una sola Cuenta y Fecha para todo el
+            lote, un comprobante por concepto (con opción de aplicar uno solo a todos), y al
+            confirmar genera un Gasto por cada concepto sin volver a llenar el formulario. */}
+        {confirmarPagoLotePresupuesto && (
+          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
+            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '560px', width: '90%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
+              <h2 style={{ color: '#C4A747', marginBottom: '0.5rem' }}>💳 Confirmar Pago — {confirmarPagoLotePresupuesto.items.length} concepto{confirmarPagoLotePresupuesto.items.length !== 1 ? 's' : ''}</h2>
+              <p style={{ color: '#6B6458', fontSize: '0.85rem', marginTop: 0, marginBottom: '1.25rem' }}>
+                {filtroPresupuesto.empresa} — Total: {formatMoney(confirmarPagoLotePresupuesto.items.reduce((sum, it) => sum + (it.netoAPagar || 0), 0), filtroPresupuesto.empresa)}
+              </p>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
+                <div>
+                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta de la empresa con la que se pagó *</label>
+                  <select value={confirmarPagoLotePresupuesto.cuenta} onChange={(e) => setConfirmarPagoLotePresupuesto({...confirmarPagoLotePresupuesto, cuenta: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                    <option value="">Seleccionar</option>
+                    {(cuentasPorEmpresa[filtroPresupuesto.empresa] || []).map(cuenta => <option key={cuenta} value={cuenta}>{cuenta}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Fecha del pago *</label>
+                  <input type="date" value={confirmarPagoLotePresupuesto.fecha} onChange={(e) => setConfirmarPagoLotePresupuesto({...confirmarPagoLotePresupuesto, fecha: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }} />
+                </div>
+              </div>
+
+              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>📎 Usar el mismo comprobante para todos (opcional)</label>
+              <input type="file" onChange={handleSeleccionarComprobantePresupuestoTodos} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '1.25rem', boxSizing: 'border-box', cursor: 'pointer' }} />
+
+              <div style={{ borderTop: '1px solid #E6E0D2', paddingTop: '1rem' }}>
+                {confirmarPagoLotePresupuesto.items.map(item => (
+                  <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', padding: '0.6rem 0', borderBottom: '1px solid #F0EDE4', flexWrap: 'wrap' }}>
+                    <div>
+                      <p style={{ margin: 0, color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>{item.nombre}</p>
+                      <p style={{ margin: '0.15rem 0 0 0', color: '#6B6458', fontSize: '0.75rem' }}>{formatMoney(item.netoAPagar, filtroPresupuesto.empresa)}</p>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <input type="file" onChange={(e) => handleSeleccionarComprobantePresupuestoItem(item.id, e)} style={{ fontSize: '0.75rem', maxWidth: '180px' }} />
+                      {confirmarPagoLotePresupuesto.comprobantes[item.id] ? (
+                        <p style={{ margin: '0.25rem 0 0 0', color: '#2F9E52', fontSize: '0.7rem' }}>✅ {confirmarPagoLotePresupuesto.comprobantes[item.id].nombre}</p>
+                      ) : (
+                        <p style={{ margin: '0.25rem 0 0 0', color: '#CC4B4B', fontSize: '0.7rem' }}>Falta comprobante</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
+                <button disabled={guardandoPagoLotePresupuesto} onClick={handleConfirmarPagoLotePresupuesto} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoPagoLotePresupuesto ? 'not-allowed' : 'pointer', opacity: guardandoPagoLotePresupuesto ? 0.6 : 1 }}>
+                  {guardandoPagoLotePresupuesto ? 'Guardando...' : `✅ Confirmar Pago (${confirmarPagoLotePresupuesto.items.length})`}
+                </button>
+                <button disabled={guardandoPagoLotePresupuesto} onClick={() => setConfirmarPagoLotePresupuesto(null)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* MODAL VER DETALLE DEL TERCERO — para que la Coordinadora Administrativa pueda
             ejecutar el pago sin abrir el PDF ni buscar en "Ver Soportes". */}
