@@ -4279,7 +4279,15 @@ const App = () => {
   ].sort((a, b) => new Date(b.fecha) - new Date(a.fecha) || (b.id || 0) - (a.id || 0));
 
   const registrosFinanzas = registrosFinanzasTodos.filter(r => {
-    if (filtroTipoFinanzas !== 'Todos' && r.tipo !== filtroTipoFinanzas) return false;
+    // El filtro "🤝 Pago a Tercero" también debe traer los Gastos normales que quedaron con
+    // datos de tercero adjuntos (Tipo "Gasto" + CECO "Pago a Terceros", ver esPagoTerceroFinanzas
+    // en el formulario) — su columna tipo en la base de datos sigue siendo 'Gasto', así que
+    // compararlos solo por tipo los dejaba invisibles al filtrar por "Pago a Tercero".
+    if (filtroTipoFinanzas === 'Pago a Tercero') {
+      if (r.tipo !== 'Pago a Tercero' && !r.terceroInfo) return false;
+    } else if (filtroTipoFinanzas !== 'Todos' && r.tipo !== filtroTipoFinanzas) {
+      return false;
+    }
     if (filtroFinanzasEmpresa !== 'Todas' && r.empresa !== filtroFinanzasEmpresa) return false;
     if (filtroFinanzasCeco !== 'Todos' && r.ceco !== filtroFinanzasCeco) return false;
     if (filtroFinanzasFechaInicio && r.fecha < filtroFinanzasFechaInicio) return false;
