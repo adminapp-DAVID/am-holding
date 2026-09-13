@@ -516,6 +516,9 @@ const App = () => {
   const [newDeduccion, setNewDeduccion] = useState(deduccionVacia);
   const [editingDeduccionId, setEditingDeduccionId] = useState(null);
   const [newPresupuestoItem, setNewPresupuestoItem] = useState({ empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-001-GF', nombre: '', tipo: 'Nómina', valorMensual: '', diaLimitePago: '', activo: true, responsableId: '' });
+  // Si tiene valor, el formulario de arriba de "Gestión de Conceptos" está editando ESTE
+  // concepto (en vez de crear uno nuevo) — mismo patrón que editingDeduccionId.
+  const [editingPresupuestoItemId, setEditingPresupuestoItemId] = useState(null);
   // Presupuesto -> Finanzas en lote: conceptos "Pendiente" marcados en la pestaña Mensual para
   // confirmar su pago de una sola vez (ver confirmarPagoLotePresupuesto más abajo).
   const [seleccionPresupuestoPendientes, setSeleccionPresupuestoPendientes] = useState([]);
@@ -3753,6 +3756,10 @@ const App = () => {
   };
 
   // PRESUPUESTO — CRUD de conceptos recurrentes mensuales y techos anuales por CECO
+  // Un solo formulario/handler para Crear y Editar, igual que Deducciones (editingDeduccionId):
+  // si editingPresupuestoItemId tiene valor, este mismo botón actualiza ESE concepto en vez de
+  // crear uno nuevo. Ojo: "activo" NO se toca acá — sigue siendo la casilla de la tabla, para
+  // no reactivar/desactivar un concepto por accidente solo por editar sus demás datos.
   const handleAddPresupuestoItem = async () => {
     if (!newPresupuestoItem.nombre || !newPresupuestoItem.valorMensual) {
       alert('Nombre/Concepto y valor mensual son obligatorios');
@@ -3763,22 +3770,55 @@ const App = () => {
       return;
     }
     const [empresaId, cecoId] = await Promise.all([resolverEmpresaId(newPresupuestoItem.empresa), resolverCecoId(newPresupuestoItem.ceco)]);
-    const { error } = await supabase.from('presupuesto_items').insert({
+    const payload = {
       empresa_id: empresaId,
       ceco_id: cecoId,
       nombre: newPresupuestoItem.nombre,
       tipo: newPresupuestoItem.tipo || null,
       valor_mensual: newPresupuestoItem.valorMensual,
       dia_limite_pago: newPresupuestoItem.diaLimitePago ? parseInt(newPresupuestoItem.diaLimitePago) : null,
-      responsable_id: newPresupuestoItem.responsableId || null,
-      activo: true
-    });
-    if (error) {
-      console.error('Error creando concepto de presupuesto:', error);
-      alert('❌ No se pudo guardar: ' + error.message);
-      return;
+      responsable_id: newPresupuestoItem.responsableId || null
+    };
+
+    if (editingPresupuestoItemId) {
+      const { error } = await supabase.from('presupuesto_items').update(payload).eq('id', editingPresupuestoItemId);
+      if (error) {
+        console.error('Error actualizando concepto de presupuesto:', error);
+        alert('❌ No se pudo actualizar: ' + error.message);
+        return;
+      }
+      alert('✅ Concepto actualizado');
+    } else {
+      const { error } = await supabase.from('presupuesto_items').insert({ ...payload, activo: true });
+      if (error) {
+        console.error('Error creando concepto de presupuesto:', error);
+        alert('❌ No se pudo guardar: ' + error.message);
+        return;
+      }
     }
     await cargarPresupuestoItems();
+    setEditingPresupuestoItemId(null);
+    setNewPresupuestoItem({ empresa: newPresupuestoItem.empresa, ceco: newPresupuestoItem.ceco, nombre: '', tipo: newPresupuestoItem.tipo, valorMensual: '', diaLimitePago: '', activo: true, responsableId: '' });
+  };
+
+  // Carga el concepto elegido en el formulario de arriba para editarlo (igual que
+  // handleEditDeduccion) — el botón "+ Agregar" pasa a decir "Guardar Cambios" mientras tanto.
+  const handleEditPresupuestoItem = (item) => {
+    setEditingPresupuestoItemId(item.id);
+    setNewPresupuestoItem({
+      empresa: item.empresa,
+      ceco: item.ceco,
+      nombre: item.nombre,
+      tipo: item.tipo || 'Nómina',
+      valorMensual: item.valorMensual,
+      diaLimitePago: item.diaLimitePago || '',
+      activo: item.activo !== false,
+      responsableId: item.responsableId || ''
+    });
+  };
+
+  const handleCancelEditPresupuestoItem = () => {
+    setEditingPresupuestoItemId(null);
     setNewPresupuestoItem({ empresa: newPresupuestoItem.empresa, ceco: newPresupuestoItem.ceco, nombre: '', tipo: newPresupuestoItem.tipo, valorMensual: '', diaLimitePago: '', activo: true, responsableId: '' });
   };
 
@@ -7634,6 +7674,7 @@ const App = () => {
 
                     {puedeEditarPresupuesto && (
                       <div style={{ ...cardStyle, marginBottom: '1.5rem' }}>
+                        <h4 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>{editingPresupuestoItemId ? '✏️ Editar Concepto' : '➕ Nuevo Concepto'}</h4>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
                           <select value={newPresupuestoItem.empresa} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, empresa: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
                             {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
@@ -7653,8 +7694,11 @@ const App = () => {
                         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: '1rem' }}>
                           <input type="text" placeholder="Nombre / Responsable / Concepto" value={newPresupuestoItem.nombre} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, nombre: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
                           <input type="number" placeholder="Valor mensual" value={newPresupuestoItem.valorMensual} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, valorMensual: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
-                          <button onClick={handleAddPresupuestoItem} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>+ Agregar</button>
+                          <button onClick={handleAddPresupuestoItem} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>{editingPresupuestoItemId ? 'Guardar Cambios' : '+ Agregar'}</button>
                         </div>
+                        {editingPresupuestoItemId && (
+                          <button onClick={handleCancelEditPresupuestoItem} style={{ marginTop: '1rem', padding: '0.75rem 1.5rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Cancelar</button>
+                        )}
                         <p style={{ color: '#8F8877', fontSize: '0.75rem', marginTop: '0.75rem', marginBottom: 0 }}>Vincular el colaborador es opcional, pero permite que el Gasto que se genere al "Marcar Pagado" en la pestaña Mensual quede con el Responsable correcto desde el primer clic.</p>
                       </div>
                     )}
@@ -7700,6 +7744,7 @@ const App = () => {
                               </td>
                               {puedeEditarPresupuesto && (
                                 <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                                  <button onClick={() => handleEditPresupuestoItem(item)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.5rem' }}>✏️</button>
                                   <button onClick={() => handleDeletePresupuestoItem(item.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
                                 </td>
                               )}
