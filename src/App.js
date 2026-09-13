@@ -1536,7 +1536,7 @@ const App = () => {
     if (!user) return;
     if (currentView === 'solicitudes') cargarSolicitudes();
     if (currentView === 'cuentasCobro') cargarCuentasCobro();
-    if (currentView === 'finanzas') { cargarGastos(); cargarIngresos(); }
+    if (currentView === 'finanzas' || currentView === 'dashboardFinanciero') { cargarGastos(); cargarIngresos(); }
     if (currentView === 'presupuesto') { cargarPresupuestoItems(); cargarPresupuestoAnual(); cargarPresupuestoOverrides(); }
     if (currentView === 'responsables') { cargarUsuarios(); cargarColaboradoresPublico(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5156,6 +5156,7 @@ const App = () => {
           {user.rol !== 'Responsable' && (
             <>
               <button onClick={() => setCurrentView('finanzas')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'finanzas' ? '#C4A747' : '#E6E0D2', color: currentView === 'finanzas' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💰 Finanzas</button>
+              <button onClick={() => setCurrentView('dashboardFinanciero')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'dashboardFinanciero' ? '#C4A747' : '#E6E0D2', color: currentView === 'dashboardFinanciero' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📈 Dashboard Financiero</button>
               <button onClick={() => setCurrentView('presupuesto')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'presupuesto' ? '#C4A747' : '#E6E0D2', color: currentView === 'presupuesto' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📅 Presupuesto</button>
             </>
           )}
@@ -6661,6 +6662,179 @@ const App = () => {
             </div>
             )}
 
+            {/* HISTORIAL UNIFICADO: Gastos + Traslados + Ingresos en una sola tabla, con filtro por Tipo */}
+            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
+                <h2 style={{ color: '#C4A747', margin: 0 }}>📋 Historial de Finanzas ({registrosFinanzas.length})</h2>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {['Todos', 'Gasto', 'Traslado', 'Ingreso', 'Pago a Tercero'].map(t => (
+                    <button key={t} onClick={() => setFiltroTipoFinanzas(t)} style={{ padding: '0.4rem 0.9rem', borderRadius: '4px', border: filtroTipoFinanzas === t ? '1px solid #C4A747' : '1px solid #E6E0D2', backgroundColor: filtroTipoFinanzas === t ? '#C4A747' : '#F8F6F1', color: filtroTipoFinanzas === t ? '#221E15' : '#6B6458', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}>
+                      {t === 'Gasto' ? '💸 Gasto' : t === 'Traslado' ? '🔄 Traslado' : t === 'Ingreso' ? '💰 Ingreso' : t === 'Pago a Tercero' ? '🤝 Pago a Tercero' : 'Todos'}
+                    </button>
+                  ))}
+                  {/* Informe PDF del filtro actualmente aplicado — resumen, gráficas y tabla,
+                      con vista previa antes de descargar (ver modal más abajo). */}
+                  <button onClick={handleAbrirInformeFinanzas} disabled={registrosFinanzas.length === 0} style={{ padding: '0.4rem 0.9rem', borderRadius: '4px', border: '1px solid #6C63D1', backgroundColor: registrosFinanzas.length === 0 ? '#E6E0D2' : '#6C63D1', color: '#FFFFFF', fontWeight: 'bold', fontSize: '0.8rem', cursor: registrosFinanzas.length === 0 ? 'not-allowed' : 'pointer' }}>
+                    👁️ Ver Informe
+                  </button>
+                </div>
+              </div>
+
+              {/* FILTROS: buscador de texto libre + Empresa/CECO + rango de fechas propio de la
+                  tabla (distinto del filtro de fechas del Dashboard de arriba, que no la toca). */}
+              <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div style={{ flex: '1 1 220px', minWidth: '200px' }}>
+                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Buscar</label>
+                  <input type="text" placeholder="Colaborador, detalle, cuenta..." value={busquedaFinanzas} onChange={(e) => setBusquedaFinanzas(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Empresa</label>
+                  <select value={filtroFinanzasEmpresa} onChange={(e) => setFiltroFinanzasEmpresa(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }}>
+                    <option value="Todas">Todas</option>
+                    {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>CECO</label>
+                  <select value={filtroFinanzasCeco} onChange={(e) => setFiltroFinanzasCeco(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }}>
+                    <option value="Todos">Todos</option>
+                    {[...cecos].sort((a, b) => a.codigo.localeCompare(b.codigo)).map(c => <option key={c.codigo} value={c.codigo}>{c.codigo}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Desde</label>
+                  <input type="date" value={filtroFinanzasFechaInicio} onChange={(e) => setFiltroFinanzasFechaInicio(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Hasta</label>
+                  <input type="date" value={filtroFinanzasFechaFin} onChange={(e) => setFiltroFinanzasFechaFin(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }} />
+                </div>
+                <button onClick={() => { setBusquedaFinanzas(''); setFiltroFinanzasEmpresa('Todas'); setFiltroFinanzasCeco('Todos'); setFiltroFinanzasFechaInicio(''); setFiltroFinanzasFechaFin(''); }} style={{ padding: '0.75rem 1.25rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>🔄 Reiniciar</button>
+              </div>
+
+              {(cargandoGastos || cargandoIngresos) && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando...</p>}
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <thead style={{ backgroundColor: '#F8F6F1' }}>
+                    <tr style={{ borderBottom: '2px solid #C4A747' }}>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
+                      {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO / Cuenta</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Detalle</th>
+                      <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
+                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Soportes</th>
+                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Presupuesto</th>
+                      {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {registrosFinanzas.length === 0 ? (
+                      <tr><td colSpan={9} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin registros para este filtro.</td></tr>
+                    ) : registrosFinanzas.map(r => {
+                      const esGasto = r.tipo === 'Gasto';
+                      const esTraslado = r.tipo === 'Traslado';
+                      const esIngreso = r.tipo === 'Ingreso';
+                      // También detecta un Gasto normal categorizado bajo el CECO "Pago a
+                      // Terceros" (esPagoTerceroFinanzas en el formulario) — esas filas quedan
+                      // con tipo: 'Gasto' pero sí traen terceroInfo, así que se identifican por
+                      // eso y no solo por el tipo.
+                      const esPagoTercero = r.tipo === 'Pago a Tercero' || !!r.terceroInfo;
+                      const esSalidaTraslado = r._ladoTraslado === 'salida';
+                      const esEntradaTraslado = r._ladoTraslado === 'entrada';
+                      const colorValor = esIngreso || esEntradaTraslado ? '#2F9E52' : (esSalidaTraslado ? '#CC4B4B' : (esTraslado ? '#C4A747' : '#CC4B4B'));
+                      const iconoTipo = esPagoTercero ? '🤝' : (esGasto ? '💸' : (esTraslado ? '🔄' : '💰'));
+                      const verSoportesFn = esIngreso ? handleVerSoportesIngreso : handleVerSoportesGasto;
+                      const deleteFn = esIngreso ? handleDeleteIngreso : handleDeleteGasto;
+                      // Nombre/foto del colaborador: se resuelven por colaboradores_publico (id), no por
+                      // personasFinanzas/responsableNombre — esos dependen de leer la fila de la OTRA
+                      // persona en public.usuarios, que RLS solo permite a Administrador/Coordinadora.
+                      // Contadora y Gerente ven el historial completo pero antes les salía "?" sin nombre
+                      // en cualquier fila que no fuera la suya propia.
+                      const colaboradorInfo = colaboradoresPublico.find(c => c.id === r.responsableId);
+                      const nombreColaborador = colaboradorInfo?.nombre || r.responsableNombre || '—';
+                      return (
+                        <tr key={`${r.tipo}-${r.id}${r._ladoTraslado ? '-' + r._ladoTraslado : ''}`} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{r.fecha}</td>
+                          <td style={{ padding: '0.75rem', fontSize: '0.8rem' }}>
+                            {iconoTipo} {r.tipo}
+                            {esSalidaTraslado && <span style={{ color: '#CC4B4B', fontWeight: 'bold' }}> · Salida</span>}
+                            {esEntradaTraslado && <span style={{ color: '#2F9E52', fontWeight: 'bold' }}> · Entrada</span>}
+                          </td>
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={colaboradorInfo?.foto_url} nombre={nombreColaborador} size={22} />{nombreColaborador}</div></td>}
+                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><EmpresaLogo empresa={r.empresa} height={16} />{r.empresa}</div></td>
+                          <td style={{ padding: '0.75rem', fontSize: '0.8rem' }}>
+                            <span style={{ color: '#C4A747', fontWeight: 'bold' }}>{r.ceco}</span>
+                            {r.cuenta && <div style={{ color: '#6B6458', fontSize: '0.75rem' }}>{r.cuenta}</div>}
+                          </td>
+                          <td style={{ padding: '0.75rem', color: '#6B6458' }}>
+                            {r.detalle}
+                            {esPagoTercero && r.terceroInfo?.nombre && (
+                              <div style={{ fontSize: '0.7rem', color: '#8F8877' }}>👤 {r.terceroInfo.nombre}{r.terceroInfo.dni ? ` · ${r.terceroInfo.dni}` : ''}</div>
+                            )}
+                            {r.solicitudOrigenId && (
+                              <div style={{ fontSize: '0.7rem', color: '#6C63D1' }}>🔗 Generado desde Solicitudes</div>
+                            )}
+                          </td>
+                          <td style={{ padding: '0.75rem', color: esPagoTercero ? '#CC4B4B' : colorValor, textAlign: 'right', fontWeight: 'bold' }}>
+                            {esSalidaTraslado ? '− ' : esEntradaTraslado ? '+ ' : ''}{esPagoTercero ? formatMoneyByMoneda(parseFloat(r.valor) || 0, r.moneda || getMoneda(r.empresa)) : formatMoney(r.valor, r.empresa)}
+                            {r.valorBruto != null && (
+                              <div style={{ fontSize: '0.7rem', color: '#6B6458', fontWeight: 'normal' }} title="Valor bruto antes de deducciones">
+                                Bruto {formatMoney(r.valorBruto, r.empresa)} · −{formatMoney(r.deduccionAplicada, r.empresa)}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            {esPagoTercero && (
+                              <>
+                                <button onClick={() => setVerDetalleTercero({...r, responsableNombre: nombreColaborador, moneda: r.moneda || getMoneda(r.empresa)})} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#C4A747', fontSize: '1rem', marginRight: '0.4rem' }} title="Ver Detalle del Tercero">
+                                  🔍
+                                </button>
+                                <button onClick={() => handleGenerarPDFPagoTercero({...r, responsableNombre: nombreColaborador, moneda: r.moneda || getMoneda(r.empresa)})} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.4rem' }} title="PDF">
+                                  📄
+                                </button>
+                              </>
+                            )}
+                            {(r.cantidadSoportes > 0 || r.soporteDriveLink) ? (
+                              <button onClick={() => verSoportesFn(r)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }}>📎 {r.soporteDriveLink ? 'Drive' : r.cantidadSoportes}</button>
+                            ) : (
+                              <span style={{ color: '#6B6458', fontSize: '0.8rem' }}>—</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            {!esGasto ? (
+                              <span style={{ color: '#AFA897', fontSize: '0.75rem' }}>—</span>
+                            ) : (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') ? (() => {
+                              const candidatosVinculo = getPresupuestoCandidatos(r.empresa, r.ceco, r.responsable, r.detalle, presupuestoItems);
+                              if (!candidatosVinculo.length) return <span style={{ color: '#AFA897', fontSize: '0.75rem' }}>—</span>;
+                              return (
+                                <select value={r.presupuestoItemId || ''} onChange={(e) => handleVincularPresupuesto(r.id, e.target.value)} style={{ padding: '0.35rem 0.5rem', backgroundColor: r.presupuestoItemId ? 'rgba(47,158,82,0.12)' : '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', fontSize: '0.75rem', maxWidth: '160px' }}>
+                                  <option value="">Sin vincular</option>
+                                  {candidatosVinculo.map(({ item: p }) => <option key={p.id} value={p.id}>{p.nombre}{p.ceco !== r.ceco ? ` · ${p.ceco}` : ''}</option>)}
+                                </select>
+                              );
+                            })() : (
+                              r.presupuestoItemId ? <span style={{ color: '#2F9E52', fontSize: '0.75rem' }}>✅ Vinculado</span> : <span style={{ color: '#AFA897', fontSize: '0.75rem' }}>—</span>
+                            )}
+                          </td>
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
+                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                              <button onClick={() => deleteFn(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {currentView === 'dashboardFinanciero' && user.rol !== 'Responsable' && (
+          <div>
             {/* DASHBOARD FINANCIERO AVANZADO */}
             <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
               <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📈 Dashboard Financiero Avanzado</h2>
@@ -6934,176 +7108,6 @@ const App = () => {
                   )}
                 </div>
               )}
-            </div>
-
-
-            {/* HISTORIAL UNIFICADO: Gastos + Traslados + Ingresos en una sola tabla, con filtro por Tipo */}
-            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
-                <h2 style={{ color: '#C4A747', margin: 0 }}>📋 Historial de Finanzas ({registrosFinanzas.length})</h2>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                  {['Todos', 'Gasto', 'Traslado', 'Ingreso', 'Pago a Tercero'].map(t => (
-                    <button key={t} onClick={() => setFiltroTipoFinanzas(t)} style={{ padding: '0.4rem 0.9rem', borderRadius: '4px', border: filtroTipoFinanzas === t ? '1px solid #C4A747' : '1px solid #E6E0D2', backgroundColor: filtroTipoFinanzas === t ? '#C4A747' : '#F8F6F1', color: filtroTipoFinanzas === t ? '#221E15' : '#6B6458', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}>
-                      {t === 'Gasto' ? '💸 Gasto' : t === 'Traslado' ? '🔄 Traslado' : t === 'Ingreso' ? '💰 Ingreso' : t === 'Pago a Tercero' ? '🤝 Pago a Tercero' : 'Todos'}
-                    </button>
-                  ))}
-                  {/* Informe PDF del filtro actualmente aplicado — resumen, gráficas y tabla,
-                      con vista previa antes de descargar (ver modal más abajo). */}
-                  <button onClick={handleAbrirInformeFinanzas} disabled={registrosFinanzas.length === 0} style={{ padding: '0.4rem 0.9rem', borderRadius: '4px', border: '1px solid #6C63D1', backgroundColor: registrosFinanzas.length === 0 ? '#E6E0D2' : '#6C63D1', color: '#FFFFFF', fontWeight: 'bold', fontSize: '0.8rem', cursor: registrosFinanzas.length === 0 ? 'not-allowed' : 'pointer' }}>
-                    👁️ Ver Informe
-                  </button>
-                </div>
-              </div>
-
-              {/* FILTROS: buscador de texto libre + Empresa/CECO + rango de fechas propio de la
-                  tabla (distinto del filtro de fechas del Dashboard de arriba, que no la toca). */}
-              <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                <div style={{ flex: '1 1 220px', minWidth: '200px' }}>
-                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Buscar</label>
-                  <input type="text" placeholder="Colaborador, detalle, cuenta..." value={busquedaFinanzas} onChange={(e) => setBusquedaFinanzas(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Empresa</label>
-                  <select value={filtroFinanzasEmpresa} onChange={(e) => setFiltroFinanzasEmpresa(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }}>
-                    <option value="Todas">Todas</option>
-                    {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>CECO</label>
-                  <select value={filtroFinanzasCeco} onChange={(e) => setFiltroFinanzasCeco(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }}>
-                    <option value="Todos">Todos</option>
-                    {[...cecos].sort((a, b) => a.codigo.localeCompare(b.codigo)).map(c => <option key={c.codigo} value={c.codigo}>{c.codigo}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Desde</label>
-                  <input type="date" value={filtroFinanzasFechaInicio} onChange={(e) => setFiltroFinanzasFechaInicio(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Hasta</label>
-                  <input type="date" value={filtroFinanzasFechaFin} onChange={(e) => setFiltroFinanzasFechaFin(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }} />
-                </div>
-                <button onClick={() => { setBusquedaFinanzas(''); setFiltroFinanzasEmpresa('Todas'); setFiltroFinanzasCeco('Todos'); setFiltroFinanzasFechaInicio(''); setFiltroFinanzasFechaFin(''); }} style={{ padding: '0.75rem 1.25rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>🔄 Reiniciar</button>
-              </div>
-
-              {(cargandoGastos || cargandoIngresos) && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando...</p>}
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                  <thead style={{ backgroundColor: '#F8F6F1' }}>
-                    <tr style={{ borderBottom: '2px solid #C4A747' }}>
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
-                      {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO / Cuenta</th>
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Detalle</th>
-                      <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
-                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Soportes</th>
-                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Presupuesto</th>
-                      {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {registrosFinanzas.length === 0 ? (
-                      <tr><td colSpan={9} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin registros para este filtro.</td></tr>
-                    ) : registrosFinanzas.map(r => {
-                      const esGasto = r.tipo === 'Gasto';
-                      const esTraslado = r.tipo === 'Traslado';
-                      const esIngreso = r.tipo === 'Ingreso';
-                      // También detecta un Gasto normal categorizado bajo el CECO "Pago a
-                      // Terceros" (esPagoTerceroFinanzas en el formulario) — esas filas quedan
-                      // con tipo: 'Gasto' pero sí traen terceroInfo, así que se identifican por
-                      // eso y no solo por el tipo.
-                      const esPagoTercero = r.tipo === 'Pago a Tercero' || !!r.terceroInfo;
-                      const esSalidaTraslado = r._ladoTraslado === 'salida';
-                      const esEntradaTraslado = r._ladoTraslado === 'entrada';
-                      const colorValor = esIngreso || esEntradaTraslado ? '#2F9E52' : (esSalidaTraslado ? '#CC4B4B' : (esTraslado ? '#C4A747' : '#CC4B4B'));
-                      const iconoTipo = esPagoTercero ? '🤝' : (esGasto ? '💸' : (esTraslado ? '🔄' : '💰'));
-                      const verSoportesFn = esIngreso ? handleVerSoportesIngreso : handleVerSoportesGasto;
-                      const deleteFn = esIngreso ? handleDeleteIngreso : handleDeleteGasto;
-                      // Nombre/foto del colaborador: se resuelven por colaboradores_publico (id), no por
-                      // personasFinanzas/responsableNombre — esos dependen de leer la fila de la OTRA
-                      // persona en public.usuarios, que RLS solo permite a Administrador/Coordinadora.
-                      // Contadora y Gerente ven el historial completo pero antes les salía "?" sin nombre
-                      // en cualquier fila que no fuera la suya propia.
-                      const colaboradorInfo = colaboradoresPublico.find(c => c.id === r.responsableId);
-                      const nombreColaborador = colaboradorInfo?.nombre || r.responsableNombre || '—';
-                      return (
-                        <tr key={`${r.tipo}-${r.id}${r._ladoTraslado ? '-' + r._ladoTraslado : ''}`} style={{ borderBottom: '1px solid #E6E0D2' }}>
-                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{r.fecha}</td>
-                          <td style={{ padding: '0.75rem', fontSize: '0.8rem' }}>
-                            {iconoTipo} {r.tipo}
-                            {esSalidaTraslado && <span style={{ color: '#CC4B4B', fontWeight: 'bold' }}> · Salida</span>}
-                            {esEntradaTraslado && <span style={{ color: '#2F9E52', fontWeight: 'bold' }}> · Entrada</span>}
-                          </td>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={colaboradorInfo?.foto_url} nombre={nombreColaborador} size={22} />{nombreColaborador}</div></td>}
-                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><EmpresaLogo empresa={r.empresa} height={16} />{r.empresa}</div></td>
-                          <td style={{ padding: '0.75rem', fontSize: '0.8rem' }}>
-                            <span style={{ color: '#C4A747', fontWeight: 'bold' }}>{r.ceco}</span>
-                            {r.cuenta && <div style={{ color: '#6B6458', fontSize: '0.75rem' }}>{r.cuenta}</div>}
-                          </td>
-                          <td style={{ padding: '0.75rem', color: '#6B6458' }}>
-                            {r.detalle}
-                            {esPagoTercero && r.terceroInfo?.nombre && (
-                              <div style={{ fontSize: '0.7rem', color: '#8F8877' }}>👤 {r.terceroInfo.nombre}{r.terceroInfo.dni ? ` · ${r.terceroInfo.dni}` : ''}</div>
-                            )}
-                            {r.solicitudOrigenId && (
-                              <div style={{ fontSize: '0.7rem', color: '#6C63D1' }}>🔗 Generado desde Solicitudes</div>
-                            )}
-                          </td>
-                          <td style={{ padding: '0.75rem', color: esPagoTercero ? '#CC4B4B' : colorValor, textAlign: 'right', fontWeight: 'bold' }}>
-                            {esSalidaTraslado ? '− ' : esEntradaTraslado ? '+ ' : ''}{esPagoTercero ? formatMoneyByMoneda(parseFloat(r.valor) || 0, r.moneda || getMoneda(r.empresa)) : formatMoney(r.valor, r.empresa)}
-                            {r.valorBruto != null && (
-                              <div style={{ fontSize: '0.7rem', color: '#6B6458', fontWeight: 'normal' }} title="Valor bruto antes de deducciones">
-                                Bruto {formatMoney(r.valorBruto, r.empresa)} · −{formatMoney(r.deduccionAplicada, r.empresa)}
-                              </div>
-                            )}
-                          </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            {esPagoTercero && (
-                              <>
-                                <button onClick={() => setVerDetalleTercero({...r, responsableNombre: nombreColaborador, moneda: r.moneda || getMoneda(r.empresa)})} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#C4A747', fontSize: '1rem', marginRight: '0.4rem' }} title="Ver Detalle del Tercero">
-                                  🔍
-                                </button>
-                                <button onClick={() => handleGenerarPDFPagoTercero({...r, responsableNombre: nombreColaborador, moneda: r.moneda || getMoneda(r.empresa)})} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.4rem' }} title="PDF">
-                                  📄
-                                </button>
-                              </>
-                            )}
-                            {(r.cantidadSoportes > 0 || r.soporteDriveLink) ? (
-                              <button onClick={() => verSoportesFn(r)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }}>📎 {r.soporteDriveLink ? 'Drive' : r.cantidadSoportes}</button>
-                            ) : (
-                              <span style={{ color: '#6B6458', fontSize: '0.8rem' }}>—</span>
-                            )}
-                          </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            {!esGasto ? (
-                              <span style={{ color: '#AFA897', fontSize: '0.75rem' }}>—</span>
-                            ) : (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') ? (() => {
-                              const candidatosVinculo = getPresupuestoCandidatos(r.empresa, r.ceco, r.responsable, r.detalle, presupuestoItems);
-                              if (!candidatosVinculo.length) return <span style={{ color: '#AFA897', fontSize: '0.75rem' }}>—</span>;
-                              return (
-                                <select value={r.presupuestoItemId || ''} onChange={(e) => handleVincularPresupuesto(r.id, e.target.value)} style={{ padding: '0.35rem 0.5rem', backgroundColor: r.presupuestoItemId ? 'rgba(47,158,82,0.12)' : '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', fontSize: '0.75rem', maxWidth: '160px' }}>
-                                  <option value="">Sin vincular</option>
-                                  {candidatosVinculo.map(({ item: p }) => <option key={p.id} value={p.id}>{p.nombre}{p.ceco !== r.ceco ? ` · ${p.ceco}` : ''}</option>)}
-                                </select>
-                              );
-                            })() : (
-                              r.presupuestoItemId ? <span style={{ color: '#2F9E52', fontSize: '0.75rem' }}>✅ Vinculado</span> : <span style={{ color: '#AFA897', fontSize: '0.75rem' }}>—</span>
-                            )}
-                          </td>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
-                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                              <button onClick={() => deleteFn(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
             </div>
           </div>
         )}
