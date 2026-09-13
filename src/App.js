@@ -231,7 +231,6 @@ const App = () => {
   const estadosSolicitud = ['Pendiente', 'Aprobado', 'Pagado', 'Legalizado'];
   const tiposSolicitud = ['Anticipo', 'Legalización', 'Reembolso', 'Pago a Tercero'];
   const tiposSoporte = ['Factura/Electrónica', 'Recibo/Entradas', 'Consignación', 'Cuenta de Cobro', 'Otro'];
-  const tiposPresupuesto = ['Nómina', 'Prestación de Servicio', 'Honorarios', 'Gasto de Representación', 'Arriendo', 'Servicios Públicos', 'Telecomunicaciones', 'Seguridad Social', 'Donación', 'Otro'];
 
   // PRESUPUESTO — datos iniciales migrados del PDF "PRESUPUESTO PARA MIGRAR" (conceptos recurrentes mensuales).
   // Quedan como punto de partida editable desde "Gestión de Conceptos"; no se incluyó CUBO (no es una de las 5 empresas
@@ -515,7 +514,7 @@ const App = () => {
   const deduccionVacia = { presupuestoItemId: '', tipo: 'Préstamo', valorCuota: '', saldoTotal: '', fechaInicio: new Date().toISOString().split('T')[0], observaciones: '', activo: true };
   const [newDeduccion, setNewDeduccion] = useState(deduccionVacia);
   const [editingDeduccionId, setEditingDeduccionId] = useState(null);
-  const [newPresupuestoItem, setNewPresupuestoItem] = useState({ empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-001-GF', nombre: '', tipo: 'Nómina', valorMensual: '', diaLimitePago: '', activo: true, responsableId: '' });
+  const [newPresupuestoItem, setNewPresupuestoItem] = useState({ empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-001-GF', nombre: '', valorMensual: '', diaLimitePago: '', activo: true, responsableId: '' });
   // Si tiene valor, el formulario de arriba de "Gestión de Conceptos" está editando ESTE
   // concepto (en vez de crear uno nuevo) — mismo patrón que editingDeduccionId.
   const [editingPresupuestoItemId, setEditingPresupuestoItemId] = useState(null);
@@ -3713,18 +3712,29 @@ const App = () => {
   // a pedido del usuario, el CECO que quedó guardado en el gasto manda siempre y no cambia solo por
   // vincularlo a un concepto de otro CECO. Los id de presupuestoItems son uuid de Postgres — NUNCA se
   // parsean con parseInt/Number.
+  // Vincula (o desvincula) un Gasto ya existente a un concepto de Presupuesto desde el
+  // desplegable de Historial de Finanzas. Al vincular a un concepto que SÍ tiene Colaborador
+  // asignado (Gestión de Conceptos), el Gasto se queda también con ese responsable_id — para
+  // que la columna "Colaborador" de Finanzas no quede vacía solo porque se vinculó desde acá en
+  // vez de haberse creado con la fila de Presupuesto ya elegida. Al desvincular no se toca el
+  // responsable_id (por si se había puesto a mano, sin depender del vínculo).
   const handleVincularPresupuesto = async (id, valorSeleccionado) => {
     const nuevoId = valorSeleccionado || null;
-    const anteriores = gastos;
-    setGastos(gastos.map(g => (g.id === id ? { ...g, presupuestoItemId: nuevoId } : g)));
+    const conceptoElegido = nuevoId ? presupuestoItems.find(p => p.id === nuevoId) : null;
+    const nuevoResponsableId = conceptoElegido?.responsableId || null;
 
-    const patch = { presupuesto_item_id: nuevoId };
+    const anteriores = gastos;
+    setGastos(gastos.map(g => (g.id === id ? { ...g, presupuestoItemId: nuevoId, ...(nuevoResponsableId ? { responsableId: nuevoResponsableId } : {}) } : g)));
+
+    const patch = { presupuesto_item_id: nuevoId, ...(nuevoResponsableId ? { responsable_id: nuevoResponsableId } : {}) };
     const { error } = await supabase.from('gastos').update(patch).eq('id', id);
     if (error) {
       console.error('Error vinculando presupuesto:', error);
       alert('❌ No se pudo vincular: ' + error.message);
       setGastos(anteriores);
+      return;
     }
+    if (nuevoId) alert('✅ Gasto vinculado a Presupuesto' + (nuevoResponsableId ? ' — Colaborador actualizado' : ''));
   };
 
   const handleDeleteGasto = async (id) => {
@@ -3774,7 +3784,6 @@ const App = () => {
       empresa_id: empresaId,
       ceco_id: cecoId,
       nombre: newPresupuestoItem.nombre,
-      tipo: newPresupuestoItem.tipo || null,
       valor_mensual: newPresupuestoItem.valorMensual,
       dia_limite_pago: newPresupuestoItem.diaLimitePago ? parseInt(newPresupuestoItem.diaLimitePago) : null,
       responsable_id: newPresupuestoItem.responsableId || null
@@ -3795,10 +3804,11 @@ const App = () => {
         alert('❌ No se pudo guardar: ' + error.message);
         return;
       }
+      alert('✅ Concepto creado');
     }
     await cargarPresupuestoItems();
     setEditingPresupuestoItemId(null);
-    setNewPresupuestoItem({ empresa: newPresupuestoItem.empresa, ceco: newPresupuestoItem.ceco, nombre: '', tipo: newPresupuestoItem.tipo, valorMensual: '', diaLimitePago: '', activo: true, responsableId: '' });
+    setNewPresupuestoItem({ empresa: newPresupuestoItem.empresa, ceco: newPresupuestoItem.ceco, nombre: '', valorMensual: '', diaLimitePago: '', activo: true, responsableId: '' });
   };
 
   // Carga el concepto elegido en el formulario de arriba para editarlo (igual que
@@ -3809,7 +3819,6 @@ const App = () => {
       empresa: item.empresa,
       ceco: item.ceco,
       nombre: item.nombre,
-      tipo: item.tipo || 'Nómina',
       valorMensual: item.valorMensual,
       diaLimitePago: item.diaLimitePago || '',
       activo: item.activo !== false,
@@ -3819,7 +3828,7 @@ const App = () => {
 
   const handleCancelEditPresupuestoItem = () => {
     setEditingPresupuestoItemId(null);
-    setNewPresupuestoItem({ empresa: newPresupuestoItem.empresa, ceco: newPresupuestoItem.ceco, nombre: '', tipo: newPresupuestoItem.tipo, valorMensual: '', diaLimitePago: '', activo: true, responsableId: '' });
+    setNewPresupuestoItem({ empresa: newPresupuestoItem.empresa, ceco: newPresupuestoItem.ceco, nombre: '', valorMensual: '', diaLimitePago: '', activo: true, responsableId: '' });
   };
 
   const handleUpdatePresupuestoItem = async (id, campo, valor) => {
@@ -3950,7 +3959,6 @@ const App = () => {
               valor: item.netoAPagar,
               valor_bruto: item.valorEsperado,
               deduccion_aplicada: item.totalDeducciones > 0 ? item.totalDeducciones : null,
-              categoria: item.tipo || null,
               estado: 'Pagado',
               observaciones: 'Generado automáticamente desde Presupuesto (Mensual) al marcar pagado.',
               presupuesto_item_id: item.id
@@ -6674,7 +6682,18 @@ const App = () => {
                 return (
                   <div style={{ marginBottom: '1rem' }}>
                     <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Vincular a Presupuesto (opcional)</label>
-                    <select value={valorSeleccionado} onChange={(e) => setNewGasto({...newGasto, presupuestoItemId: e.target.value || ''})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                    <select value={valorSeleccionado} onChange={(e) => {
+                      const nuevoId = e.target.value || '';
+                      // Si el concepto elegido ya tiene un Colaborador vinculado (Gestión de Conceptos),
+                      // se rellena solo el campo Responsable de este formulario — así no toca escribirlo
+                      // dos veces. Si el concepto no tiene Colaborador, se deja lo que ya había escrito.
+                      const conceptoElegido = candidatos.find(c => c.item.id === nuevoId)?.item;
+                      setNewGasto({
+                        ...newGasto,
+                        presupuestoItemId: nuevoId,
+                        responsable: conceptoElegido?.responsableNombre ? conceptoElegido.responsableNombre : newGasto.responsable
+                      });
+                    }} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
                       <option value="">Sin vincular</option>
                       {candidatos.map(({ item: p }) => <option key={p.id} value={p.id}>{p.nombre}{p.ceco !== newGasto.ceco ? ` · ${p.ceco}` : ''} — {formatMoney(p.valorMensual, newGasto.empresa)}{p.id === sugeridoId ? ' (Sugerido)' : ''}</option>)}
                     </select>
@@ -7461,7 +7480,7 @@ const App = () => {
                               {puedeEditarPresupuesto && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}></th>}
                               <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Concepto</th>
                               <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
-                              <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
+                              <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>
                               <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor del Mes</th>
                               <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Deducciones</th>
                               <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Neto a Pagar</th>
@@ -7483,7 +7502,7 @@ const App = () => {
                                 )}
                                 <td style={{ padding: '0.75rem', color: '#221E15' }}>{item.nombre}</td>
                                 <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{cecos.find(c => c.codigo === item.ceco)?.nombre || item.ceco}</td>
-                                <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{item.tipo}</td>
+                                <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{item.responsableNombre || '—'}</td>
                                 <td style={{ padding: '0.75rem', textAlign: 'right', color: '#221E15' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.4rem' }}>
                                     {item.esValorReal ? (
@@ -7682,9 +7701,6 @@ const App = () => {
                           <select value={newPresupuestoItem.ceco} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, ceco: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
                             {cecosGasto.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
                           </select>
-                          <select value={newPresupuestoItem.tipo} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, tipo: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
-                            {tiposPresupuesto.map(t => <option key={t} value={t}>{t}</option>)}
-                          </select>
                           <input type="number" placeholder="Día límite de pago" value={newPresupuestoItem.diaLimitePago} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, diaLimitePago: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
                           <select value={newPresupuestoItem.responsableId} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, responsableId: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
                             <option value="">Sin vincular a colaborador</option>
@@ -7710,8 +7726,7 @@ const App = () => {
                             <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
                             <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
                             <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Concepto</th>
-                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
-                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Responsable</th>
+                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>
                             <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor Mensual</th>
                             <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Día Límite</th>
                             <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Activo</th>
@@ -7720,13 +7735,12 @@ const App = () => {
                         </thead>
                         <tbody>
                           {presupuestoItems.length === 0 ? (
-                            <tr><td colSpan={puedeEditarPresupuesto ? 9 : 8} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin conceptos cargados todavía.</td></tr>
+                            <tr><td colSpan={puedeEditarPresupuesto ? 8 : 7} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin conceptos cargados todavía.</td></tr>
                           ) : presupuestoItems.map(item => (
                             <tr key={item.id} style={{ borderBottom: '1px solid #E6E0D2', opacity: item.activo === false ? 0.5 : 1 }}>
                               <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{item.empresa}</td>
                               <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{cecos.find(c => c.codigo === item.ceco)?.nombre || item.ceco}</td>
                               <td style={{ padding: '0.75rem', color: '#221E15' }}>{item.nombre}</td>
-                              <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{item.tipo}</td>
                               <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>
                                 {puedeEditarPresupuesto ? (
                                   <select value={item.responsableId} onChange={(e) => handleUpdatePresupuestoItemResponsable(item.id, e.target.value)} style={{ padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E' }}>
