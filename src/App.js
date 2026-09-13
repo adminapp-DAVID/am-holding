@@ -327,6 +327,14 @@ const App = () => {
   // "Pago a Tercero") — se guarda una vez y queda disponible para todos, para no volver a
   // digitar nombre/DNI/datos bancarios cada vez que se repite el pago a la misma persona.
   const [tercerosDB, setTercerosDB] = useState([]);
+  // Catálogo COMPLETO de terceros (activos e inactivos) para la pantalla "Gestión de
+  // Terceros" en Finanzas — a diferencia de tercerosDB (solo activos, usado en los
+  // desplegables de Solicitudes/Finanzas), aquí se necesita ver también los desactivados
+  // para poder reactivarlos, igual que ya pasa con Gestión de CECOs.
+  const [todosTerceros, setTodosTerceros] = useState([]);
+  const [mostrarGestionTerceros, setMostrarGestionTerceros] = useState(false);
+  const [nuevoTercero, setNuevoTercero] = useState({ nombre: '', dni: '', paisOrigen: '', banco: '', tipoCuenta: '', numeroCuenta: '' });
+  const [guardandoTercero, setGuardandoTercero] = useState(false);
   const responsables = usuariosDB.filter(u => u.rol === 'Responsable');
   const usuariosAdmin = usuariosDB.filter(u => u.rol !== 'Responsable');
   // Lista aparte para Finanzas: un Gasto/Ingreso/Traslado puede quedar a nombre de
@@ -412,7 +420,7 @@ const App = () => {
   const [cargandoIngresos, setCargandoIngresos] = useState(true);
   const [guardandoGasto, setGuardandoGasto] = useState(false);
   const [guardandoIngreso, setGuardandoIngreso] = useState(false);
-  const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', valorDestino: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', soportes: [], presupuestoItemId: '', aplicarDeduccion: true });
+  const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', valorDestino: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', soportes: [], presupuestoItemId: '', aplicarDeduccion: true, moneda: 'COP', terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false });
   const [newIngreso, setNewIngreso] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Ingreso', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CEIN-001-ING', detalle: '', valor: '', categoria: '', estado: 'Pagado', observaciones: '', linkSoporte: '', cuenta: '', soportes: [] });
   // Filtros de la lista histórica unificada de Finanzas (Gastos + Ingresos + Traslados en
   // una sola tabla, en vez de las 3 tablas separadas que había antes). `filtroTipoFinanzas`
@@ -459,6 +467,14 @@ const App = () => {
   // abierto guarda { datos, graficas } ya calculados una sola vez (ver construirDatosInformeFinanzas).
   const [informeFinanzas, setInformeFinanzas] = useState(null);
   const [generandoInformePDF, setGenerandoInformePDF] = useState(false);
+  // Vista previa de un soporte (PDF/imagen) antes de descargarlo — se abre desde el modal "Ver
+  // Soportes" (cualquiera: Solicitudes, Gastos, Ingresos, Cuentas de Cobro, Pago a Tercero, todos
+  // comparten ese mismo modal). null cuando está cerrada; { nombre, url, tipo, esObjectUrl }
+  // mientras está abierta — esObjectUrl marca si `url` hay que liberarla con revokeObjectURL al
+  // cerrar (los soportes en Storage se descargan como blob; los antiguos embebidos ya traen un
+  // data URL que no hay que revocar).
+  const [previewSoporte, setPreviewSoporte] = useState(null);
+  const [cargandoPreviewSoporte, setCargandoPreviewSoporte] = useState(false);
   const [filtroFechaInicio, setFiltroFechaInicio] = useState('2026-01-01');
   const [filtroFechaFin, setFiltroFechaFin] = useState(new Date().toISOString().split('T')[0]);
 
@@ -637,6 +653,38 @@ const App = () => {
       console.error('Error inesperado subiendo soporte:', error);
       alert(`❌ Error inesperado subiendo "${soporteTemp.nombre}"`);
       return null;
+    }
+  };
+
+  // Borra los soportes (metadata + archivo en Storage) de una Solicitud o un Gasto — usada al
+  // eliminar el registro completo. IMPORTANTE: desde que el auto-vínculo Solicitud → Gasto
+  // (Opción C) reutiliza el MISMO archivo para ambas pantallas (mismo bucket_path, ver
+  // generarGastoDesdeSolicitud), borrar el archivo físico a ciegas al eliminar cualquiera de
+  // los dos dejaría al otro con un soporte "roto" (la fila de metadata seguiría existiendo,
+  // pero el archivo ya no). Por eso cada bucket_path solo se borra de Storage si NINGUNA otra
+  // fila de public.soportes (de cualquier entidad) sigue apuntando a él.
+  const eliminarSoportesDeEntidad = async (entidadTipo, entidadId) => {
+    const { data: soportesRelacionados } = await supabase
+      .from('soportes')
+      .select('bucket_path')
+      .eq('entidad_tipo', entidadTipo)
+      .eq('entidad_id', entidadId);
+
+    if (soportesRelacionados && soportesRelacionados.length > 0) {
+      const rutasUnicas = [...new Set(soportesRelacionados.map(r => r.bucket_path))];
+      const rutasSeguras = [];
+      for (const ruta of rutasUnicas) {
+        const { data: otras } = await supabase
+          .from('soportes')
+          .select('entidad_tipo, entidad_id')
+          .eq('bucket_path', ruta);
+        const tieneOtroDueño = (otras || []).some(o => !(o.entidad_tipo === entidadTipo && o.entidad_id === entidadId));
+        if (!tieneOtroDueño) rutasSeguras.push(ruta);
+      }
+      if (rutasSeguras.length > 0) {
+        await supabase.storage.from('soportes').remove(rutasSeguras);
+      }
+      await supabase.from('soportes').delete().eq('entidad_tipo', entidadTipo).eq('entidad_id', entidadId);
     }
   };
 
@@ -906,6 +954,7 @@ const App = () => {
     aprobadoAt: row.aprobado_at || '',
     detalle: row.detalle || '',
     empresa: row.empresas?.nombre || '',
+    empresaId: row.empresa_id || '',
     responsableId: row.responsable_id,
     responsableNombre: row.usuarios?.nombre || '',
     documentos: row.documentos || [],
@@ -915,7 +964,10 @@ const App = () => {
     // numeroCuenta) — igual que "documentos", para no sumar media docena de columnas nuevas.
     moneda: row.moneda_pago || '',
     terceroInfo: row.tercero_info || null,
-    terceroId: row.tercero_id || ''
+    terceroId: row.tercero_id || '',
+    // Opción C: si esta Solicitud (Pago a Tercero) ya generó su Gasto en Finanzas al pasar a
+    // "Pagado", queda el id acá — evita que se genere un segundo Gasto por la misma Solicitud.
+    gastoGeneradoId: row.gasto_generado_id || ''
   });
 
   const cargarSolicitudes = async () => {
@@ -926,7 +978,7 @@ const App = () => {
       // aprobado_por_id (Sección 19), hay 3 FKs de solicitudes hacia usuarios. Sin indicar
       // por cuál columna se hace el embed, PostgREST no sabe cuál usar y el select entero
       // falla con "more than one relationship was found" (deja el historial vacío).
-      .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
+      .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -1171,6 +1223,13 @@ const App = () => {
     observaciones: row.observaciones || '',
     presupuestoItemId: row.presupuesto_item_id,
     soporteDriveLink: row.soporte_drive_link || '',
+    // "Pago a Tercero" registrado directo en Finanzas (Opción B) o generado automáticamente
+    // al marcar una Solicitud como Pagada (Opción C) — mismo formato de moneda/tercero_info
+    // que ya usan las Solicitudes, así el modal "Ver Detalle del Tercero" se reutiliza tal cual.
+    moneda: row.moneda_pago || '',
+    terceroInfo: row.tercero_info || null,
+    terceroId: row.tercero_id || '',
+    solicitudOrigenId: row.solicitud_origen_id || '',
     cantidadSoportes: 0
   });
 
@@ -1178,7 +1237,7 @@ const App = () => {
     setCargandoGastos(true);
     const { data, error } = await supabase
       .from('gastos')
-      .select('id, fecha, tipo, cuenta, cuenta_salida, cuenta_destino, detalle, valor, valor_destino, valor_bruto, deduccion_aplicada, categoria, estado, observaciones, presupuesto_item_id, soporte_drive_link, responsable_id, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
+      .select('id, fecha, tipo, cuenta, cuenta_salida, cuenta_destino, detalle, valor, valor_destino, valor_bruto, deduccion_aplicada, categoria, estado, observaciones, presupuesto_item_id, soporte_drive_link, responsable_id, moneda_pago, tercero_info, tercero_id, solicitud_origen_id, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
       .order('fecha', { ascending: false });
     if (error) {
       console.error('Error cargando gastos:', error);
@@ -1279,6 +1338,21 @@ const App = () => {
     setTercerosDB(data || []);
   };
 
+  // Igual que cargarTerceros, pero SIN el filtro de activo=true — alimenta la pantalla
+  // "Gestión de Terceros" en Finanzas, donde Admin/Coordinadora necesitan ver también los
+  // desactivados para poder reactivarlos o solo consultar su historial.
+  const cargarTodosTerceros = async () => {
+    const { data, error } = await supabase
+      .from('terceros')
+      .select('id, nombre, dni, pais_origen, banco, tipo_cuenta, numero_cuenta, activo')
+      .order('nombre');
+    if (error) {
+      console.error('Error cargando el catálogo completo de terceros:', error);
+      return;
+    }
+    setTodosTerceros(data || []);
+  };
+
   // Elimina un tercero del catálogo reutilizable — borrado lógico (activo=false), nunca se
   // borra la fila, para no romper el vínculo con los Pagos a Tercero ya hechos a esa persona
   // (tercero_id queda apuntando a una fila que sigue existiendo, solo que ya no sale en el
@@ -1297,6 +1371,59 @@ const App = () => {
     if (newSolicitud.terceroId === id) {
       setNewSolicitud({...newSolicitud, terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false});
     }
+    // Mismo cuidado si el tercero eliminado era el elegido en el formulario de Finanzas
+    // (Nuevo Gasto/Ingreso -> Pago a Tercero), que usa su propio juego de campos en newGasto.
+    if (newGasto.terceroId === id) {
+      setNewGasto({...newGasto, terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false});
+    }
+    await Promise.all([cargarTerceros(), cargarTodosTerceros()]);
+  };
+
+  // Crea un tercero directo desde la pantalla "Gestión de Terceros" de Finanzas — sin pasar
+  // por un Pago a Tercero, para poder precargar el catálogo (proveedores conocidos, etc.)
+  // antes de que a alguien le toque pagarle.
+  const handleAddTerceroFinanzas = async () => {
+    if (!nuevoTercero.nombre.trim() || !nuevoTercero.dni.trim()) {
+      alert('Nombre y documento son obligatorios');
+      return;
+    }
+    setGuardandoTercero(true);
+    try {
+      const { error } = await supabase.from('terceros').insert({
+        nombre: nuevoTercero.nombre.trim(),
+        dni: nuevoTercero.dni.trim(),
+        pais_origen: nuevoTercero.paisOrigen || null,
+        banco: nuevoTercero.banco || null,
+        tipo_cuenta: nuevoTercero.tipoCuenta || null,
+        numero_cuenta: nuevoTercero.numeroCuenta || null,
+        activo: true,
+        creado_por: user.id
+      });
+      if (error) {
+        console.error('Error creando tercero desde Finanzas:', error);
+        alert('❌ No se pudo crear el tercero: ' + error.message);
+        return;
+      }
+      await Promise.all([cargarTerceros(), cargarTodosTerceros()]);
+      setNuevoTercero({ nombre: '', dni: '', paisOrigen: '', banco: '', tipoCuenta: '', numeroCuenta: '' });
+    } finally {
+      setGuardandoTercero(false);
+    }
+  };
+
+  // Edición en línea de un tercero desde "Gestión de Terceros" (incluye reactivar/desactivar
+  // con el checkbox "Activo") — mismo patrón que handleUpdateCeco.
+  const handleUpdateTercero = async (id, campoUI, valor) => {
+    const columnaDB = { paisOrigen: 'pais_origen', tipoCuenta: 'tipo_cuenta', numeroCuenta: 'numero_cuenta' }[campoUI] || campoUI;
+    const anteriores = todosTerceros;
+    setTodosTerceros(todosTerceros.map(t => t.id === id ? { ...t, [columnaDB]: valor } : t));
+    const { error } = await supabase.from('terceros').update({ [columnaDB]: valor }).eq('id', id);
+    if (error) {
+      console.error('Error actualizando tercero:', error);
+      alert('❌ No se pudo actualizar el tercero: ' + error.message);
+      setTodosTerceros(anteriores);
+      return;
+    }
     await cargarTerceros();
   };
 
@@ -1313,6 +1440,7 @@ const App = () => {
       cargarSoportesPendientes();
       cargarCecos();
       cargarTerceros();
+      cargarTodosTerceros();
     } else {
       setUsuariosDB([]);
       setSolicitudes([]);
@@ -1327,6 +1455,7 @@ const App = () => {
       setSoportesPendientes([]);
       setCecosDB([]);
       setTercerosDB([]);
+      setTodosTerceros([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
@@ -1352,7 +1481,7 @@ const App = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'deducciones' }, () => cargarDeducciones())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'soportes_pendientes' }, () => cargarSoportesPendientes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cecos' }, () => cargarCecos())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'terceros' }, () => cargarTerceros())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'terceros' }, () => { cargarTerceros(); cargarTodosTerceros(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'usuarios' }, () => { cargarUsuarios(); cargarColaboradoresPublico(); })
       // Si el canal se cae (red inestable, la pestaña estuvo en segundo plano un rato largo,
       // etc.) y luego reconecta, "SUBSCRIBED" se dispara de nuevo — aprovechamos ese momento
@@ -1880,6 +2009,109 @@ const App = () => {
       console.error('Error actualizando estado:', error);
       alert('❌ No se pudo actualizar el estado: ' + error.message);
       setSolicitudes(anteriores);
+      return;
+    }
+
+    // Opción C (arquitectura Terceros/Finanzas aprobada): al marcar un Pago a Tercero como
+    // "Pagado", se registra SOLO — sin que nadie tenga que volver a digitarlo — el Gasto
+    // correspondiente en Finanzas, con sus soportes visibles desde ambas pantallas. No
+    // bloquea nada si falla: el cambio de estado ya quedó guardado arriba.
+    if (nuevoEstado === 'Pagado') {
+      const solicitud = anteriores.find(s => s.id === id);
+      if (solicitud && solicitud.tipo === 'Pago a Tercero' && !solicitud.gastoGeneradoId) {
+        await generarGastoDesdeSolicitud(solicitud);
+      }
+    }
+  };
+
+  // Genera el Gasto en Finanzas para una Solicitud de "Pago a Tercero" que acaba de pasar a
+  // "Pagado" (Opción C). Reglas acordadas con el usuario: (1) no se duplica el registro
+  // financiero — se relee gasto_generado_id justo antes de insertar, por si esta función se
+  // disparó dos veces para la misma solicitud; (2) los soportes quedan visibles desde AMBAS
+  // pantallas sin duplicar el archivo en Storage — se copian solo las filas de metadata en
+  // public.soportes apuntando al mismo bucket_path; (3) no se tocan permisos/roles existentes,
+  // esto solo agrega una fila más al mismo Finanzas que ya ven Admin/Coordinadora.
+  const generarGastoDesdeSolicitud = async (solicitud) => {
+    try {
+      const { data: solActual, error: errorLectura } = await supabase
+        .from('solicitudes')
+        .select('gasto_generado_id')
+        .eq('id', solicitud.id)
+        .single();
+      if (errorLectura) {
+        console.error('Error releyendo la solicitud antes de generar el gasto automático:', errorLectura);
+        return;
+      }
+      if (solActual.gasto_generado_id) return; // ya se generó antes, no duplicar
+
+      // CECO fijo "Pago a Terceros" (creado por la migración SQL de esta funcionalidad) — se
+      // puede reasignar después a mano desde Gestión de CECOs/Historial si hace falta uno más
+      // específico; lo importante es que el gasto nunca quede sin CECO por defecto.
+      const cecoId = await resolverCecoId('CECO-014-PT');
+
+      const { data: nuevoGasto, error: errorGasto } = await supabase
+        .from('gastos')
+        .insert({
+          fecha: solicitud.fecha,
+          tipo: 'Pago a Tercero',
+          empresa_id: solicitud.empresaId || null,
+          responsable_id: solicitud.responsableId || null,
+          ceco_id: cecoId,
+          cuenta: null,
+          detalle: solicitud.detalle,
+          valor: parseFloat(solicitud.valor) || 0,
+          moneda_pago: solicitud.moneda || null,
+          tercero_id: solicitud.terceroId || null,
+          tercero_info: solicitud.terceroInfo || null,
+          estado: 'Pagado',
+          observaciones: 'Generado automáticamente al marcar la Solicitud de Pago a Tercero como Pagado.',
+          solicitud_origen_id: solicitud.id
+        })
+        .select('id')
+        .single();
+
+      if (errorGasto) {
+        console.error('Error generando el gasto automático desde la solicitud:', errorGasto);
+        alert('⚠️ La solicitud quedó en "Pagado", pero no se pudo registrar automáticamente en Finanzas: ' + errorGasto.message + '. Regístralo a mano si hace falta.');
+        return;
+      }
+
+      // Vínculo en ambos sentidos: junto con la relectura de arriba, evita que un segundo
+      // cambio de estado (o un doble clic) vuelva a generar otro gasto para esta solicitud.
+      const { error: errorVinculo } = await supabase
+        .from('solicitudes')
+        .update({ gasto_generado_id: nuevoGasto.id })
+        .eq('id', solicitud.id);
+      if (errorVinculo) console.error('Error guardando el vínculo solicitud → gasto:', errorVinculo);
+
+      // Copia la METADATA de los soportes ya subidos a la solicitud (ficha PDF + adjuntos del
+      // colaborador) hacia el gasto recién creado, apuntando al MISMO bucket_path — el archivo
+      // no se vuelve a subir ni se duplica en Storage, solo queda visible también desde
+      // "Ver Soportes" del gasto en Finanzas.
+      const { data: soportesOrigen, error: errorSoportes } = await supabase
+        .from('soportes')
+        .select('bucket_path, nombre_original, tamano_kb')
+        .eq('entidad_tipo', 'solicitud')
+        .eq('entidad_id', solicitud.id);
+      if (errorSoportes) {
+        console.error('Error leyendo soportes de la solicitud para reflejarlos en el gasto:', errorSoportes);
+      } else if (soportesOrigen && soportesOrigen.length > 0) {
+        const filasGasto = soportesOrigen.map(sp => ({
+          bucket_path: sp.bucket_path,
+          nombre_original: sp.nombre_original,
+          tamano_kb: sp.tamano_kb,
+          entidad_tipo: 'gasto',
+          entidad_id: nuevoGasto.id,
+          subido_por: user.id
+        }));
+        const { error: errorCopiaSoportes } = await supabase.from('soportes').insert(filasGasto);
+        if (errorCopiaSoportes) console.error('Error reflejando los soportes en el gasto generado:', errorCopiaSoportes);
+      }
+
+      await Promise.all([cargarGastos(), cargarSolicitudes()]);
+    } catch (errorInesperado) {
+      console.error('Error inesperado generando el gasto automático desde la solicitud:', errorInesperado);
+      alert('⚠️ La solicitud quedó en "Pagado", pero hubo un error inesperado registrándola en Finanzas. Regístralo a mano si hace falta.');
     }
   };
 
@@ -2207,16 +2439,7 @@ const App = () => {
   const handleDeleteSolicitud = async (id) => {
     if (!window.confirm('¿Eliminar solicitud?')) return;
 
-    const { data: soportesRelacionados } = await supabase
-      .from('soportes')
-      .select('bucket_path')
-      .eq('entidad_tipo', 'solicitud')
-      .eq('entidad_id', id);
-
-    if (soportesRelacionados && soportesRelacionados.length > 0) {
-      await supabase.storage.from('soportes').remove(soportesRelacionados.map(r => r.bucket_path));
-      await supabase.from('soportes').delete().eq('entidad_tipo', 'solicitud').eq('entidad_id', id);
-    }
+    await eliminarSoportesDeEntidad('solicitud', id);
 
     const { error } = await supabase.from('solicitudes').delete().eq('id', id);
     if (error) {
@@ -3025,8 +3248,67 @@ const App = () => {
       return;
     }
 
+    if (newGasto.tipo === 'Pago a Tercero' && (!newGasto.terceroNombre || !newGasto.terceroDni)) {
+      alert('Nombre y DNI/Documento del tercero son obligatorios');
+      return;
+    }
+
     setGuardandoGasto(true);
     try {
+      // Pago a Tercero registrado directo en Finanzas (Opción B): mismo manejo del catálogo
+      // reutilizable de terceros que ya usa Solicitudes — crea o actualiza public.terceros
+      // según lo que se marcó, sin bloquear el guardado del gasto si esto falla.
+      const terceroInfoFinal = newGasto.tipo === 'Pago a Tercero' ? {
+        nombre: newGasto.terceroNombre,
+        dni: newGasto.terceroDni,
+        paisOrigen: newGasto.terceroPaisOrigen || null,
+        banco: newGasto.terceroBanco || null,
+        tipoCuenta: newGasto.terceroTipoCuenta || null,
+        numeroCuenta: newGasto.terceroNumeroCuenta || null,
+      } : null;
+
+      let terceroIdFinal = newGasto.terceroId || null;
+      if (newGasto.tipo === 'Pago a Tercero') {
+        if (!terceroIdFinal && newGasto.guardarTercero) {
+          const { data: nuevoTercero, error: terceroError } = await supabase
+            .from('terceros')
+            .insert({
+              nombre: newGasto.terceroNombre,
+              dni: newGasto.terceroDni,
+              pais_origen: newGasto.terceroPaisOrigen || null,
+              banco: newGasto.terceroBanco || null,
+              tipo_cuenta: newGasto.terceroTipoCuenta || null,
+              numero_cuenta: newGasto.terceroNumeroCuenta || null,
+              activo: true,
+              creado_por: user.id
+            })
+            .select('id')
+            .single();
+          if (terceroError) {
+            console.error('Error guardando el tercero para reutilizar:', terceroError);
+            alert('⚠️ El pago se guardó, pero el tercero NO quedó guardado para futuros pagos: ' + terceroError.message);
+          } else {
+            terceroIdFinal = nuevoTercero.id;
+          }
+        } else if (terceroIdFinal && newGasto.actualizarTercero) {
+          const { error: updateError } = await supabase
+            .from('terceros')
+            .update({
+              nombre: newGasto.terceroNombre,
+              dni: newGasto.terceroDni,
+              pais_origen: newGasto.terceroPaisOrigen || null,
+              banco: newGasto.terceroBanco || null,
+              tipo_cuenta: newGasto.terceroTipoCuenta || null,
+              numero_cuenta: newGasto.terceroNumeroCuenta || null,
+            })
+            .eq('id', terceroIdFinal);
+          if (updateError) {
+            console.error('Error actualizando los datos guardados del tercero:', updateError);
+            alert('⚠️ El pago se guardó, pero no se pudieron actualizar los datos guardados del tercero: ' + updateError.message);
+          }
+        }
+      }
+
       // Solo se vincula a un concepto de Presupuesto si la persona lo eligió a propósito en el
       // desplegable "Vincular a Presupuesto" — la sugerencia por texto ya NO se aplica sola al
       // guardar (antes sí, y eso además arrastraba un cambio silencioso de CECO, ver abajo).
@@ -3091,7 +3373,10 @@ const App = () => {
           categoria: newGasto.categoria || null,
           estado: newGasto.estado,
           observaciones: newGasto.observaciones || null,
-          presupuesto_item_id: presupuestoItemIdFinal || null
+          presupuesto_item_id: presupuestoItemIdFinal || null,
+          moneda_pago: newGasto.tipo === 'Pago a Tercero' ? newGasto.moneda : null,
+          tercero_info: terceroInfoFinal,
+          tercero_id: terceroIdFinal
         })
         .select('id')
         .single();
@@ -3106,7 +3391,36 @@ const App = () => {
         await subirSoporteEntidad(soporte, 'gasto', inserted.id);
       }
 
+      // Igual que en Solicitudes: se genera automáticamente la ficha PDF del pago (datos del
+      // tercero + cuenta bancaria) y se sube junto a los demás soportes de este gasto.
+      if (newGasto.tipo === 'Pago a Tercero') {
+        try {
+          const pdfDoc = construirPDFPagoTercero({
+            empresa: newGasto.empresa,
+            empresaNit: NIT_EMPRESAS[newGasto.empresa] || '',
+            fecha: newGasto.fecha,
+            responsableNombre: user.nombre,
+            detalle: newGasto.detalle,
+            valor: parseFloat(newGasto.valor) || 0,
+            moneda: newGasto.moneda,
+            tercero: terceroInfoFinal || {},
+            estado: newGasto.estado
+          });
+          await subirSoporteEntidad({
+            nombre: `Pago_a_Tercero_${(newGasto.terceroNombre || 'tercero').replace(/\s+/g, '_')}.pdf`,
+            tipo: 'application/pdf',
+            data: pdfDoc.output('datauristring')
+          }, 'gasto', inserted.id);
+        } catch (pdfError) {
+          console.error('Error generando el PDF de Pago a Tercero:', pdfError);
+          alert('⚠️ El pago se guardó, pero hubo un error generando el PDF automático.');
+        }
+      }
+
       await cargarGastos();
+      if (newGasto.tipo === 'Pago a Tercero' && (newGasto.guardarTercero || newGasto.actualizarTercero)) {
+        await Promise.all([cargarTerceros(), cargarTodosTerceros()]);
+      }
 
       setNewGasto({
         fecha: new Date().toISOString().split('T')[0],
@@ -3126,7 +3440,17 @@ const App = () => {
         cuentaDestino: '',
         soportes: [],
         presupuestoItemId: '',
-        aplicarDeduccion: true
+        aplicarDeduccion: true,
+        moneda: 'COP',
+        terceroId: '',
+        terceroNombre: '',
+        terceroDni: '',
+        terceroPaisOrigen: '',
+        terceroBanco: '',
+        terceroTipoCuenta: '',
+        terceroNumeroCuenta: '',
+        guardarTercero: true,
+        actualizarTercero: false
       });
       setSoportesTemp([]);
       alert('✅ Transacción agregada con soportes');
@@ -3277,12 +3601,7 @@ const App = () => {
 
   const handleDeleteGasto = async (id) => {
     if (!window.confirm('¿Eliminar gasto?')) return;
-    const { data: soportesRelacionados } = await supabase
-      .from('soportes').select('bucket_path').eq('entidad_tipo', 'gasto').eq('entidad_id', id);
-    if (soportesRelacionados && soportesRelacionados.length > 0) {
-      await supabase.storage.from('soportes').remove(soportesRelacionados.map(r => r.bucket_path));
-      await supabase.from('soportes').delete().eq('entidad_tipo', 'gasto').eq('entidad_id', id);
-    }
+    await eliminarSoportesDeEntidad('gasto', id);
     const { error } = await supabase.from('gastos').delete().eq('id', id);
     if (error) {
       console.error('Error eliminando gasto:', error);
@@ -3587,6 +3906,53 @@ const App = () => {
     link.href = soporte.data;
     link.download = soporte.nombre;
     link.click();
+  };
+
+  // Determina cómo previsualizar un soporte por su extensión — el nombre del archivo es lo
+  // único disponible (no se guarda el mime type en public.soportes), así que se infiere de ahí.
+  const inferirTipoPreviewSoporte = (nombre) => {
+    const ext = (nombre || '').split('.').pop().toLowerCase();
+    if (ext === 'pdf') return 'pdf';
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) return 'imagen';
+    return 'otro';
+  };
+
+  // Abre la vista previa de un soporte (PDF o imagen) SIN descargarlo primero — mismo modal
+  // "Ver Soportes" de siempre, ahora con un botón "👁️ Ver" además de "⬇️ Descargar". Los
+  // soportes en Storage (bucketPath) se traen como blob y se muestran con un object URL; los
+  // antiguos embebidos en base64 (soporte.data) ya son un data URL usable directo.
+  const handlePreviewSoporte = async (soporte) => {
+    const tipo = inferirTipoPreviewSoporte(soporte.nombre);
+    if (tipo === 'otro') {
+      alert('No hay vista previa disponible para este tipo de archivo — descárgalo para verlo.');
+      return;
+    }
+
+    if (!soporte.bucketPath) {
+      setPreviewSoporte({ nombre: soporte.nombre, url: soporte.data, tipo, esObjectUrl: false });
+      return;
+    }
+
+    setCargandoPreviewSoporte(true);
+    try {
+      const { data, error } = await supabase.storage.from('soportes').download(soporte.bucketPath);
+      if (error || !data) {
+        console.error('Error cargando vista previa:', error);
+        alert('❌ No se pudo cargar la vista previa: ' + (error?.message || ''));
+        return;
+      }
+      const url = URL.createObjectURL(data);
+      setPreviewSoporte({ nombre: soporte.nombre, url, tipo, esObjectUrl: true });
+    } finally {
+      setCargandoPreviewSoporte(false);
+    }
+  };
+
+  // Cierra la vista previa y libera el object URL si se creó uno (evita fugas de memoria con
+  // archivos grandes vistos varias veces seguidas).
+  const handleCerrarPreviewSoporte = () => {
+    if (previewSoporte?.esObjectUrl) URL.revokeObjectURL(previewSoporte.url);
+    setPreviewSoporte(null);
   };
 
   // IMPORTAR GASTOS DESDE JSON
@@ -5818,6 +6184,7 @@ const App = () => {
                     <option value="Gasto">💸 Gasto</option>
                     <option value="Ingreso">💰 Ingreso</option>
                     <option value="Traslado">🔄 Traslado</option>
+                    <option value="Pago a Tercero">🤝 Pago a Tercero</option>
                   </select>
                 </div>
                 <div>
@@ -5874,7 +6241,7 @@ const App = () => {
                   </>
                 )}
                 
-                {newGasto.tipo === 'Gasto' && (
+                {(newGasto.tipo === 'Gasto' || newGasto.tipo === 'Pago a Tercero') && (
                   <div>
                     <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>CECO</label>
                     <select value={newGasto.ceco} onChange={(e) => setNewGasto({...newGasto, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
@@ -5906,6 +6273,62 @@ const App = () => {
               </div>
 
               <input type="text" placeholder="Detalle/Descripción" value={newGasto.detalle} onChange={(e) => {setNewGasto({...newGasto, detalle: e.target.value}); setNewIngreso({...newIngreso, detalle: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', marginBottom: '1rem', boxSizing: 'border-box' }} />
+
+              {/* PAGO A TERCERO DIRECTO DESDE FINANZAS (Opción B) — mismo bloque y mismo catálogo
+                  reutilizable (public.terceros) que ya usa Solicitudes, para que un pago hecho
+                  desde cualquiera de las dos pantallas quede visible en el mismo desplegable. */}
+              {newGasto.tipo === 'Pago a Tercero' && (
+                <div style={{ marginBottom: '1rem', backgroundColor: '#F8F6F1', padding: '1rem', borderRadius: '4px', border: '1px solid #E6E0D2' }}>
+                  <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0', fontSize: '1rem' }}>Información del Tercero</h3>
+
+                  <div style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.5rem' }}>
+                    <select value={newGasto.terceroId} onChange={(e) => {
+                      const id = e.target.value;
+                      if (!id) {
+                        setNewGasto({...newGasto, terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false});
+                        return;
+                      }
+                      const t = tercerosDB.find(x => x.id === id);
+                      setNewGasto({...newGasto, terceroId: id, terceroNombre: t?.nombre || '', terceroDni: t?.dni || '', terceroPaisOrigen: t?.pais_origen || '', terceroBanco: t?.banco || '', terceroTipoCuenta: t?.tipo_cuenta || '', terceroNumeroCuenta: t?.numero_cuenta || '', guardarTercero: false, actualizarTercero: true});
+                    }} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }}>
+                      <option value="">➕ Nuevo tercero</option>
+                      {tercerosDB.map(t => <option key={t.id} value={t.id}>{t.nombre} — {t.dni}</option>)}
+                    </select>
+                    {newGasto.terceroId && (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
+                      <button type="button" onClick={() => handleEliminarTercero(newGasto.terceroId)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#CC4B4B', cursor: 'pointer', fontSize: '0.85rem' }} title="Eliminar este tercero del catálogo">
+                        🗑️
+                      </button>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <input type="text" placeholder="Nombre completo *" value={newGasto.terceroNombre} onChange={(e) => setNewGasto({...newGasto, terceroNombre: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
+                    <input type="text" placeholder="DNI / Documento *" value={newGasto.terceroDni} onChange={(e) => setNewGasto({...newGasto, terceroDni: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
+                    <input type="text" placeholder="País de origen" value={newGasto.terceroPaisOrigen} onChange={(e) => setNewGasto({...newGasto, terceroPaisOrigen: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <input type="text" placeholder="Banco" value={newGasto.terceroBanco} onChange={(e) => setNewGasto({...newGasto, terceroBanco: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
+                    <select value={newGasto.terceroTipoCuenta} onChange={(e) => setNewGasto({...newGasto, terceroTipoCuenta: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }}>
+                      <option value="">Tipo de cuenta</option>
+                      <option value="Ahorros">Ahorros</option>
+                      <option value="Corriente">Corriente</option>
+                    </select>
+                    <input type="text" placeholder="Número de cuenta" value={newGasto.terceroNumeroCuenta} onChange={(e) => setNewGasto({...newGasto, terceroNumeroCuenta: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
+                  </div>
+
+                  {!newGasto.terceroId ? (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#221E15', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={newGasto.guardarTercero} onChange={(e) => setNewGasto({...newGasto, guardarTercero: e.target.checked})} />
+                      💾 Guardar este tercero para futuros pagos (la próxima vez solo se ingresa el valor)
+                    </label>
+                  ) : (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#221E15', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={newGasto.actualizarTercero} onChange={(e) => setNewGasto({...newGasto, actualizarTercero: e.target.checked})} />
+                      🔄 Actualizar los datos guardados de este tercero con lo que edité arriba
+                    </label>
+                  )}
+                </div>
+              )}
 
               {newGasto.tipo === 'Gasto' && (() => {
                 const candidatos = getPresupuestoCandidatos(newGasto.empresa, newGasto.ceco, newGasto.responsable, newGasto.detalle, presupuestoItems);
@@ -5968,8 +6391,17 @@ const App = () => {
                 );
               })()}
 
+              {/* Pago a Tercero: la moneda del pago se elige aparte, igual que en Solicitudes —
+                  no depende de la empresa que paga. */}
+              {newGasto.tipo === 'Pago a Tercero' && (
+                <select value={newGasto.moneda} onChange={(e) => setNewGasto({...newGasto, moneda: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginBottom: '0.5rem' }}>
+                  <option value="COP">Pesos Colombianos (COP)</option>
+                  <option value="USD">Dólares (USD)</option>
+                </select>
+              )}
+
               {newGasto.tipo === 'Traslado' && <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Valor (Salida — {getMoneda(newGasto.empresa)})</label>}
-              <input type="number" placeholder="Valor" value={newGasto.valor} onChange={(e) => {setNewGasto({...newGasto, valor: e.target.value}); setNewIngreso({...newIngreso, valor: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', marginBottom: '1rem', boxSizing: 'border-box', marginTop: newGasto.tipo === 'Traslado' ? '0.5rem' : 0 }} />
+              <input type="number" placeholder={newGasto.tipo === 'Pago a Tercero' ? `Valor a Pagar (${newGasto.moneda})` : 'Valor'} value={newGasto.valor} onChange={(e) => {setNewGasto({...newGasto, valor: e.target.value}); setNewIngreso({...newIngreso, valor: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', marginBottom: '1rem', boxSizing: 'border-box', marginTop: newGasto.tipo === 'Traslado' ? '0.5rem' : 0 }} />
 
               {/* Traslado entre monedas distintas (ej. ARKO en USD hacia/desde el resto de la
                   holding en COP): el valor que sale (arriba) y el que entra a la cuenta destino
@@ -6005,8 +6437,8 @@ const App = () => {
                 )}
               </div>
 
-              <button disabled={guardandoGasto || guardandoIngreso} onClick={newGasto.tipo === 'Gasto' ? handleAddGasto : (newGasto.tipo === 'Traslado' ? handleAddGasto : handleAddIngreso)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: (guardandoGasto || guardandoIngreso) ? 'not-allowed' : 'pointer', opacity: (guardandoGasto || guardandoIngreso) ? 0.6 : 1 }}>
-                {(guardandoGasto || guardandoIngreso) ? 'Guardando...' : `Registrar ${newGasto.tipo === 'Traslado' ? 'Traslado' : (newGasto.tipo === 'Ingreso' ? 'Ingreso' : 'Gasto')}`}
+              <button disabled={guardandoGasto || guardandoIngreso} onClick={newGasto.tipo === 'Ingreso' ? handleAddIngreso : handleAddGasto} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: (guardandoGasto || guardandoIngreso) ? 'not-allowed' : 'pointer', opacity: (guardandoGasto || guardandoIngreso) ? 0.6 : 1 }}>
+                {(guardandoGasto || guardandoIngreso) ? 'Guardando...' : `Registrar ${newGasto.tipo}`}
               </button>
             </div>
             )}
@@ -6066,6 +6498,84 @@ const App = () => {
                     </table>
                   </div>
                   <p style={{ fontSize: '0.75rem', color: '#8F8877', marginTop: '0.75rem' }}>Desmarcar "Activo" oculta el CECO de los desplegables sin borrarlo — los registros que ya lo usaron lo siguen mostrando normalmente.</p>
+                </div>
+              )}
+            </div>
+            )}
+
+            {/* GESTIÓN DE TERCEROS (SOLO ADMIN Y COORDINADORA) — Opción A de la arquitectura
+                aprobada: catálogo de terceros/proveedores administrable desde Finanzas, sin
+                depender de crear primero un Pago a Tercero desde Solicitudes. Mismo patrón que
+                Gestión de CECOs: se puede crear, editar en línea y desactivar (nunca se borra
+                la fila, para no romper el vínculo con pagos históricos). */}
+            {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
+            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                <h2 style={{ color: '#C4A747', margin: 0 }}>🤝 Gestión de Terceros ({todosTerceros.length})</h2>
+                <button onClick={() => setMostrarGestionTerceros(!mostrarGestionTerceros)} style={{ padding: '0.5rem 1rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>
+                  {mostrarGestionTerceros ? 'Ocultar' : 'Ver / Crear Terceros'}
+                </button>
+              </div>
+              {mostrarGestionTerceros && (
+                <div style={{ marginTop: '1.5rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                    <input type="text" placeholder="Nombre completo *" value={nuevoTercero.nombre} onChange={(e) => setNuevoTercero({...nuevoTercero, nombre: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
+                    <input type="text" placeholder="DNI / Documento *" value={nuevoTercero.dni} onChange={(e) => setNuevoTercero({...nuevoTercero, dni: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
+                    <input type="text" placeholder="País de origen" value={nuevoTercero.paisOrigen} onChange={(e) => setNuevoTercero({...nuevoTercero, paisOrigen: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
+                    <input type="text" placeholder="Banco" value={nuevoTercero.banco} onChange={(e) => setNuevoTercero({...nuevoTercero, banco: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
+                    <select value={nuevoTercero.tipoCuenta} onChange={(e) => setNuevoTercero({...nuevoTercero, tipoCuenta: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }}>
+                      <option value="">Tipo de cuenta</option>
+                      <option value="Ahorros">Ahorros</option>
+                      <option value="Corriente">Corriente</option>
+                    </select>
+                    <input type="text" placeholder="Número de cuenta" value={nuevoTercero.numeroCuenta} onChange={(e) => setNuevoTercero({...nuevoTercero, numeroCuenta: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
+                    <button disabled={guardandoTercero} onClick={handleAddTerceroFinanzas} style={{ padding: '0.75rem 1.25rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoTercero ? 'not-allowed' : 'pointer', opacity: guardandoTercero ? 0.6 : 1, whiteSpace: 'nowrap' }}>+ Agregar</button>
+                  </div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                      <thead style={{ backgroundColor: '#F8F6F1' }}>
+                        <tr style={{ borderBottom: '2px solid #C4A747' }}>
+                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Nombre</th>
+                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>DNI</th>
+                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Banco</th>
+                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo Cuenta</th>
+                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Número de Cuenta</th>
+                          <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Activo</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {todosTerceros.length === 0 ? (
+                          <tr><td colSpan={6} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin terceros guardados todavía.</td></tr>
+                        ) : [...todosTerceros].sort((a, b) => a.nombre.localeCompare(b.nombre)).map(t => (
+                          <tr key={t.id} style={{ borderBottom: '1px solid #E6E0D2', opacity: t.activo === false ? 0.5 : 1 }}>
+                            <td style={{ padding: '0.75rem' }}>
+                              <input type="text" defaultValue={t.nombre} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== t.nombre) handleUpdateTercero(t.id, 'nombre', v); }} style={{ width: '100%', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box' }} />
+                            </td>
+                            <td style={{ padding: '0.75rem' }}>
+                              <input type="text" defaultValue={t.dni} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== t.dni) handleUpdateTercero(t.id, 'dni', v); }} style={{ width: '100%', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box' }} />
+                            </td>
+                            <td style={{ padding: '0.75rem' }}>
+                              <input type="text" defaultValue={t.banco || ''} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (t.banco || '')) handleUpdateTercero(t.id, 'banco', v); }} style={{ width: '100%', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box' }} />
+                            </td>
+                            <td style={{ padding: '0.75rem' }}>
+                              <select value={t.tipo_cuenta || ''} onChange={(e) => handleUpdateTercero(t.id, 'tipoCuenta', e.target.value)} style={{ padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E' }}>
+                                <option value="">—</option>
+                                <option value="Ahorros">Ahorros</option>
+                                <option value="Corriente">Corriente</option>
+                              </select>
+                            </td>
+                            <td style={{ padding: '0.75rem' }}>
+                              <input type="text" defaultValue={t.numero_cuenta || ''} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (t.numero_cuenta || '')) handleUpdateTercero(t.id, 'numeroCuenta', v); }} style={{ width: '100%', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box' }} />
+                            </td>
+                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                              <input type="checkbox" checked={t.activo !== false} onChange={(e) => handleUpdateTercero(t.id, 'activo', e.target.checked)} />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p style={{ fontSize: '0.75rem', color: '#8F8877', marginTop: '0.75rem' }}>Desmarcar "Activo" oculta el tercero de los desplegables de Pago a Tercero (Solicitudes y Finanzas) sin borrarlo — los pagos que ya se le hicieron lo siguen mostrando normalmente.</p>
                 </div>
               )}
             </div>
@@ -6352,9 +6862,9 @@ const App = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
                 <h2 style={{ color: '#C4A747', margin: 0 }}>📋 Historial de Finanzas ({registrosFinanzas.length})</h2>
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                  {['Todos', 'Gasto', 'Traslado', 'Ingreso'].map(t => (
+                  {['Todos', 'Gasto', 'Traslado', 'Ingreso', 'Pago a Tercero'].map(t => (
                     <button key={t} onClick={() => setFiltroTipoFinanzas(t)} style={{ padding: '0.4rem 0.9rem', borderRadius: '4px', border: filtroTipoFinanzas === t ? '1px solid #C4A747' : '1px solid #E6E0D2', backgroundColor: filtroTipoFinanzas === t ? '#C4A747' : '#F8F6F1', color: filtroTipoFinanzas === t ? '#221E15' : '#6B6458', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}>
-                      {t === 'Gasto' ? '💸 Gasto' : t === 'Traslado' ? '🔄 Traslado' : t === 'Ingreso' ? '💰 Ingreso' : 'Todos'}
+                      {t === 'Gasto' ? '💸 Gasto' : t === 'Traslado' ? '🔄 Traslado' : t === 'Ingreso' ? '💰 Ingreso' : t === 'Pago a Tercero' ? '🤝 Pago a Tercero' : 'Todos'}
                     </button>
                   ))}
                   {/* Informe PDF del filtro actualmente aplicado — resumen, gráficas y tabla,
@@ -6421,10 +6931,11 @@ const App = () => {
                       const esGasto = r.tipo === 'Gasto';
                       const esTraslado = r.tipo === 'Traslado';
                       const esIngreso = r.tipo === 'Ingreso';
+                      const esPagoTercero = r.tipo === 'Pago a Tercero';
                       const esSalidaTraslado = r._ladoTraslado === 'salida';
                       const esEntradaTraslado = r._ladoTraslado === 'entrada';
                       const colorValor = esIngreso || esEntradaTraslado ? '#2F9E52' : (esSalidaTraslado ? '#CC4B4B' : (esTraslado ? '#C4A747' : '#CC4B4B'));
-                      const iconoTipo = esGasto ? '💸' : (esTraslado ? '🔄' : '💰');
+                      const iconoTipo = esGasto ? '💸' : (esTraslado ? '🔄' : (esPagoTercero ? '🤝' : '💰'));
                       const verSoportesFn = esIngreso ? handleVerSoportesIngreso : handleVerSoportesGasto;
                       const deleteFn = esIngreso ? handleDeleteIngreso : handleDeleteGasto;
                       // Nombre/foto del colaborador: se resuelven por colaboradores_publico (id), no por
@@ -6448,9 +6959,17 @@ const App = () => {
                             <span style={{ color: '#C4A747', fontWeight: 'bold' }}>{r.ceco}</span>
                             {r.cuenta && <div style={{ color: '#6B6458', fontSize: '0.75rem' }}>{r.cuenta}</div>}
                           </td>
-                          <td style={{ padding: '0.75rem', color: '#6B6458' }}>{r.detalle}</td>
-                          <td style={{ padding: '0.75rem', color: colorValor, textAlign: 'right', fontWeight: 'bold' }}>
-                            {esSalidaTraslado ? '− ' : esEntradaTraslado ? '+ ' : ''}{formatMoney(r.valor, r.empresa)}
+                          <td style={{ padding: '0.75rem', color: '#6B6458' }}>
+                            {r.detalle}
+                            {esPagoTercero && r.terceroInfo?.nombre && (
+                              <div style={{ fontSize: '0.7rem', color: '#8F8877' }}>👤 {r.terceroInfo.nombre}{r.terceroInfo.dni ? ` · ${r.terceroInfo.dni}` : ''}</div>
+                            )}
+                            {r.solicitudOrigenId && (
+                              <div style={{ fontSize: '0.7rem', color: '#6C63D1' }}>🔗 Generado desde Solicitudes</div>
+                            )}
+                          </td>
+                          <td style={{ padding: '0.75rem', color: esPagoTercero ? '#CC4B4B' : colorValor, textAlign: 'right', fontWeight: 'bold' }}>
+                            {esSalidaTraslado ? '− ' : esEntradaTraslado ? '+ ' : ''}{esPagoTercero ? formatMoneyByMoneda(parseFloat(r.valor) || 0, r.moneda || getMoneda(r.empresa)) : formatMoney(r.valor, r.empresa)}
                             {r.valorBruto != null && (
                               <div style={{ fontSize: '0.7rem', color: '#6B6458', fontWeight: 'normal' }} title="Valor bruto antes de deducciones">
                                 Bruto {formatMoney(r.valorBruto, r.empresa)} · −{formatMoney(r.deduccionAplicada, r.empresa)}
@@ -6458,6 +6977,16 @@ const App = () => {
                             )}
                           </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            {esPagoTercero && (
+                              <>
+                                <button onClick={() => setVerDetalleTercero({...r, responsableNombre: nombreColaborador, moneda: r.moneda || getMoneda(r.empresa)})} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#C4A747', fontSize: '1rem', marginRight: '0.4rem' }} title="Ver Detalle del Tercero">
+                                  🔍
+                                </button>
+                                <button onClick={() => handleGenerarPDFPagoTercero({...r, responsableNombre: nombreColaborador, moneda: r.moneda || getMoneda(r.empresa)})} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.4rem' }} title="PDF">
+                                  📄
+                                </button>
+                              </>
+                            )}
                             {(r.cantidadSoportes > 0 || r.soporteDriveLink) ? (
                               <button onClick={() => verSoportesFn(r)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }}>📎 {r.soporteDriveLink ? 'Drive' : r.cantidadSoportes}</button>
                             ) : (
@@ -7211,20 +7740,62 @@ const App = () => {
               {verSoportes.length === 0 ? (
                 <p style={{ color: '#6B6458', textAlign: 'center' }}>No hay soportes adjuntos</p>
               ) : (
-                verSoportes.map((soporte, idx) => (
+                verSoportes.map((soporte, idx) => {
+                  const previsualizable = inferirTipoPreviewSoporte(soporte.nombre) !== 'otro';
+                  return (
                   <div key={idx} style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem', marginBottom: '1rem' }}>
                     <p style={{ color: '#C4A747', fontWeight: 'bold', margin: '0 0 0.5rem 0' }}>📄 {soporte.nombre}</p>
                     <p style={{ color: '#6B6458', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
-                    <button onClick={() => handleDownloadSoporte(soporte)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>
-                      ⬇️ Descargar
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      {previsualizable && (
+                        <button onClick={() => handlePreviewSoporte(soporte)} disabled={cargandoPreviewSoporte} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #C4A747', color: '#C4A747', borderRadius: '4px', fontWeight: 'bold', cursor: cargandoPreviewSoporte ? 'default' : 'pointer', fontSize: '0.85rem' }}>
+                          👁️ Ver
+                        </button>
+                      )}
+                      <button onClick={() => handleDownloadSoporte(soporte)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>
+                        ⬇️ Descargar
+                      </button>
+                    </div>
                   </div>
-                ))
+                  );
+                })
               )}
               
               <button onClick={() => setVerSoportes(null)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>
                 Cerrar
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL VISTA PREVIA DE SOPORTE — PDF o imagen mostrados directo, sin descargar
+            primero. Se abre desde el botón "👁️ Ver" de cualquier "Ver Soportes" de la app
+            (Solicitudes, Gastos, Ingresos, Cuentas de Cobro, Pago a Tercero: todos comparten
+            el mismo modal de arriba). */}
+        {previewSoporte && (
+          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '10000' }}>
+            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.25rem', maxWidth: '900px', width: '95%', maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem' }}>
+                <p style={{ color: '#C4A747', fontWeight: 'bold', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📄 {previewSoporte.nombre}</p>
+                <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                  {/* El archivo ya está cargado en memoria para la vista previa (object URL o
+                      data URL) — se descarga directo desde ahí, sin volver a pedirlo a Storage. */}
+                  <button onClick={() => { const link = document.createElement('a'); link.href = previewSoporte.url; link.download = previewSoporte.nombre; link.click(); }} style={{ padding: '0.5rem 1rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
+                    ⬇️ Descargar
+                  </button>
+                  <button onClick={handleCerrarPreviewSoporte} style={{ padding: '0.5rem 1rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
+                    ✕ Cerrar
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ flex: 1, overflow: 'auto', backgroundColor: '#F8F6F1', borderRadius: '4px', display: 'flex', justifyContent: 'center', alignItems: previewSoporte.tipo === 'imagen' ? 'center' : 'stretch' }}>
+                {previewSoporte.tipo === 'pdf' ? (
+                  <iframe src={previewSoporte.url} title={previewSoporte.nombre} style={{ width: '100%', height: '75vh', border: 'none', borderRadius: '4px' }} />
+                ) : (
+                  <img src={previewSoporte.url} alt={previewSoporte.nombre} style={{ maxWidth: '100%', maxHeight: '75vh', objectFit: 'contain' }} />
+                )}
+              </div>
             </div>
           </div>
         )}
