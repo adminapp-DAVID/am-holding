@@ -3851,7 +3851,13 @@ const App = () => {
           tamaño: file.size,
           data: event.target.result
         };
-        setSoportesTemp([...soportesTemp, nuevoSoporte]);
+        // Actualización funcional (prev => ...) y no "[...soportesTemp, nuevoSoporte]": al
+        // elegir varios archivos a la vez, cada FileReader termina de leer en un momento
+        // distinto (son asíncronos), y con la variable soportesTemp de este cierre (el valor
+        // que tenía cuando se disparó el evento) cada actualización pisaba a las demás —
+        // terminaba quedando solo el último archivo leído en vez de todos. La forma funcional
+        // siempre parte del estado más reciente, así que los archivos sí se acumulan todos.
+        setSoportesTemp(prev => [...prev, nuevoSoporte]);
       };
       reader.readAsDataURL(file);
     });
