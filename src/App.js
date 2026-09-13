@@ -125,6 +125,13 @@ const getSaldoPendienteEnMes = (deduccion, anio, mes) => {
 // NIT de cada empresa de la holding, para el encabezado del documento.
 // Tomados de los certificados de Cámara de Comercio de Medellín para Antioquia.
 // ⚠️ ARKO no tiene certificado cargado todavía — completar apenas se tenga.
+// Código del CECO por defecto "Pago a Terceros" (creado por supabase_fix_terceros_finanzas_link.sql).
+// Se usa en dos lugares: (1) el auto-vínculo Solicitud -> Gasto (Opción C) lo asigna cuando
+// genera el gasto sin que nadie haya elegido CECO a mano, y (2) en Finanzas, elegir este CECO
+// en un Gasto normal también muestra el formulario de Tercero, sin necesidad de cambiar el
+// campo "Tipo" a "Pago a Tercero".
+const CECO_PAGO_TERCERO = 'CECO-015-PT';
+
 const NIT_EMPRESAS = {
   'AM SPORTS GROUP SAS': '901219895-5',
   'PRO INVESTMENTS GLOBAL SAS': '901821315-6',
@@ -422,6 +429,11 @@ const App = () => {
   const [guardandoIngreso, setGuardandoIngreso] = useState(false);
   const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', valorDestino: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', soportes: [], presupuestoItemId: '', aplicarDeduccion: true, moneda: 'COP', terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false });
   const [newIngreso, setNewIngreso] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Ingreso', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CEIN-001-ING', detalle: '', valor: '', categoria: '', estado: 'Pagado', observaciones: '', linkSoporte: '', cuenta: '', soportes: [] });
+  // El formulario/lógica de "Información del Tercero" en Finanzas se activa no solo eligiendo
+  // el Tipo "Pago a Tercero", sino también al dejar el Tipo en "Gasto" pero elegir el CECO
+  // "Pago a Terceros" (CECO_PAGO_TERCERO) — así un gasto categorizado bajo ese CECO también
+  // puede quedar con los datos del tercero, sin obligar a cambiar el campo Tipo.
+  const esPagoTerceroFinanzas = newGasto.tipo === 'Pago a Tercero' || (newGasto.tipo === 'Gasto' && newGasto.ceco === CECO_PAGO_TERCERO);
   // Filtros de la lista histórica unificada de Finanzas (Gastos + Ingresos + Traslados en
   // una sola tabla, en vez de las 3 tablas separadas que había antes). `filtroTipoFinanzas`
   // ya existía (pill de Todos/Gasto/Traslado/Ingreso); los demás se agregaron para poder
@@ -2047,7 +2059,7 @@ const App = () => {
       // CECO fijo "Pago a Terceros" (creado por la migración SQL de esta funcionalidad) — se
       // puede reasignar después a mano desde Gestión de CECOs/Historial si hace falta uno más
       // específico; lo importante es que el gasto nunca quede sin CECO por defecto.
-      const cecoId = await resolverCecoId('CECO-014-PT');
+      const cecoId = await resolverCecoId(CECO_PAGO_TERCERO);
 
       const { data: nuevoGasto, error: errorGasto } = await supabase
         .from('gastos')
@@ -3248,17 +3260,19 @@ const App = () => {
       return;
     }
 
-    if (newGasto.tipo === 'Pago a Tercero' && (!newGasto.terceroNombre || !newGasto.terceroDni)) {
+    if (esPagoTerceroFinanzas && (!newGasto.terceroNombre || !newGasto.terceroDni)) {
       alert('Nombre y DNI/Documento del tercero son obligatorios');
       return;
     }
 
     setGuardandoGasto(true);
     try {
-      // Pago a Tercero registrado directo en Finanzas (Opción B): mismo manejo del catálogo
+      // Pago a Tercero registrado directo en Finanzas (Opción B) — sea porque el Tipo es
+      // "Pago a Tercero" o porque el Tipo quedó en "Gasto" pero se eligió el CECO "Pago a
+      // Terceros" (esPagoTerceroFinanzas cubre ambos casos): mismo manejo del catálogo
       // reutilizable de terceros que ya usa Solicitudes — crea o actualiza public.terceros
       // según lo que se marcó, sin bloquear el guardado del gasto si esto falla.
-      const terceroInfoFinal = newGasto.tipo === 'Pago a Tercero' ? {
+      const terceroInfoFinal = esPagoTerceroFinanzas ? {
         nombre: newGasto.terceroNombre,
         dni: newGasto.terceroDni,
         paisOrigen: newGasto.terceroPaisOrigen || null,
@@ -3268,7 +3282,7 @@ const App = () => {
       } : null;
 
       let terceroIdFinal = newGasto.terceroId || null;
-      if (newGasto.tipo === 'Pago a Tercero') {
+      if (esPagoTerceroFinanzas) {
         if (!terceroIdFinal && newGasto.guardarTercero) {
           const { data: nuevoTercero, error: terceroError } = await supabase
             .from('terceros')
@@ -3374,7 +3388,7 @@ const App = () => {
           estado: newGasto.estado,
           observaciones: newGasto.observaciones || null,
           presupuesto_item_id: presupuestoItemIdFinal || null,
-          moneda_pago: newGasto.tipo === 'Pago a Tercero' ? newGasto.moneda : null,
+          moneda_pago: esPagoTerceroFinanzas ? newGasto.moneda : null,
           tercero_info: terceroInfoFinal,
           tercero_id: terceroIdFinal
         })
@@ -3393,7 +3407,7 @@ const App = () => {
 
       // Igual que en Solicitudes: se genera automáticamente la ficha PDF del pago (datos del
       // tercero + cuenta bancaria) y se sube junto a los demás soportes de este gasto.
-      if (newGasto.tipo === 'Pago a Tercero') {
+      if (esPagoTerceroFinanzas) {
         try {
           const pdfDoc = construirPDFPagoTercero({
             empresa: newGasto.empresa,
@@ -3418,7 +3432,7 @@ const App = () => {
       }
 
       await cargarGastos();
-      if (newGasto.tipo === 'Pago a Tercero' && (newGasto.guardarTercero || newGasto.actualizarTercero)) {
+      if (esPagoTerceroFinanzas && (newGasto.guardarTercero || newGasto.actualizarTercero)) {
         await Promise.all([cargarTerceros(), cargarTodosTerceros()]);
       }
 
@@ -6277,7 +6291,7 @@ const App = () => {
               {/* PAGO A TERCERO DIRECTO DESDE FINANZAS (Opción B) — mismo bloque y mismo catálogo
                   reutilizable (public.terceros) que ya usa Solicitudes, para que un pago hecho
                   desde cualquiera de las dos pantallas quede visible en el mismo desplegable. */}
-              {newGasto.tipo === 'Pago a Tercero' && (
+              {esPagoTerceroFinanzas && (
                 <div style={{ marginBottom: '1rem', backgroundColor: '#F8F6F1', padding: '1rem', borderRadius: '4px', border: '1px solid #E6E0D2' }}>
                   <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0', fontSize: '1rem' }}>Información del Tercero</h3>
 
@@ -6392,8 +6406,9 @@ const App = () => {
               })()}
 
               {/* Pago a Tercero: la moneda del pago se elige aparte, igual que en Solicitudes —
-                  no depende de la empresa que paga. */}
-              {newGasto.tipo === 'Pago a Tercero' && (
+                  no depende de la empresa que paga. Aplica tanto si el Tipo es "Pago a
+                  Tercero" como si es "Gasto" con el CECO "Pago a Terceros" elegido. */}
+              {esPagoTerceroFinanzas && (
                 <select value={newGasto.moneda} onChange={(e) => setNewGasto({...newGasto, moneda: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginBottom: '0.5rem' }}>
                   <option value="COP">Pesos Colombianos (COP)</option>
                   <option value="USD">Dólares (USD)</option>
@@ -6401,7 +6416,7 @@ const App = () => {
               )}
 
               {newGasto.tipo === 'Traslado' && <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Valor (Salida — {getMoneda(newGasto.empresa)})</label>}
-              <input type="number" placeholder={newGasto.tipo === 'Pago a Tercero' ? `Valor a Pagar (${newGasto.moneda})` : 'Valor'} value={newGasto.valor} onChange={(e) => {setNewGasto({...newGasto, valor: e.target.value}); setNewIngreso({...newIngreso, valor: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', marginBottom: '1rem', boxSizing: 'border-box', marginTop: newGasto.tipo === 'Traslado' ? '0.5rem' : 0 }} />
+              <input type="number" placeholder={esPagoTerceroFinanzas ? `Valor a Pagar (${newGasto.moneda})` : 'Valor'} value={newGasto.valor} onChange={(e) => {setNewGasto({...newGasto, valor: e.target.value}); setNewIngreso({...newIngreso, valor: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', marginBottom: '1rem', boxSizing: 'border-box', marginTop: newGasto.tipo === 'Traslado' ? '0.5rem' : 0 }} />
 
               {/* Traslado entre monedas distintas (ej. ARKO en USD hacia/desde el resto de la
                   holding en COP): el valor que sale (arriba) y el que entra a la cuenta destino
@@ -6931,11 +6946,15 @@ const App = () => {
                       const esGasto = r.tipo === 'Gasto';
                       const esTraslado = r.tipo === 'Traslado';
                       const esIngreso = r.tipo === 'Ingreso';
-                      const esPagoTercero = r.tipo === 'Pago a Tercero';
+                      // También detecta un Gasto normal categorizado bajo el CECO "Pago a
+                      // Terceros" (esPagoTerceroFinanzas en el formulario) — esas filas quedan
+                      // con tipo: 'Gasto' pero sí traen terceroInfo, así que se identifican por
+                      // eso y no solo por el tipo.
+                      const esPagoTercero = r.tipo === 'Pago a Tercero' || !!r.terceroInfo;
                       const esSalidaTraslado = r._ladoTraslado === 'salida';
                       const esEntradaTraslado = r._ladoTraslado === 'entrada';
                       const colorValor = esIngreso || esEntradaTraslado ? '#2F9E52' : (esSalidaTraslado ? '#CC4B4B' : (esTraslado ? '#C4A747' : '#CC4B4B'));
-                      const iconoTipo = esGasto ? '💸' : (esTraslado ? '🔄' : (esPagoTercero ? '🤝' : '💰'));
+                      const iconoTipo = esPagoTercero ? '🤝' : (esGasto ? '💸' : (esTraslado ? '🔄' : '💰'));
                       const verSoportesFn = esIngreso ? handleVerSoportesIngreso : handleVerSoportesGasto;
                       const deleteFn = esIngreso ? handleDeleteIngreso : handleDeleteGasto;
                       // Nombre/foto del colaborador: se resuelven por colaboradores_publico (id), no por
