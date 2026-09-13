@@ -476,7 +476,9 @@ const App = () => {
   // Modal "Confirmar Pago" — al marcar una Solicitud de Pago a Tercero como "Pagado", pide
   // antes la Cuenta de la empresa usada y el comprobante del banco, antes de generar el Gasto
   // automático en Finanzas (Opción C). null = modal cerrado.
-  const [confirmarPagoTercero, setConfirmarPagoTercero] = useState(null);
+  // Modal "Confirmar Pago" (Opción C, extendida a Pago a Tercero / Anticipo / Reembolso /
+  // Legalización): { solicitud, cuenta, ceco, comprobante, accion: 'gasto'|'ingreso', monto }.
+  const [confirmarPagoSolicitud, setConfirmarPagoSolicitud] = useState(null);
   const [guardandoConfirmarPago, setGuardandoConfirmarPago] = useState(false);
   const [mostrarImportar, setMostrarImportar] = useState(false);
   const [archivoImportacion, setArchivoImportacion] = useState(null);
@@ -673,13 +675,14 @@ const App = () => {
     }
   };
 
-  // Borra los soportes (metadata + archivo en Storage) de una Solicitud o un Gasto — usada al
-  // eliminar el registro completo. IMPORTANTE: desde que el auto-vínculo Solicitud → Gasto
-  // (Opción C) reutiliza el MISMO archivo para ambas pantallas (mismo bucket_path, ver
-  // generarGastoDesdeSolicitud), borrar el archivo físico a ciegas al eliminar cualquiera de
-  // los dos dejaría al otro con un soporte "roto" (la fila de metadata seguiría existiendo,
-  // pero el archivo ya no). Por eso cada bucket_path solo se borra de Storage si NINGUNA otra
-  // fila de public.soportes (de cualquier entidad) sigue apuntando a él.
+  // Borra los soportes (metadata + archivo en Storage) de una Solicitud, un Gasto o un
+  // Ingreso — usada al eliminar el registro completo. IMPORTANTE: desde que el auto-vínculo
+  // Solicitud → Gasto/Ingreso (Opción C) reutiliza el MISMO archivo para ambas pantallas
+  // (mismo bucket_path, ver generarMovimientoDesdeSolicitud), borrar el archivo físico a
+  // ciegas al eliminar cualquiera de los dos dejaría al otro con un soporte "roto" (la fila de
+  // metadata seguiría existiendo, pero el archivo ya no). Por eso cada bucket_path solo se
+  // borra de Storage si NINGUNA otra fila de public.soportes (de cualquier entidad) sigue
+  // apuntando a él.
   const eliminarSoportesDeEntidad = async (entidadTipo, entidadId) => {
     const { data: soportesRelacionados } = await supabase
       .from('soportes')
@@ -982,9 +985,13 @@ const App = () => {
     moneda: row.moneda_pago || '',
     terceroInfo: row.tercero_info || null,
     terceroId: row.tercero_id || '',
-    // Opción C: si esta Solicitud (Pago a Tercero) ya generó su Gasto en Finanzas al pasar a
-    // "Pagado", queda el id acá — evita que se genere un segundo Gasto por la misma Solicitud.
-    gastoGeneradoId: row.gasto_generado_id || ''
+    // Opción C: si esta Solicitud ya generó su movimiento en Finanzas al pasar a "Pagado",
+    // queda el id acá — evita que se genere un segundo movimiento por la misma Solicitud.
+    // gastoGeneradoId: Pago a Tercero, Anticipo, Reembolso, y Legalización con diferencia a
+    // favor del colaborador. ingresoGeneradoId: Legalización con diferencia en contra (el
+    // colaborador debe devolver dinero) — ver calcularAccionFinanzasSolicitud.
+    gastoGeneradoId: row.gasto_generado_id || '',
+    ingresoGeneradoId: row.ingreso_generado_id || ''
   });
 
   const cargarSolicitudes = async () => {
@@ -995,7 +1002,7 @@ const App = () => {
       // aprobado_por_id (Sección 19), hay 3 FKs de solicitudes hacia usuarios. Sin indicar
       // por cuál columna se hace el embed, PostgREST no sabe cuál usar y el select entero
       // falla con "more than one relationship was found" (deja el historial vacío).
-      .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
+      .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -1286,6 +1293,10 @@ const App = () => {
     estado: row.estado,
     observaciones: row.observaciones || '',
     soporteDriveLink: row.soporte_drive_link || '',
+    // Opción C extendida: si este Ingreso se generó automáticamente desde una Legalización con
+    // diferencia a favor de la empresa (el colaborador debe devolver dinero), queda acá el id
+    // de la Solicitud que lo originó — mismo patrón que gastos.solicitud_origen_id.
+    solicitudOrigenId: row.solicitud_origen_id || '',
     cantidadSoportes: 0
   });
 
@@ -1293,7 +1304,7 @@ const App = () => {
     setCargandoIngresos(true);
     const { data, error } = await supabase
       .from('ingresos')
-      .select('id, fecha, tipo, cuenta, detalle, valor, categoria, estado, observaciones, soporte_drive_link, responsable_id, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
+      .select('id, fecha, tipo, cuenta, detalle, valor, categoria, estado, observaciones, soporte_drive_link, responsable_id, solicitud_origen_id, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
       .order('fecha', { ascending: false });
     if (error) {
       console.error('Error cargando ingresos:', error);
@@ -2029,130 +2040,171 @@ const App = () => {
       return;
     }
 
-    // Opción C (arquitectura Terceros/Finanzas aprobada): al marcar un Pago a Tercero como
-    // "Pagado", se registra SOLO — sin que nadie tenga que volver a digitarlo — el Gasto
-    // correspondiente en Finanzas, con sus soportes visibles desde ambas pantallas. No
-    // bloquea nada si falla: el cambio de estado ya quedó guardado arriba.
+    // Opción C (arquitectura Terceros/Finanzas aprobada, extendida a Anticipo/Reembolso/
+    // Legalización): al marcar la Solicitud como "Pagado", se registra SOLO — sin que nadie
+    // tenga que volver a digitarlo — el Gasto o Ingreso correspondiente en Finanzas, con sus
+    // soportes visibles desde ambas pantallas. No bloquea nada si falla: el cambio de estado
+    // ya quedó guardado arriba.
     if (nuevoEstado === 'Pagado') {
       const solicitud = anteriores.find(s => s.id === id);
-      if (solicitud && solicitud.tipo === 'Pago a Tercero' && !solicitud.gastoGeneradoId) {
-        await generarGastoDesdeSolicitud(solicitud, opciones.cuentaPago || null);
+      if (solicitud && !solicitud.gastoGeneradoId && !solicitud.ingresoGeneradoId) {
+        const { accion, monto } = calcularAccionFinanzasSolicitud(solicitud);
+        if (accion !== 'ninguno') {
+          await generarMovimientoDesdeSolicitud(solicitud, { cuentaPago: opciones.cuentaPago || null, cecoCodigo: opciones.cecoCodigo || null, accion, monto });
+        }
       }
     }
   };
 
-  // Genera el Gasto en Finanzas para una Solicitud de "Pago a Tercero" que acaba de pasar a
-  // "Pagado" (Opción C). Reglas acordadas con el usuario: (1) no se duplica el registro
-  // financiero — se relee gasto_generado_id justo antes de insertar, por si esta función se
+  // Determina qué movimiento de Finanzas corresponde generar automáticamente al marcar una
+  // Solicitud como "Pagado" (Opción C). 'ninguno' es el caso de una Legalización cuadrada
+  // (soportes == anticipo original): no hay plata que mueva la empresa, así que no debe pedir
+  // Cuenta/Comprobante ni generar nada en Finanzas — solo queda "Pagado".
+  const calcularAccionFinanzasSolicitud = (s) => {
+    if (s.tipo === 'Pago a Tercero') return { accion: 'gasto', monto: parseFloat(s.valor) || 0 };
+    if (s.tipo === 'Anticipo') return { accion: 'gasto', monto: parseFloat(s.valor) || 0 };
+    if (s.tipo === 'Reembolso') return { accion: 'gasto', monto: s.totalCalculado || 0 };
+    if (s.tipo === 'Legalización') {
+      const diferencia = (s.totalCalculado || 0) - (parseFloat(s.valorAnticipoOriginal) || 0);
+      if (diferencia > 0) return { accion: 'gasto', monto: diferencia }; // hay que reembolsar la diferencia
+      if (diferencia < 0) return { accion: 'ingreso', monto: Math.abs(diferencia) }; // el colaborador debe devolver
+      return { accion: 'ninguno', monto: 0 };
+    }
+    return { accion: 'ninguno', monto: 0 };
+  };
+
+  // Genera el Gasto o Ingreso en Finanzas para una Solicitud que acaba de pasar a "Pagado"
+  // (Opción C). Reglas acordadas con el usuario: (1) no se duplica el registro financiero — se
+  // relee gasto_generado_id/ingreso_generado_id justo antes de insertar, por si esta función se
   // disparó dos veces para la misma solicitud; (2) los soportes quedan visibles desde AMBAS
   // pantallas sin duplicar el archivo en Storage — se copian solo las filas de metadata en
   // public.soportes apuntando al mismo bucket_path; (3) no se tocan permisos/roles existentes,
-  // esto solo agrega una fila más al mismo Finanzas que ya ven Admin/Coordinadora.
-  const generarGastoDesdeSolicitud = async (solicitud, cuentaPago = null) => {
+  // esto solo agrega una fila más al mismo Finanzas que ya ven Admin/Coordinadora. Anticipo y
+  // Reembolso quedan vinculados al Responsable de la solicitud (no llevan Tercero); Pago a
+  // Tercero sigue llevando también los datos del tercero.
+  const generarMovimientoDesdeSolicitud = async (solicitud, { cuentaPago = null, cecoCodigo = null, accion, monto } = {}) => {
     try {
       const { data: solActual, error: errorLectura } = await supabase
         .from('solicitudes')
-        .select('gasto_generado_id')
+        .select('gasto_generado_id, ingreso_generado_id')
         .eq('id', solicitud.id)
         .single();
       if (errorLectura) {
-        console.error('Error releyendo la solicitud antes de generar el gasto automático:', errorLectura);
+        console.error('Error releyendo la solicitud antes de generar el movimiento automático:', errorLectura);
         return;
       }
-      if (solActual.gasto_generado_id) return; // ya se generó antes, no duplicar
+      if (solActual.gasto_generado_id || solActual.ingreso_generado_id) return; // ya se generó antes, no duplicar
 
-      // CECO fijo "Pago a Terceros" (creado por la migración SQL de esta funcionalidad) — se
-      // puede reasignar después a mano desde Gestión de CECOs/Historial si hace falta uno más
-      // específico; lo importante es que el gasto nunca quede sin CECO por defecto.
-      const cecoId = await resolverCecoId(CECO_PAGO_TERCERO);
+      // Pago a Tercero sigue usando su CECO fijo por defecto (CECO-015-PT); Anticipo, Reembolso
+      // y Legalización usan el CECO que el usuario eligió en el modal "Confirmar Pago".
+      const cecoId = await resolverCecoId(solicitud.tipo === 'Pago a Tercero' ? CECO_PAGO_TERCERO : cecoCodigo);
 
-      const { data: nuevoGasto, error: errorGasto } = await supabase
-        .from('gastos')
-        .insert({
-          fecha: solicitud.fecha,
-          tipo: 'Pago a Tercero',
-          empresa_id: solicitud.empresaId || null,
-          responsable_id: solicitud.responsableId || null,
-          ceco_id: cecoId,
-          cuenta: cuentaPago || null,
-          detalle: solicitud.detalle,
-          valor: parseFloat(solicitud.valor) || 0,
-          moneda_pago: solicitud.moneda || null,
-          tercero_id: solicitud.terceroId || null,
-          tercero_info: solicitud.terceroInfo || null,
-          estado: 'Pagado',
-          observaciones: 'Generado automáticamente al marcar la Solicitud de Pago a Tercero como Pagado.',
-          solicitud_origen_id: solicitud.id
-        })
+      const tabla = accion === 'ingreso' ? 'ingresos' : 'gastos';
+      const columnaVinculo = accion === 'ingreso' ? 'ingreso_generado_id' : 'gasto_generado_id';
+      const observacionesPorTipo = {
+        'Pago a Tercero': 'Generado automáticamente al marcar la Solicitud de Pago a Tercero como Pagado.',
+        'Anticipo': 'Generado automáticamente al marcar la Solicitud de Anticipo como Pagado.',
+        'Reembolso': 'Generado automáticamente al marcar la Solicitud de Reembolso como Pagado.',
+        'Legalización': accion === 'ingreso'
+          ? 'Generado automáticamente: la Legalización quedó por debajo del anticipo original (el colaborador debe devolver la diferencia).'
+          : 'Generado automáticamente: la Legalización superó el anticipo original (diferencia a reembolsar).'
+      };
+
+      const payload = {
+        fecha: solicitud.fecha,
+        tipo: solicitud.tipo === 'Pago a Tercero' ? 'Pago a Tercero' : (accion === 'ingreso' ? 'Ingreso' : 'Gasto'),
+        empresa_id: solicitud.empresaId || null,
+        responsable_id: solicitud.responsableId || null,
+        ceco_id: cecoId,
+        cuenta: cuentaPago || null,
+        detalle: solicitud.detalle,
+        valor: monto,
+        estado: 'Pagado',
+        observaciones: observacionesPorTipo[solicitud.tipo] || 'Generado automáticamente desde Solicitudes.',
+        solicitud_origen_id: solicitud.id
+      };
+      if (solicitud.tipo === 'Pago a Tercero') {
+        payload.moneda_pago = solicitud.moneda || null;
+        payload.tercero_id = solicitud.terceroId || null;
+        payload.tercero_info = solicitud.terceroInfo || null;
+      }
+
+      const { data: nuevoMovimiento, error: errorMovimiento } = await supabase
+        .from(tabla)
+        .insert(payload)
         .select('id')
         .single();
 
-      if (errorGasto) {
-        console.error('Error generando el gasto automático desde la solicitud:', errorGasto);
-        alert('⚠️ La solicitud quedó en "Pagado", pero no se pudo registrar automáticamente en Finanzas: ' + errorGasto.message + '. Regístralo a mano si hace falta.');
+      if (errorMovimiento) {
+        console.error('Error generando el movimiento automático desde la solicitud:', errorMovimiento);
+        alert('⚠️ La solicitud quedó en "Pagado", pero no se pudo registrar automáticamente en Finanzas: ' + errorMovimiento.message + '. Regístralo a mano si hace falta.');
         return;
       }
 
       // Vínculo en ambos sentidos: junto con la relectura de arriba, evita que un segundo
-      // cambio de estado (o un doble clic) vuelva a generar otro gasto para esta solicitud.
+      // cambio de estado (o un doble clic) vuelva a generar otro movimiento para esta solicitud.
       const { error: errorVinculo } = await supabase
         .from('solicitudes')
-        .update({ gasto_generado_id: nuevoGasto.id })
+        .update({ [columnaVinculo]: nuevoMovimiento.id })
         .eq('id', solicitud.id);
-      if (errorVinculo) console.error('Error guardando el vínculo solicitud → gasto:', errorVinculo);
+      if (errorVinculo) console.error(`Error guardando el vínculo solicitud → ${tabla}:`, errorVinculo);
 
       // Copia la METADATA de los soportes ya subidos a la solicitud (ficha PDF + adjuntos del
-      // colaborador) hacia el gasto recién creado, apuntando al MISMO bucket_path — el archivo
-      // no se vuelve a subir ni se duplica en Storage, solo queda visible también desde
-      // "Ver Soportes" del gasto en Finanzas.
+      // colaborador) hacia el movimiento recién creado, apuntando al MISMO bucket_path — el
+      // archivo no se vuelve a subir ni se duplica en Storage, solo queda visible también desde
+      // "Ver Soportes" del gasto/ingreso en Finanzas.
       const { data: soportesOrigen, error: errorSoportes } = await supabase
         .from('soportes')
         .select('bucket_path, nombre_original, tamano_kb')
         .eq('entidad_tipo', 'solicitud')
         .eq('entidad_id', solicitud.id);
       if (errorSoportes) {
-        console.error('Error leyendo soportes de la solicitud para reflejarlos en el gasto:', errorSoportes);
+        console.error('Error leyendo soportes de la solicitud para reflejarlos en el movimiento:', errorSoportes);
       } else if (soportesOrigen && soportesOrigen.length > 0) {
-        const filasGasto = soportesOrigen.map(sp => ({
+        const filasMovimiento = soportesOrigen.map(sp => ({
           bucket_path: sp.bucket_path,
           nombre_original: sp.nombre_original,
           tamano_kb: sp.tamano_kb,
-          entidad_tipo: 'gasto',
-          entidad_id: nuevoGasto.id,
+          entidad_tipo: accion === 'ingreso' ? 'ingreso' : 'gasto',
+          entidad_id: nuevoMovimiento.id,
           subido_por: user.id
         }));
-        const { error: errorCopiaSoportes } = await supabase.from('soportes').insert(filasGasto);
-        if (errorCopiaSoportes) console.error('Error reflejando los soportes en el gasto generado:', errorCopiaSoportes);
+        const { error: errorCopiaSoportes } = await supabase.from('soportes').insert(filasMovimiento);
+        if (errorCopiaSoportes) console.error('Error reflejando los soportes en el movimiento generado:', errorCopiaSoportes);
       }
 
-      await Promise.all([cargarGastos(), cargarSolicitudes()]);
+      await Promise.all([cargarGastos(), cargarIngresos(), cargarSolicitudes()]);
     } catch (errorInesperado) {
-      console.error('Error inesperado generando el gasto automático desde la solicitud:', errorInesperado);
+      console.error('Error inesperado generando el movimiento automático desde la solicitud:', errorInesperado);
       alert('⚠️ La solicitud quedó en "Pagado", pero hubo un error inesperado registrándola en Finanzas. Regístralo a mano si hace falta.');
     }
   };
 
   // Modal "Confirmar Pago": lee el comprobante elegido (un solo archivo) y lo deja listo en
-  // memoria dentro de confirmarPagoTercero — se sube a Storage recién al confirmar, no aquí.
+  // memoria dentro de confirmarPagoSolicitud — se sube a Storage recién al confirmar, no aquí.
   const handleSeleccionarComprobantePago = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (event) => {
-      setConfirmarPagoTercero(prev => prev ? { ...prev, comprobante: { nombre: file.name, tipo: file.type, data: event.target.result } } : prev);
+      setConfirmarPagoSolicitud(prev => prev ? { ...prev, comprobante: { nombre: file.name, tipo: file.type, data: event.target.result } } : prev);
     };
     reader.readAsDataURL(file);
     e.target.value = '';
   };
 
   // Confirma el pago desde el modal: sube el comprobante como soporte de la SOLICITUD (antes
-  // de cambiar el estado, para que generarGastoDesdeSolicitud lo encuentre y lo refleje también
-  // en el Gasto) y recién ahí marca "Pagado" con la cuenta elegida.
-  const handleConfirmarPagoTercero = async () => {
-    if (!confirmarPagoTercero) return;
-    const { solicitud, cuenta, comprobante } = confirmarPagoTercero;
+  // de cambiar el estado, para que generarMovimientoDesdeSolicitud lo encuentre y lo refleje
+  // también en el Gasto/Ingreso) y recién ahí marca "Pagado" con la cuenta y el CECO elegidos.
+  const handleConfirmarPagoSolicitud = async () => {
+    if (!confirmarPagoSolicitud) return;
+    const { solicitud, cuenta, ceco, comprobante } = confirmarPagoSolicitud;
     if (!cuenta) {
       alert('Elige con qué cuenta de la empresa se hizo el pago');
+      return;
+    }
+    if (solicitud.tipo !== 'Pago a Tercero' && !ceco) {
+      alert('Elige el CECO para este movimiento');
       return;
     }
     if (!comprobante) {
@@ -2162,8 +2214,8 @@ const App = () => {
     setGuardandoConfirmarPago(true);
     try {
       await subirSoporteEntidad(comprobante, 'solicitud', solicitud.id);
-      await handleChangeEstado(solicitud.id, 'Pagado', { cuentaPago: cuenta });
-      setConfirmarPagoTercero(null);
+      await handleChangeEstado(solicitud.id, 'Pagado', { cuentaPago: cuenta, cecoCodigo: ceco || null });
+      setConfirmarPagoSolicitud(null);
     } finally {
       setGuardandoConfirmarPago(false);
     }
@@ -3669,12 +3721,11 @@ const App = () => {
 
   const handleDeleteIngreso = async (id) => {
     if (!window.confirm('¿Eliminar ingreso?')) return;
-    const { data: soportesRelacionados } = await supabase
-      .from('soportes').select('bucket_path').eq('entidad_tipo', 'ingreso').eq('entidad_id', id);
-    if (soportesRelacionados && soportesRelacionados.length > 0) {
-      await supabase.storage.from('soportes').remove(soportesRelacionados.map(r => r.bucket_path));
-      await supabase.from('soportes').delete().eq('entidad_tipo', 'ingreso').eq('entidad_id', id);
-    }
+    // Desde que una Legalización con diferencia en contra genera automáticamente un Ingreso
+    // que reutiliza el MISMO archivo (bucket_path) del soporte ya subido a la Solicitud (Opción
+    // C extendida), hay que usar el borrado seguro — igual que Gasto/Solicitud — para no
+    // destruir un archivo que la Solicitud todavía necesita.
+    await eliminarSoportesDeEntidad('ingreso', id);
     const { error } = await supabase.from('ingresos').delete().eq('id', id);
     if (error) {
       console.error('Error eliminando ingreso:', error);
@@ -5876,10 +5927,13 @@ const App = () => {
                           {canApprove ? (
                             <select value={s.estado} onChange={(e) => {
                               const nuevoEstado = e.target.value;
-                              // Pago a Tercero -> Pagado pide antes Cuenta + Comprobante del banco
-                              // (modal "Confirmar Pago"); el resto de transiciones sigue igual.
-                              if (s.tipo === 'Pago a Tercero' && nuevoEstado === 'Pagado') {
-                                setConfirmarPagoTercero({ solicitud: s, cuenta: '', comprobante: null });
+                              // Pasar a "Pagado" pide antes Cuenta (+ CECO si no es Pago a Tercero) +
+                              // Comprobante del banco en el modal "Confirmar Pago" — pero solo cuando
+                              // el cambio realmente mueve plata (una Legalización cuadrada no genera
+                              // nada en Finanzas, así que no interrumpe con el modal). El resto de
+                              // transiciones sigue igual.
+                              if (nuevoEstado === 'Pagado' && !s.gastoGeneradoId && !s.ingresoGeneradoId && calcularAccionFinanzasSolicitud(s).accion !== 'ninguno') {
+                                setConfirmarPagoSolicitud({ solicitud: s, cuenta: '', ceco: '', comprobante: null, ...calcularAccionFinanzasSolicitud(s) });
                               } else {
                                 handleChangeEstado(s.id, nuevoEstado);
                               }
@@ -7707,40 +7761,61 @@ const App = () => {
           </div>
         )}
 
-        {/* MODAL CONFIRMAR PAGO — al marcar una Solicitud de Pago a Tercero como "Pagado", pide
-            la Cuenta de la empresa usada y el comprobante del banco ANTES de guardar el estado
-            y generar el Gasto automático en Finanzas (Opción C). Cancelar no cambia nada. */}
-        {confirmarPagoTercero && (
+        {/* MODAL CONFIRMAR PAGO — al marcar como "Pagado" una Solicitud de Pago a Tercero,
+            Anticipo, Reembolso o Legalización (con diferencia contra el anticipo), pide la
+            Cuenta de la empresa usada, el CECO (salvo Pago a Tercero, que ya trae uno fijo) y
+            el comprobante del banco ANTES de guardar el estado y generar el Gasto/Ingreso
+            automático en Finanzas (Opción C). Cancelar no cambia nada. */}
+        {confirmarPagoSolicitud && (() => {
+          const { solicitud, accion, monto } = confirmarPagoSolicitud;
+          const esTercero = solicitud.tipo === 'Pago a Tercero';
+          const moneda = esTercero ? (solicitud.moneda || getMoneda(solicitud.empresa)) : getMoneda(solicitud.empresa);
+          const subtitulo = esTercero
+            ? `${solicitud.terceroInfo?.nombre || 'Tercero'} — ${formatMoneyByMoneda(monto, moneda)}`
+            : `${solicitud.tipo} de ${solicitud.responsableNombre || 'colaborador'} — ${accion === 'ingreso' ? 'a devolver por el colaborador' : 'a pagar'}: ${formatMoneyByMoneda(monto, moneda)}`;
+          const opcionesCeco = accion === 'ingreso' ? cecosIngreso : cecosGasto;
+          return (
           <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
             <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '460px', width: '90%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
-              <h2 style={{ color: '#C4A747', marginBottom: '0.5rem' }}>💳 Confirmar Pago</h2>
+              <h2 style={{ color: '#C4A747', marginBottom: '0.5rem' }}>💳 Confirmar {accion === 'ingreso' ? 'Reintegro' : 'Pago'}</h2>
               <p style={{ color: '#6B6458', fontSize: '0.85rem', marginTop: 0, marginBottom: '1.25rem' }}>
-                {confirmarPagoTercero.solicitud.terceroInfo?.nombre || 'Tercero'} — {formatMoneyByMoneda(parseFloat(confirmarPagoTercero.solicitud.valor) || 0, confirmarPagoTercero.solicitud.moneda || getMoneda(confirmarPagoTercero.solicitud.empresa))}
+                {subtitulo}
               </p>
 
-              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta de la empresa con la que se pagó *</label>
-              <select value={confirmarPagoTercero.cuenta} onChange={(e) => setConfirmarPagoTercero({...confirmarPagoTercero, cuenta: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', marginBottom: '1rem' }}>
+              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta de la empresa {accion === 'ingreso' ? 'que recibió el dinero' : 'con la que se pagó'} *</label>
+              <select value={confirmarPagoSolicitud.cuenta} onChange={(e) => setConfirmarPagoSolicitud({...confirmarPagoSolicitud, cuenta: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', marginBottom: '1rem' }}>
                 <option value="">Seleccionar</option>
-                {(cuentasPorEmpresa[confirmarPagoTercero.solicitud.empresa] || []).map(cuenta => <option key={cuenta} value={cuenta}>{cuenta}</option>)}
+                {(cuentasPorEmpresa[solicitud.empresa] || []).map(cuenta => <option key={cuenta} value={cuenta}>{cuenta}</option>)}
               </select>
 
-              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Comprobante de pago del banco *</label>
+              {!esTercero && (
+                <>
+                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>CECO *</label>
+                  <select value={confirmarPagoSolicitud.ceco} onChange={(e) => setConfirmarPagoSolicitud({...confirmarPagoSolicitud, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', marginBottom: '1rem' }}>
+                    <option value="">Seleccionar</option>
+                    {opcionesCeco.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
+                  </select>
+                </>
+              )}
+
+              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Comprobante de {accion === 'ingreso' ? 'la consignación' : 'pago'} del banco *</label>
               <input type="file" onChange={handleSeleccionarComprobantePago} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '0.5rem', boxSizing: 'border-box', cursor: 'pointer' }} />
-              {confirmarPagoTercero.comprobante && (
-                <p style={{ color: '#2F9E52', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>✅ {confirmarPagoTercero.comprobante.nombre}</p>
+              {confirmarPagoSolicitud.comprobante && (
+                <p style={{ color: '#2F9E52', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>✅ {confirmarPagoSolicitud.comprobante.nombre}</p>
               )}
 
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
-                <button disabled={guardandoConfirmarPago} onClick={handleConfirmarPagoTercero} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoConfirmarPago ? 'not-allowed' : 'pointer', opacity: guardandoConfirmarPago ? 0.6 : 1 }}>
-                  {guardandoConfirmarPago ? 'Guardando...' : '✅ Confirmar Pago'}
+                <button disabled={guardandoConfirmarPago} onClick={handleConfirmarPagoSolicitud} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoConfirmarPago ? 'not-allowed' : 'pointer', opacity: guardandoConfirmarPago ? 0.6 : 1 }}>
+                  {guardandoConfirmarPago ? 'Guardando...' : `✅ Confirmar ${accion === 'ingreso' ? 'Reintegro' : 'Pago'}`}
                 </button>
-                <button disabled={guardandoConfirmarPago} onClick={() => setConfirmarPagoTercero(null)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+                <button disabled={guardandoConfirmarPago} onClick={() => setConfirmarPagoSolicitud(null)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
                   Cancelar
                 </button>
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* MODAL VER DETALLE DEL TERCERO — para que la Coordinadora Administrativa pueda
             ejecutar el pago sin abrir el PDF ni buscar en "Ver Soportes". */}
