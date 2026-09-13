@@ -132,6 +132,12 @@ const getSaldoPendienteEnMes = (deduccion, anio, mes) => {
 // campo "Tipo" a "Pago a Tercero".
 const CECO_PAGO_TERCERO = 'CECO-015-PT';
 
+// Texto exacto de "observaciones" que se guarda en el Gasto cuando lo genera automáticamente el
+// batch "Marcar Pagado" de Presupuesto (Mensual). Se usa también en Historial de Finanzas para
+// mostrar "🔗 Generado desde Presupuesto" (mismo patrón que solicitudOrigenId para Solicitudes,
+// pero sin columna dedicada porque presupuesto_item_id ya se usa también para vínculos manuales).
+const OBSERVACIONES_GASTO_DESDE_PRESUPUESTO = 'Generado automáticamente desde Presupuesto (Mensual) al marcar pagado.';
+
 const NIT_EMPRESAS = {
   'AM SPORTS GROUP SAS': '901219895-5',
   'PRO INVESTMENTS GLOBAL SAS': '901821315-6',
@@ -3960,7 +3966,7 @@ const App = () => {
               valor_bruto: item.valorEsperado,
               deduccion_aplicada: item.totalDeducciones > 0 ? item.totalDeducciones : null,
               estado: 'Pagado',
-              observaciones: 'Generado automáticamente desde Presupuesto (Mensual) al marcar pagado.',
+              observaciones: OBSERVACIONES_GASTO_DESDE_PRESUPUESTO,
               presupuesto_item_id: item.id
             })
             .select('id')
@@ -7047,6 +7053,9 @@ const App = () => {
                             )}
                             {r.solicitudOrigenId && (
                               <div style={{ fontSize: '0.7rem', color: '#6C63D1' }}>🔗 Generado desde Solicitudes</div>
+                            )}
+                            {r.presupuestoItemId && r.observaciones === OBSERVACIONES_GASTO_DESDE_PRESUPUESTO && (
+                              <div style={{ fontSize: '0.7rem', color: '#6C63D1' }}>🔗 Generado desde Presupuesto</div>
                             )}
                           </td>
                           <td style={{ padding: '0.75rem', color: esPagoTercero ? '#CC4B4B' : colorValor, textAlign: 'right', fontWeight: 'bold' }}>
