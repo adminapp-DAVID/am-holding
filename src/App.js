@@ -7078,12 +7078,21 @@ const App = () => {
                             {!esGasto ? (
                               <span style={{ color: '#AFA897', fontSize: '0.75rem' }}>—</span>
                             ) : (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') ? (() => {
-                              const candidatosVinculo = getPresupuestoCandidatos(r.empresa, r.ceco, r.responsable, r.detalle, presupuestoItems);
+                              // Columna "Presupuesto" en Historial de Finanzas: solo muestra conceptos del
+                              // MISMO CECO que este gasto (a diferencia de getPresupuestoCandidatos, que busca en
+                              // toda la empresa). Si el gasto ya estaba vinculado a un concepto de otro CECO
+                              // (vínculo hecho antes de este cambio), se agrega igual para no perder la selección.
+                              const candidatosMismoCeco = presupuestoItems.filter(p => p.activo !== false && p.empresa === r.empresa && p.ceco === r.ceco);
+                              const vinculadoActual = r.presupuestoItemId ? presupuestoItems.find(p => p.id === r.presupuestoItemId) : null;
+                              const candidatosVinculo = (vinculadoActual && !candidatosMismoCeco.some(p => p.id === vinculadoActual.id)
+                                ? [...candidatosMismoCeco, vinculadoActual]
+                                : candidatosMismoCeco
+                              ).slice().sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
                               if (!candidatosVinculo.length) return <span style={{ color: '#AFA897', fontSize: '0.75rem' }}>—</span>;
                               return (
                                 <select value={r.presupuestoItemId || ''} onChange={(e) => handleVincularPresupuesto(r.id, e.target.value)} style={{ padding: '0.35rem 0.5rem', backgroundColor: r.presupuestoItemId ? 'rgba(47,158,82,0.12)' : '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', fontSize: '0.75rem', maxWidth: '160px' }}>
                                   <option value="">Sin vincular</option>
-                                  {candidatosVinculo.map(({ item: p }) => <option key={p.id} value={p.id}>{p.nombre}{p.ceco !== r.ceco ? ` · ${p.ceco}` : ''}</option>)}
+                                  {candidatosVinculo.map(p => <option key={p.id} value={p.id}>{p.nombre}{p.ceco !== r.ceco ? ` · ${p.ceco}` : ''}</option>)}
                                 </select>
                               );
                             })() : (
