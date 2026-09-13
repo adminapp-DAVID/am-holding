@@ -473,6 +473,11 @@ const App = () => {
   // bancarios del tercero para poder pagar — este modal muestra esa ficha sin tener que
   // abrir el PDF ni "Ver Soportes". Guarda la solicitud completa (trae terceroInfo embebido).
   const [verDetalleTercero, setVerDetalleTercero] = useState(null);
+  // Modal "Confirmar Pago" — al marcar una Solicitud de Pago a Tercero como "Pagado", pide
+  // antes la Cuenta de la empresa usada y el comprobante del banco, antes de generar el Gasto
+  // automático en Finanzas (Opción C). null = modal cerrado.
+  const [confirmarPagoTercero, setConfirmarPagoTercero] = useState(null);
+  const [guardandoConfirmarPago, setGuardandoConfirmarPago] = useState(false);
   const [mostrarImportar, setMostrarImportar] = useState(false);
   const [archivoImportacion, setArchivoImportacion] = useState(null);
   // Informe de Finanzas (vista previa + PDF) — null cuando el modal está cerrado; mientras está
@@ -1993,7 +1998,7 @@ const App = () => {
   // estado, registra automáticamente quién hizo cada paso: quien mueve la solicitud a
   // "Aprobado" queda como revisor, y quien la mueve a "Pagado"/"Legalizado" (el paso final)
   // queda como quien aprobó — sin ningún campo ni paso nuevo que alguien tenga que diligenciar.
-  const handleChangeEstado = async (id, nuevoEstado) => {
+  const handleChangeEstado = async (id, nuevoEstado, opciones = {}) => {
     const anteriores = solicitudes;
     const ahora = new Date().toISOString();
     const patch = { estado: nuevoEstado, updated_at: ahora };
@@ -2031,7 +2036,7 @@ const App = () => {
     if (nuevoEstado === 'Pagado') {
       const solicitud = anteriores.find(s => s.id === id);
       if (solicitud && solicitud.tipo === 'Pago a Tercero' && !solicitud.gastoGeneradoId) {
-        await generarGastoDesdeSolicitud(solicitud);
+        await generarGastoDesdeSolicitud(solicitud, opciones.cuentaPago || null);
       }
     }
   };
@@ -2043,7 +2048,7 @@ const App = () => {
   // pantallas sin duplicar el archivo en Storage — se copian solo las filas de metadata en
   // public.soportes apuntando al mismo bucket_path; (3) no se tocan permisos/roles existentes,
   // esto solo agrega una fila más al mismo Finanzas que ya ven Admin/Coordinadora.
-  const generarGastoDesdeSolicitud = async (solicitud) => {
+  const generarGastoDesdeSolicitud = async (solicitud, cuentaPago = null) => {
     try {
       const { data: solActual, error: errorLectura } = await supabase
         .from('solicitudes')
@@ -2069,7 +2074,7 @@ const App = () => {
           empresa_id: solicitud.empresaId || null,
           responsable_id: solicitud.responsableId || null,
           ceco_id: cecoId,
-          cuenta: null,
+          cuenta: cuentaPago || null,
           detalle: solicitud.detalle,
           valor: parseFloat(solicitud.valor) || 0,
           moneda_pago: solicitud.moneda || null,
@@ -2124,6 +2129,43 @@ const App = () => {
     } catch (errorInesperado) {
       console.error('Error inesperado generando el gasto automático desde la solicitud:', errorInesperado);
       alert('⚠️ La solicitud quedó en "Pagado", pero hubo un error inesperado registrándola en Finanzas. Regístralo a mano si hace falta.');
+    }
+  };
+
+  // Modal "Confirmar Pago": lee el comprobante elegido (un solo archivo) y lo deja listo en
+  // memoria dentro de confirmarPagoTercero — se sube a Storage recién al confirmar, no aquí.
+  const handleSeleccionarComprobantePago = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setConfirmarPagoTercero(prev => prev ? { ...prev, comprobante: { nombre: file.name, tipo: file.type, data: event.target.result } } : prev);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // Confirma el pago desde el modal: sube el comprobante como soporte de la SOLICITUD (antes
+  // de cambiar el estado, para que generarGastoDesdeSolicitud lo encuentre y lo refleje también
+  // en el Gasto) y recién ahí marca "Pagado" con la cuenta elegida.
+  const handleConfirmarPagoTercero = async () => {
+    if (!confirmarPagoTercero) return;
+    const { solicitud, cuenta, comprobante } = confirmarPagoTercero;
+    if (!cuenta) {
+      alert('Elige con qué cuenta de la empresa se hizo el pago');
+      return;
+    }
+    if (!comprobante) {
+      alert('Adjunta el comprobante de pago del banco');
+      return;
+    }
+    setGuardandoConfirmarPago(true);
+    try {
+      await subirSoporteEntidad(comprobante, 'solicitud', solicitud.id);
+      await handleChangeEstado(solicitud.id, 'Pagado', { cuentaPago: cuenta });
+      setConfirmarPagoTercero(null);
+    } finally {
+      setGuardandoConfirmarPago(false);
     }
   };
 
@@ -5831,7 +5873,16 @@ const App = () => {
                         <td style={{ padding: '0.75rem', textAlign: 'center', color: s.documentos?.length > 0 ? '#2F9E52' : '#8F8877' }}>{s.documentos?.length || 0}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                           {canApprove ? (
-                            <select value={s.estado} onChange={(e) => handleChangeEstado(s.id, e.target.value)} style={{ backgroundColor: getColorEstado(s.estado), color: '#332D1E', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
+                            <select value={s.estado} onChange={(e) => {
+                              const nuevoEstado = e.target.value;
+                              // Pago a Tercero -> Pagado pide antes Cuenta + Comprobante del banco
+                              // (modal "Confirmar Pago"); el resto de transiciones sigue igual.
+                              if (s.tipo === 'Pago a Tercero' && nuevoEstado === 'Pagado') {
+                                setConfirmarPagoTercero({ solicitud: s, cuenta: '', comprobante: null });
+                              } else {
+                                handleChangeEstado(s.id, nuevoEstado);
+                              }
+                            }} style={{ backgroundColor: getColorEstado(s.estado), color: '#332D1E', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
                               {estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}
                             </select>
                           ) : (
@@ -7645,6 +7696,41 @@ const App = () => {
 
               <div style={{ display: 'flex', gap: '1rem' }}>
                 <button onClick={() => setMostrarImportar(false)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL CONFIRMAR PAGO — al marcar una Solicitud de Pago a Tercero como "Pagado", pide
+            la Cuenta de la empresa usada y el comprobante del banco ANTES de guardar el estado
+            y generar el Gasto automático en Finanzas (Opción C). Cancelar no cambia nada. */}
+        {confirmarPagoTercero && (
+          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
+            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '460px', width: '90%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
+              <h2 style={{ color: '#C4A747', marginBottom: '0.5rem' }}>💳 Confirmar Pago</h2>
+              <p style={{ color: '#6B6458', fontSize: '0.85rem', marginTop: 0, marginBottom: '1.25rem' }}>
+                {confirmarPagoTercero.solicitud.terceroInfo?.nombre || 'Tercero'} — {formatMoneyByMoneda(parseFloat(confirmarPagoTercero.solicitud.valor) || 0, confirmarPagoTercero.solicitud.moneda || getMoneda(confirmarPagoTercero.solicitud.empresa))}
+              </p>
+
+              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta de la empresa con la que se pagó *</label>
+              <select value={confirmarPagoTercero.cuenta} onChange={(e) => setConfirmarPagoTercero({...confirmarPagoTercero, cuenta: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', marginBottom: '1rem' }}>
+                <option value="">Seleccionar</option>
+                {(cuentasPorEmpresa[confirmarPagoTercero.solicitud.empresa] || []).map(cuenta => <option key={cuenta} value={cuenta}>{cuenta}</option>)}
+              </select>
+
+              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Comprobante de pago del banco *</label>
+              <input type="file" onChange={handleSeleccionarComprobantePago} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '0.5rem', boxSizing: 'border-box', cursor: 'pointer' }} />
+              {confirmarPagoTercero.comprobante && (
+                <p style={{ color: '#2F9E52', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>✅ {confirmarPagoTercero.comprobante.nombre}</p>
+              )}
+
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button disabled={guardandoConfirmarPago} onClick={handleConfirmarPagoTercero} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoConfirmarPago ? 'not-allowed' : 'pointer', opacity: guardandoConfirmarPago ? 0.6 : 1 }}>
+                  {guardandoConfirmarPago ? 'Guardando...' : '✅ Confirmar Pago'}
+                </button>
+                <button disabled={guardandoConfirmarPago} onClick={() => setConfirmarPagoTercero(null)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
                   Cancelar
                 </button>
               </div>
