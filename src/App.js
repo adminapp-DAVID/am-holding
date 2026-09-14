@@ -4257,6 +4257,36 @@ const App = () => {
     })));
   };
 
+  // Botón "🔍" en cada Cuenta de Cobro — vista rápida del soporte que subió el colaborador, sin
+  // pasar primero por "📎 Ver soportes". Si solo hay un archivo (el caso normal: un PDF o una
+  // foto de la cuenta de cobro), lo previsualiza directo con handlePreviewSoporte. Si hay varios,
+  // abre igual el modal "Ver Soportes" (mismo que 📎) para elegir cuál ver.
+  const handleVistaRapidaCuentaCobro = async (c) => {
+    const { data, error } = await supabase
+      .from('soportes')
+      .select('bucket_path, nombre_original, tamano_kb')
+      .eq('entidad_tipo', 'cuenta_cobro')
+      .eq('entidad_id', c.id)
+      .order('created_at');
+
+    if (error) {
+      console.error('Error cargando soportes:', error);
+      alert('❌ No se pudieron cargar los soportes: ' + error.message);
+      return;
+    }
+
+    const soportes = (data || []).map(r => ({ nombre: r.nombre_original, tamaño: (r.tamano_kb || 0) * 1024, bucketPath: r.bucket_path }));
+    if (!soportes.length) {
+      alert('Esta cuenta de cobro no tiene soportes cargados.');
+      return;
+    }
+    if (soportes.length === 1) {
+      await handlePreviewSoporte(soportes[0]);
+      return;
+    }
+    setVerSoportes(soportes);
+  };
+
   const handleDownloadSoporte = (soporte) => {
     // Soportes de Solicitudes viven en Supabase Storage (bucketPath); los de
     // Gastos/Ingresos siguen embebidos en base64 (soporte.data) por ahora.
@@ -7994,6 +8024,9 @@ const App = () => {
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                           {c.responsableCedula && (
                             <button onClick={() => handleGenerarPDFCuentaCobro(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#C4A747', fontSize: '1rem', marginRight: '0.5rem' }} title="Descargar PDF">📄</button>
+                          )}
+                          {c.cantidadSoportes > 0 && (
+                            <button onClick={() => handleVistaRapidaCuentaCobro(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#C4A747', fontSize: '1rem', marginRight: '0.5rem' }} title="Vista previa de la cuenta de cobro">🔍</button>
                           )}
                           {c.cantidadSoportes > 0 ? (
                             <button onClick={() => handleVerSoportesCuentaCobro(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }} title="Ver soportes">📎 {c.cantidadSoportes}</button>
