@@ -418,7 +418,10 @@ const App = () => {
   // Cuenta de Cobro ahora es semi-automática: el colaborador solo elige el mes que está
   // cobrando, el valor y (si aplica) ajusta la descripción de funciones. Nombre, cédula,
   // empresa, NIT, cargo y datos bancarios se toman de su propio perfil (Colaboradores).
-  const [newCuentaCobro, setNewCuentaCobro] = useState({ mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), ciudad: 'Medellín', monto: '', funciones: '', estado: 'Pendiente' });
+  // empresa: '' hasta que el colaborador elija (o se usa user.empresa por defecto en el render/al
+  // guardar) — así un mismo colaborador puede crear una Cuenta de Cobro por cada empresa de la
+  // holding a la que le facture, en vez de quedar fijo a la empresa de su perfil.
+  const [newCuentaCobro, setNewCuentaCobro] = useState({ mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), ciudad: 'Medellín', monto: '', funciones: '', estado: 'Pendiente', empresa: '' });
   // Cuentas de Cobro solo maneja estos 3 estados (el check constraint de la tabla no admite
   // "Legalizado" — ese estado es propio de Solicitudes). No reutilizar estadosSolicitud aquí.
   const estadosCuentaCobro = ['Pendiente', 'Aprobado', 'Pagado'];
@@ -2985,9 +2988,20 @@ const App = () => {
       return;
     }
 
+    // Empresa de ESTA cuenta de cobro: la que el colaborador eligió en el formulario, o la de su
+    // perfil por defecto si no tocó el selector — así puede facturarle a más de una empresa de la
+    // holding sin que su perfil (empresa "de base") cambie.
+    const empresaCuenta = newCuentaCobro.empresa || user.empresa;
+    if (!empresaCuenta) {
+      alert('Elige a qué empresa de la holding le estás facturando');
+      return;
+    }
+
     setGuardandoCuentaCobro(true);
     try {
-      // Consecutivo por colaborador: cuenta cuántas cuentas de cobro ya tiene esta persona.
+      // Consecutivo por colaborador: cuenta cuántas cuentas de cobro ya tiene esta persona (en
+      // cualquier empresa — el número de cuenta de cobro es correlativo a la persona, no a la
+      // empresa que factura).
       const numeroConsecutivo = cuentasDeCobro.filter(c => c.responsableId === user.id).length + 1;
       const hoy = new Date();
       const fechaISO = hoy.toISOString().split('T')[0];
@@ -2996,11 +3010,11 @@ const App = () => {
       const numero = String(numeroConsecutivo).padStart(2, '0');
 
       let empresaId = null;
-      if (user.empresa) {
+      if (empresaCuenta) {
         const { data: empresaRow, error: empresaError } = await supabase
           .from('empresas')
           .select('id')
-          .eq('nombre', user.empresa)
+          .eq('nombre', empresaCuenta)
           .single();
         if (empresaError) console.error('Error buscando empresa:', empresaError);
         empresaId = empresaRow?.id || null;
@@ -3021,7 +3035,7 @@ const App = () => {
           funciones: funcionesFinal,
           estado: 'Pendiente',
           empresa_id: empresaId,
-          empresa_nit: NIT_EMPRESAS[user.empresa] || '(pendiente)',
+          empresa_nit: NIT_EMPRESAS[empresaCuenta] || '(pendiente)',
           responsable_id: user.id,
           responsable_cedula: user.cedula,
           responsable_cargo: user.cargo,
@@ -3057,8 +3071,8 @@ const App = () => {
         anio: newCuentaCobro.anio,
         monto,
         funciones: funcionesFinal,
-        empresa: user.empresa,
-        empresaNit: NIT_EMPRESAS[user.empresa] || '(pendiente)',
+        empresa: empresaCuenta,
+        empresaNit: NIT_EMPRESAS[empresaCuenta] || '(pendiente)',
         responsableNombre: user.nombre,
         responsableCedula: user.cedula,
         responsableCargo: user.cargo,
@@ -3068,7 +3082,7 @@ const App = () => {
         titularCuenta: user.titularCuenta || user.nombre
       });
 
-      setNewCuentaCobro({ mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), ciudad: 'Medellín', monto: '', funciones: '', estado: 'Pendiente' });
+      setNewCuentaCobro({ mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), ciudad: 'Medellín', monto: '', funciones: '', estado: 'Pendiente', empresa: empresaCuenta });
       setSoportesCuentaCobroTemp([]);
       alert('✅ Cuenta de cobro creada — el PDF se descargó automáticamente (también puedes volver a descargarlo desde la tabla).');
     } finally {
@@ -7879,9 +7893,15 @@ const App = () => {
               <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem', marginBottom: '1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
                 <div><span style={{ color: '#8F8877', fontSize: '0.75rem' }}>Colaborador</span><p style={{ margin: 0, fontWeight: 'bold', color: '#221E15' }}>{user.nombre}</p></div>
                 <div><span style={{ color: '#8F8877', fontSize: '0.75rem' }}>C.C</span><p style={{ margin: 0, fontWeight: 'bold', color: user.cedula ? '#221E15' : '#CC4B4B' }}>{user.cedula || 'Falta en tu perfil'}</p></div>
-                <div><span style={{ color: '#8F8877', fontSize: '0.75rem' }}>Empresa</span><p style={{ margin: 0, fontWeight: 'bold', color: '#221E15' }}>{user.empresa}</p></div>
+                <div>
+                  <span style={{ color: '#8F8877', fontSize: '0.75rem' }}>Empresa a la que le facturas</span>
+                  <select value={newCuentaCobro.empresa || user.empresa || ''} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, empresa: e.target.value})} style={{ width: '100%', padding: '0.4rem 0.5rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#221E15', fontWeight: 'bold', boxSizing: 'border-box', marginTop: '0.15rem' }}>
+                    {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                  </select>
+                </div>
                 <div><span style={{ color: '#8F8877', fontSize: '0.75rem' }}>Cargo</span><p style={{ margin: 0, fontWeight: 'bold', color: user.cargo ? '#221E15' : '#CC4B4B' }}>{user.cargo || 'Falta en tu perfil'}</p></div>
               </div>
+              <p style={{ color: '#6B6458', fontSize: '0.75rem', margin: '-0.5rem 0 1rem 0' }}>💡 Si le facturas a más de una empresa de la holding, crea una Cuenta de Cobro por cada una eligiéndola aquí.</p>
               {(!user.cedula || !user.cargo || !user.banco || !user.numeroCuenta) && (
                 <p style={{ color: '#CC4B4B', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>⚠️ Completa tu Cédula, Cargo y Datos Bancarios en el módulo Colaboradores antes de crear tu Cuenta de Cobro.</p>
               )}
