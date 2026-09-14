@@ -2205,25 +2205,35 @@ const App = () => {
     }
   };
 
-  // Modal "Confirmar Pago": lee el comprobante elegido (un solo archivo) y lo deja listo en
-  // memoria dentro de confirmarPagoSolicitud — se sube a Storage recién al confirmar, no aquí.
+  // Modal "Confirmar Pago": lee los comprobantes elegidos (uno o varios — ej. la factura Y el
+  // soporte de pago del banco) y los deja listos en memoria dentro de confirmarPagoSolicitud,
+  // acumulándolos; se suben a Storage recién al confirmar, no aquí.
   const handleSeleccionarComprobantePago = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setConfirmarPagoSolicitud(prev => prev ? { ...prev, comprobante: { nombre: file.name, tipo: file.type, data: event.target.result } } : prev);
-    };
-    reader.readAsDataURL(file);
+    const files = Array.from(e.target.files);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const nuevoComprobante = { id: Date.now() + Math.random(), nombre: file.name, tipo: file.type, data: event.target.result };
+        // Actualización funcional: con varios archivos elegidos a la vez, cada FileReader
+        // termina de leer en un momento distinto, y partir del estado más reciente evita que
+        // se pisen entre sí (mismo motivo que handleAddSoporte).
+        setConfirmarPagoSolicitud(prev => prev ? { ...prev, comprobantes: [...(prev.comprobantes || []), nuevoComprobante] } : prev);
+      };
+      reader.readAsDataURL(file);
+    });
     e.target.value = '';
   };
 
-  // Confirma el pago desde el modal: sube el comprobante como soporte de la SOLICITUD (antes
-  // de cambiar el estado, para que generarMovimientoDesdeSolicitud lo encuentre y lo refleje
+  const handleQuitarComprobantePago = (id) => {
+    setConfirmarPagoSolicitud(prev => prev ? { ...prev, comprobantes: (prev.comprobantes || []).filter(c => c.id !== id) } : prev);
+  };
+
+  // Confirma el pago desde el modal: sube cada comprobante como soporte de la SOLICITUD (antes
+  // de cambiar el estado, para que generarMovimientoDesdeSolicitud los encuentre y los refleje
   // también en el Gasto/Ingreso) y recién ahí marca "Pagado" con la cuenta y el CECO elegidos.
   const handleConfirmarPagoSolicitud = async () => {
     if (!confirmarPagoSolicitud) return;
-    const { solicitud, cuenta, ceco, comprobante } = confirmarPagoSolicitud;
+    const { solicitud, cuenta, ceco, comprobantes } = confirmarPagoSolicitud;
     if (!cuenta) {
       alert('Elige con qué cuenta de la empresa se hizo el pago');
       return;
@@ -2232,13 +2242,15 @@ const App = () => {
       alert('Elige el CECO para este movimiento');
       return;
     }
-    if (!comprobante) {
-      alert('Adjunta el comprobante de pago del banco');
+    if (!comprobantes || !comprobantes.length) {
+      alert('Adjunta al menos el comprobante de pago del banco');
       return;
     }
     setGuardandoConfirmarPago(true);
     try {
-      await subirSoporteEntidad(comprobante, 'solicitud', solicitud.id);
+      for (const comprobante of comprobantes) {
+        await subirSoporteEntidad(comprobante, 'solicitud', solicitud.id);
+      }
       await handleChangeEstado(solicitud.id, 'Pagado', { cuentaPago: cuenta, cecoCodigo: ceco || null });
       setConfirmarPagoSolicitud(null);
     } finally {
@@ -3882,31 +3894,46 @@ const App = () => {
   // aplicar el mismo archivo a todos de una vez si el banco entregó un solo comprobante para
   // todo el lote).
 
-  // Aplica UN comprobante a TODOS los conceptos seleccionados de una vez — para cuando el banco
-  // entrega un solo extracto/comprobante que cubre todo el lote de pagos.
+  // Aplica uno o varios comprobantes a TODOS los conceptos seleccionados de una vez — para cuando
+  // el banco entrega un solo extracto/comprobante (o un extracto + un soporte adicional) que
+  // cubre todo el lote de pagos. Reemplaza lo que cada concepto tuviera cargado individualmente.
   const handleSeleccionarComprobantePresupuestoTodos = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const archivo = { nombre: file.name, tipo: file.type, data: event.target.result };
-      setConfirmarPagoLotePresupuesto(prev => prev ? { ...prev, comprobantes: Object.fromEntries(prev.items.map(it => [it.id, archivo])) } : prev);
-    };
-    reader.readAsDataURL(file);
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    let pendientes = files.length;
+    const archivos = [];
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        archivos.push({ id: Date.now() + Math.random(), nombre: file.name, tipo: file.type, data: event.target.result });
+        pendientes -= 1;
+        if (pendientes === 0) {
+          setConfirmarPagoLotePresupuesto(prev => prev ? { ...prev, comprobantes: Object.fromEntries(prev.items.map(it => [it.id, archivos])) } : prev);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
     e.target.value = '';
   };
 
-  // Comprobante individual de un concepto puntual dentro del lote (sobrescribe el que se haya
-  // aplicado a todos, si el pago de ESE concepto en particular vino en un comprobante aparte).
+  // Comprobante(s) de un concepto puntual dentro del lote — se ACUMULAN (ej. factura + soporte
+  // de pago), y sobrescriben lo que se haya aplicado a todos si el pago de ESE concepto en
+  // particular vino en comprobantes aparte.
   const handleSeleccionarComprobantePresupuestoItem = (itemId, e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setConfirmarPagoLotePresupuesto(prev => prev ? { ...prev, comprobantes: { ...prev.comprobantes, [itemId]: { nombre: file.name, tipo: file.type, data: event.target.result } } } : prev);
-    };
-    reader.readAsDataURL(file);
+    const files = Array.from(e.target.files);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const nuevoArchivo = { id: Date.now() + Math.random(), nombre: file.name, tipo: file.type, data: event.target.result };
+        setConfirmarPagoLotePresupuesto(prev => prev ? { ...prev, comprobantes: { ...prev.comprobantes, [itemId]: [...(prev.comprobantes[itemId] || []), nuevoArchivo] } } : prev);
+      };
+      reader.readAsDataURL(file);
+    });
     e.target.value = '';
+  };
+
+  const handleQuitarComprobantePresupuestoItem = (itemId, fileId) => {
+    setConfirmarPagoLotePresupuesto(prev => prev ? { ...prev, comprobantes: { ...prev.comprobantes, [itemId]: (prev.comprobantes[itemId] || []).filter(c => c.id !== fileId) } } : prev);
   };
 
   // Confirma el lote: valida Cuenta/Fecha/comprobantes, y genera un Gasto por cada concepto
@@ -3924,7 +3951,7 @@ const App = () => {
       alert('Elige la fecha del pago');
       return;
     }
-    const faltantes = items.filter(it => !comprobantes[it.id]);
+    const faltantes = items.filter(it => !(comprobantes[it.id] && comprobantes[it.id].length));
     if (faltantes.length > 0) {
       alert('Falta el comprobante de: ' + faltantes.map(f => f.nombre).join(', '));
       return;
@@ -3973,7 +4000,9 @@ const App = () => {
             .single();
           if (errorGasto) throw errorGasto;
 
-          await subirSoporteEntidad(comprobantes[item.id], 'gasto', nuevoGasto.id);
+          for (const comprobante of comprobantes[item.id]) {
+            await subirSoporteEntidad(comprobante, 'gasto', nuevoGasto.id);
+          }
           generados++;
         } catch (errorItem) {
           console.error(`Error registrando en Finanzas el concepto "${item.nombre}":`, errorItem);
@@ -6146,7 +6175,7 @@ const App = () => {
                               // nada en Finanzas, así que no interrumpe con el modal). El resto de
                               // transiciones sigue igual.
                               if (nuevoEstado === 'Pagado' && !s.gastoGeneradoId && !s.ingresoGeneradoId && calcularAccionFinanzasSolicitud(s).accion !== 'ninguno') {
-                                setConfirmarPagoSolicitud({ solicitud: s, cuenta: '', ceco: '', comprobante: null, ...calcularAccionFinanzasSolicitud(s) });
+                                setConfirmarPagoSolicitud({ solicitud: s, cuenta: '', ceco: '', comprobantes: [], ...calcularAccionFinanzasSolicitud(s) });
                               } else {
                                 handleChangeEstado(s.id, nuevoEstado);
                               }
@@ -8066,10 +8095,17 @@ const App = () => {
                 </>
               )}
 
-              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Comprobante de {accion === 'ingreso' ? 'la consignación' : 'pago'} del banco *</label>
-              <input type="file" onChange={handleSeleccionarComprobantePago} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '0.5rem', boxSizing: 'border-box', cursor: 'pointer' }} />
-              {confirmarPagoSolicitud.comprobante && (
-                <p style={{ color: '#2F9E52', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>✅ {confirmarPagoSolicitud.comprobante.nombre}</p>
+              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Comprobante(s) de {accion === 'ingreso' ? 'la consignación' : 'pago'} del banco * <span style={{ fontWeight: 'normal', color: '#6B6458' }}>(puedes adjuntar varios, ej. factura + soporte de pago)</span></label>
+              <input type="file" multiple onChange={handleSeleccionarComprobantePago} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '0.5rem', boxSizing: 'border-box', cursor: 'pointer' }} />
+              {(confirmarPagoSolicitud.comprobantes || []).length > 0 && (
+                <div style={{ margin: '0 0 1rem 0' }}>
+                  {confirmarPagoSolicitud.comprobantes.map(c => (
+                    <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '0.5rem 0.75rem', marginBottom: '0.4rem' }}>
+                      <span style={{ color: '#2F9E52', fontSize: '0.8rem' }}>✅ {c.nombre}</span>
+                      <button onClick={() => handleQuitarComprobantePago(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '0.9rem', padding: '0.25rem' }}>🗑️</button>
+                    </div>
+                  ))}
+                </div>
               )}
 
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
@@ -8111,26 +8147,34 @@ const App = () => {
                 </div>
               </div>
 
-              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>📎 Usar el mismo comprobante para todos (opcional)</label>
-              <input type="file" onChange={handleSeleccionarComprobantePresupuestoTodos} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '1.25rem', boxSizing: 'border-box', cursor: 'pointer' }} />
+              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>📎 Usar el/los mismo(s) comprobante(s) para todos (opcional) <span style={{ fontWeight: 'normal', color: '#6B6458' }}>(puedes elegir varios)</span></label>
+              <input type="file" multiple onChange={handleSeleccionarComprobantePresupuestoTodos} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '1.25rem', boxSizing: 'border-box', cursor: 'pointer' }} />
 
               <div style={{ borderTop: '1px solid #E6E0D2', paddingTop: '1rem' }}>
-                {confirmarPagoLotePresupuesto.items.map(item => (
+                {confirmarPagoLotePresupuesto.items.map(item => {
+                  const archivosItem = confirmarPagoLotePresupuesto.comprobantes[item.id] || [];
+                  return (
                   <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', padding: '0.6rem 0', borderBottom: '1px solid #F0EDE4', flexWrap: 'wrap' }}>
                     <div>
                       <p style={{ margin: 0, color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>{item.nombre}</p>
                       <p style={{ margin: '0.15rem 0 0 0', color: '#6B6458', fontSize: '0.75rem' }}>{formatMoney(item.netoAPagar, filtroPresupuesto.empresa)}</p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <input type="file" onChange={(e) => handleSeleccionarComprobantePresupuestoItem(item.id, e)} style={{ fontSize: '0.75rem', maxWidth: '180px' }} />
-                      {confirmarPagoLotePresupuesto.comprobantes[item.id] ? (
-                        <p style={{ margin: '0.25rem 0 0 0', color: '#2F9E52', fontSize: '0.7rem' }}>✅ {confirmarPagoLotePresupuesto.comprobantes[item.id].nombre}</p>
+                      <input type="file" multiple onChange={(e) => handleSeleccionarComprobantePresupuestoItem(item.id, e)} style={{ fontSize: '0.75rem', maxWidth: '180px' }} />
+                      {archivosItem.length > 0 ? (
+                        archivosItem.map(c => (
+                          <p key={c.id} style={{ margin: '0.25rem 0 0 0', color: '#2F9E52', fontSize: '0.7rem', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.3rem' }}>
+                            ✅ {c.nombre}
+                            <button onClick={() => handleQuitarComprobantePresupuestoItem(item.id, c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '0.8rem', padding: 0 }}>🗑️</button>
+                          </p>
+                        ))
                       ) : (
                         <p style={{ margin: '0.25rem 0 0 0', color: '#CC4B4B', fontSize: '0.7rem' }}>Falta comprobante</p>
                       )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
