@@ -7646,6 +7646,7 @@ const App = () => {
                           </select>
                           <select value={newDeduccion.tipo} onChange={(e) => setNewDeduccion({...newDeduccion, tipo: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
                             <option value="Préstamo">Préstamo</option>
+                            <option value="Seguridad Social (PS)">Seguridad Social (PS)</option>
                             <option value="Otro">Otro descuento (recurrente)</option>
                           </select>
                           <div>
