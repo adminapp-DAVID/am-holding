@@ -539,6 +539,10 @@ const App = () => {
   // filtro de Empresa/Mes/Año de arriba (ese sigue afectando toda la pestaña Presupuesto). Las
   // tarjetas de totales siempre muestran el total real, sin importar este filtro.
   const [filtroEstadoMensual, setFiltroEstadoMensual] = useState('todos');
+  // Gestión de Conceptos: por defecto filtra por la Empresa elegida arriba (mismo selector que
+  // Mensual/Anual/Deducciones), con un botón para ver todas las empresas juntas cuando hace falta
+  // una vista general.
+  const [gestionConceptosTodasEmpresas, setGestionConceptosTodasEmpresas] = useState(false);
 
   // Convierte un dataURL (base64) leído por FileReader a bytes, para subirlo a Supabase Storage.
   const dataUrlToUint8Array = (dataUrl) => {
@@ -7499,6 +7503,9 @@ const App = () => {
           const presupuestoMensualFiltrado = presupuestoMensualDetalle.filter(item =>
             filtroEstadoMensual === 'pagados' ? item.pagado : filtroEstadoMensual === 'pendientes' ? !item.pagado : true
           );
+          // Gestión de Conceptos: filtrado por la Empresa de arriba salvo que se active "Todas".
+          const conceptosGestionFiltrados = (gestionConceptosTodasEmpresas ? presupuestoItems : presupuestoItems.filter(p => p.empresa === filtroPresupuesto.empresa))
+            .slice().sort((a, b) => (a.empresa || '').localeCompare(b.empresa || '') || (a.nombre || '').localeCompare(b.nombre || ''));
 
           return (
             <div>
@@ -7797,7 +7804,13 @@ const App = () => {
                 {/* ===== TAB GESTIÓN ===== */}
                 {presupuestoTab === 'gestion' && user.rol !== 'Gerente' && (
                   <div>
-                    <h3 style={{ color: '#221E15', marginBottom: '1rem' }}>Conceptos Recurrentes Mensuales</h3>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem' }}>
+                      <h3 style={{ color: '#221E15', margin: 0 }}>Conceptos Recurrentes Mensuales</h3>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button onClick={() => setGestionConceptosTodasEmpresas(false)} style={{ padding: '0.5rem 1rem', backgroundColor: !gestionConceptosTodasEmpresas ? '#C4A747' : '#E6E0D2', color: !gestionConceptosTodasEmpresas ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>🏢 Solo {filtroPresupuesto.empresa}</button>
+                        <button onClick={() => setGestionConceptosTodasEmpresas(true)} style={{ padding: '0.5rem 1rem', backgroundColor: gestionConceptosTodasEmpresas ? '#C4A747' : '#E6E0D2', color: gestionConceptosTodasEmpresas ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>🌐 Todas las empresas ({presupuestoItems.length})</button>
+                      </div>
+                    </div>
 
                     {puedeEditarPresupuesto && presupuestoItems.length === 0 && (
                       <div style={{ backgroundColor: '#FFF8E1', border: '1px solid #C4A747', borderRadius: '6px', padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
@@ -7849,9 +7862,9 @@ const App = () => {
                           </tr>
                         </thead>
                         <tbody>
-                          {presupuestoItems.length === 0 ? (
-                            <tr><td colSpan={puedeEditarPresupuesto ? 8 : 7} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin conceptos cargados todavía.</td></tr>
-                          ) : presupuestoItems.map(item => (
+                          {conceptosGestionFiltrados.length === 0 ? (
+                            <tr><td colSpan={puedeEditarPresupuesto ? 8 : 7} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>{gestionConceptosTodasEmpresas ? 'Sin conceptos cargados todavía.' : `Sin conceptos cargados todavía para ${filtroPresupuesto.empresa}.`}</td></tr>
+                          ) : conceptosGestionFiltrados.map(item => (
                             <tr key={item.id} style={{ borderBottom: '1px solid #E6E0D2', opacity: item.activo === false ? 0.5 : 1 }}>
                               <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{item.empresa}</td>
                               <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{cecos.find(c => c.codigo === item.ceco)?.nombre || item.ceco}</td>
