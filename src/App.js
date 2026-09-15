@@ -535,6 +535,10 @@ const App = () => {
   const [newPresupuestoAnual, setNewPresupuestoAnual] = useState({ empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-001-GF', anio: new Date().getFullYear(), valorAnual: '' });
   const [presupuestoTab, setPresupuestoTab] = useState('mensual');
   const [filtroPresupuesto, setFiltroPresupuesto] = useState({ empresa: 'AM SPORTS GROUP SAS', mes: new Date().getMonth() + 1, anio: new Date().getFullYear() });
+  // Filtro extra SOLO de la tabla Mensual (Pagado/Pendiente) — acorta la lista sin tocar el
+  // filtro de Empresa/Mes/Año de arriba (ese sigue afectando toda la pestaña Presupuesto). Las
+  // tarjetas de totales siempre muestran el total real, sin importar este filtro.
+  const [filtroEstadoMensual, setFiltroEstadoMensual] = useState('todos');
 
   // Convierte un dataURL (base64) leído por FileReader a bytes, para subirlo a Supabase Storage.
   const dataUrlToUint8Array = (dataUrl) => {
@@ -5232,7 +5236,10 @@ const App = () => {
           valorPagadoReal: gastoVinculado ? (parseFloat(gastoVinculado.valor) || 0) : 0,
           gastoId: gastoVinculado ? gastoVinculado.id : null
         };
-      });
+      })
+      // Pagados primero, Pendientes al final; dentro de cada grupo, alfabético por Concepto (más
+      // fácil de ubicar uno puntual que el orden de creación/DB que traía antes).
+      .sort((a, b) => Number(b.pagado) - Number(a.pagado) || (a.nombre || '').localeCompare(b.nombre || ''));
   })();
 
   const presupuestoMensualTotales = presupuestoMensualDetalle.reduce((acc, item) => {
@@ -7487,6 +7494,11 @@ const App = () => {
           const puedeEditarPresupuesto = user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa';
           const inputStyle = { padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' };
           const cardStyle = { backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '8px', padding: '1.25rem' };
+          // Filtro Pagado/Pendiente/Todos de la tabla Mensual — no afecta las tarjetas de totales
+          // (esas siguen mostrando el total real de la Empresa/Mes/Año elegidos arriba).
+          const presupuestoMensualFiltrado = presupuestoMensualDetalle.filter(item =>
+            filtroEstadoMensual === 'pagados' ? item.pagado : filtroEstadoMensual === 'pendientes' ? !item.pagado : true
+          );
 
           return (
             <div>
@@ -7564,6 +7576,14 @@ const App = () => {
                           <span style={{ color: '#8F8877', fontSize: '0.8rem' }}>Marca las casillas de los conceptos que ya pagaste para registrarlos juntos en Finanzas.</span>
                         </div>
                       )}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+                        <label style={{ color: '#6B6458', fontSize: '0.8rem' }}>Mostrar:</label>
+                        <select value={filtroEstadoMensual} onChange={(e) => setFiltroEstadoMensual(e.target.value)} style={{ padding: '0.5rem 0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', fontSize: '0.85rem' }}>
+                          <option value="todos">Todos ({presupuestoMensualDetalle.length})</option>
+                          <option value="pendientes">Solo Pendientes ({presupuestoMensualTotales.itemsPendientes})</option>
+                          <option value="pagados">Solo Pagados ({presupuestoMensualTotales.itemsPagados})</option>
+                        </select>
+                      </div>
                       <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                           <thead>
@@ -7580,7 +7600,7 @@ const App = () => {
                             </tr>
                           </thead>
                           <tbody>
-                            {presupuestoMensualDetalle.map(item => (
+                            {presupuestoMensualFiltrado.map(item => (
                               <tr key={item.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                                 {puedeEditarPresupuesto && (
                                   <td style={{ padding: '0.75rem', textAlign: 'center' }}>
@@ -7619,6 +7639,9 @@ const App = () => {
                                 </td>
                               </tr>
                             ))}
+                            {presupuestoMensualFiltrado.length === 0 && (
+                              <tr><td colSpan={puedeEditarPresupuesto ? 9 : 8} style={{ padding: '1.5rem', textAlign: 'center', color: '#8F8877', fontSize: '0.85rem' }}>No hay conceptos {filtroEstadoMensual === 'pagados' ? 'pagados' : 'pendientes'} este mes.</td></tr>
+                            )}
                           </tbody>
                         </table>
                       </div>
