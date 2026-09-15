@@ -2126,7 +2126,12 @@ const App = () => {
         .eq('id', solicitud.id)
         .single();
       if (errorLectura) {
+        // ANTES: esto se rendía en silencio (solo console.error) — si esta relectura de seguridad
+        // fallaba por lo que fuera (permiso, red, PostgREST), la solicitud quedaba "Pagado" pero
+        // el Gasto NUNCA se generaba y nadie se enteraba, porque el resto de la función sí avisa
+        // con alert() en cada error menos en este. Corregido para que avise igual que el resto.
         console.error('Error releyendo la solicitud antes de generar el movimiento automático:', errorLectura);
+        alert('⚠️ La solicitud quedó en "Pagado", pero no se pudo verificar en Finanzas antes de generar el registro automático: ' + errorLectura.message + '. Avísale a David para revisarlo — probablemente haya que registrarlo a mano.');
         return;
       }
       if (solActual.gasto_generado_id || solActual.ingreso_generado_id) return; // ya se generó antes, no duplicar
