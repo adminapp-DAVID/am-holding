@@ -1030,7 +1030,14 @@ const App = () => {
     // favor del colaborador. ingresoGeneradoId: Legalización con diferencia en contra (el
     // colaborador debe devolver dinero) — ver calcularAccionFinanzasSolicitud.
     gastoGeneradoId: row.gasto_generado_id || '',
-    ingresoGeneradoId: row.ingreso_generado_id || ''
+    ingresoGeneradoId: row.ingreso_generado_id || '',
+    // Conteo real de public.soportes para esta solicitud — se completa abajo en
+    // cargarSolicitudes(). Necesario porque "documentos" (arriba) solo se llena para
+    // Legalización/Reembolso (el desglose de recibos de la Bandeja de Soportes); Pago a
+    // Tercero (y cualquier archivo suelto subido a una solicitud) sube directo a Storage/
+    // public.soportes sin pasar por "documentos", así que contarlo aparte es la única forma
+    // de que la columna "Docs" refleje también esos archivos.
+    cantidadSoportes: 0
   });
 
   const cargarSolicitudes = async () => {
@@ -1050,7 +1057,27 @@ const App = () => {
       return;
     }
 
-    setSolicitudes(data.map(solicitudDBToLocal));
+    const solicitudesLocal = data.map(solicitudDBToLocal);
+
+    // Igual que en Cuentas de Cobro: los archivos sueltos (Pago a Tercero, PDFs generados,
+    // comprobantes de pago) viven en public.soportes, no en la columna "documentos" — se
+    // cuentan aparte para que la columna "Docs" de la tabla también los refleje.
+    if (solicitudesLocal.length > 0) {
+      const { data: soportesRows, error: soportesError } = await supabase
+        .from('soportes')
+        .select('entidad_id')
+        .eq('entidad_tipo', 'solicitud')
+        .in('entidad_id', solicitudesLocal.map(s => s.id));
+      if (soportesError) {
+        console.error('Error contando soportes de solicitudes:', soportesError);
+      } else {
+        const conteo = {};
+        (soportesRows || []).forEach(r => { conteo[r.entidad_id] = (conteo[r.entidad_id] || 0) + 1; });
+        solicitudesLocal.forEach(s => { s.cantidadSoportes = conteo[s.id] || 0; });
+      }
+    }
+
+    setSolicitudes(solicitudesLocal);
     setCargandoSolicitudes(false);
   };
 
@@ -6396,7 +6423,14 @@ const App = () => {
                             </span>
                           ) : '—'}
                         </td>
-                        <td style={{ padding: '0.75rem', textAlign: 'center', color: s.documentos?.length > 0 ? '#2F9E52' : '#8F8877' }}>{s.documentos?.length || 0}</td>
+                        {/* "documentos" solo se llena en Legalización/Reembolso (desglose de la
+                            Bandeja de Soportes); Pago a Tercero (y cualquier archivo suelto) sube
+                            directo a public.soportes sin pasar por ahí — por eso, si "documentos"
+                            viene vacío, se muestra el conteo real de soportes en su lugar. */}
+                        {(() => {
+                          const numDocs = (s.documentos && s.documentos.length > 0) ? s.documentos.length : (s.cantidadSoportes || 0);
+                          return <td style={{ padding: '0.75rem', textAlign: 'center', color: numDocs > 0 ? '#2F9E52' : '#8F8877' }}>{numDocs}</td>;
+                        })()}
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                           {canApprove ? (
                             <select value={s.estado} onChange={(e) => {
