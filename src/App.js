@@ -138,6 +138,11 @@ const CECO_PAGO_TERCERO = 'CECO-015-PT';
 // pero sin columna dedicada porque presupuesto_item_id ya se usa también para vínculos manuales).
 const OBSERVACIONES_GASTO_DESDE_PRESUPUESTO = 'Generado automáticamente desde Presupuesto (Mensual) al marcar pagado.';
 
+// Prefijo fijo que se guarda en "observaciones" para cada Gasto creado por "Registrar Facturas
+// de un Tercero" (ver registrarFacturasTercero) — permite mostrar la etiqueta "🧾 Factura de
+// tercero (lote)" en Historial de Finanzas sin depender de texto libre que alguien pudo editar.
+const OBSERVACIONES_GASTO_LOTE_TERCERO = 'Factura de tercero registrada en lote';
+
 const NIT_EMPRESAS = {
   'AM SPORTS GROUP SAS': '901219895-5',
   'PRO INVESTMENTS GLOBAL SAS': '901821315-6',
@@ -454,6 +459,18 @@ const App = () => {
   const [filtroFinanzasCeco, setFiltroFinanzasCeco] = useState('Todos');
   const [filtroFinanzasFechaInicio, setFiltroFinanzasFechaInicio] = useState('');
   const [filtroFinanzasFechaFin, setFiltroFinanzasFechaFin] = useState('');
+  // FACTURAS DE UN TERCERO EN LOTE (ej. Caelum manda varias facturas de distintos colaboradores
+  // y se paga todo junto): "Registrar Facturas de un Tercero" crea un Gasto Pendiente POR
+  // COLABORADOR (cada uno con su propia factura adjunta y su propio responsable/valor, para que
+  // sume bien en Ejecutado por responsable); luego, desde Historial de Finanzas, se seleccionan
+  // esos Gastos Pendientes y "Marcar Pagado en lote" adjunta UN SOLO comprobante de pago del
+  // banco a todos a la vez (se sube una sola vez y se refleja como soporte en cada uno, sin
+  // duplicar el archivo en Storage — mismo patrón que ya usa generarMovimientoDesdeSolicitud).
+  const [registrarFacturasTercero, setRegistrarFacturasTercero] = useState(null);
+  const [guardandoFacturasTercero, setGuardandoFacturasTercero] = useState(false);
+  const [seleccionGastosPendientesLote, setSeleccionGastosPendientesLote] = useState([]);
+  const [pagoLoteGastosComprobante, setPagoLoteGastosComprobante] = useState(null);
+  const [guardandoPagoLoteGastos, setGuardandoPagoLoteGastos] = useState(false);
   // Gestión de CECOs (Administrador y Coordinadora Administrativa) — crear/editar códigos
   // sin tocar código de la app. Panel colapsable dentro de Finanzas.
   const [mostrarGestionCecos, setMostrarGestionCecos] = useState(false);
@@ -4048,6 +4065,203 @@ const App = () => {
     }
   };
 
+  // ============================================================
+  // FACTURAS DE UN TERCERO EN LOTE (ej. Caelum) — ver nota junto a los estados más arriba.
+  // ============================================================
+
+  const nuevaLineaFacturaTercero = () => ({ id: Date.now() + Math.random(), responsable: '', valor: '', detalle: '', factura: null });
+
+  const handleAbrirRegistrarFacturasTercero = () => {
+    setRegistrarFacturasTercero({
+      terceroId: '',
+      terceroNombre: '',
+      fecha: new Date().toISOString().split('T')[0],
+      empresa: filtroFinanzasEmpresa !== 'Todas' ? filtroFinanzasEmpresa : (user.empresa || empresas[0] || ''),
+      ceco: '',
+      lineas: [nuevaLineaFacturaTercero()]
+    });
+  };
+
+  const handleAgregarLineaFacturaTercero = () => {
+    setRegistrarFacturasTercero(prev => prev ? { ...prev, lineas: [...prev.lineas, nuevaLineaFacturaTercero()] } : prev);
+  };
+
+  const handleQuitarLineaFacturaTercero = (id) => {
+    setRegistrarFacturasTercero(prev => prev ? { ...prev, lineas: prev.lineas.filter(l => l.id !== id) } : prev);
+  };
+
+  const handleCambiarLineaFacturaTercero = (id, campo, valor) => {
+    setRegistrarFacturasTercero(prev => prev ? { ...prev, lineas: prev.lineas.map(l => l.id === id ? { ...l, [campo]: valor } : l) } : prev);
+  };
+
+  const handleSeleccionarFacturaLinea = (id, e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const factura = { nombre: file.name, tipo: file.type, data: event.target.result };
+      setRegistrarFacturasTercero(prev => prev ? { ...prev, lineas: prev.lineas.map(l => l.id === id ? { ...l, factura } : l) } : prev);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // Crea UN Gasto "Pendiente" por cada línea (colaborador + valor + su propia factura) — quedan
+  // sueltos en Historial de Finanzas listos para seleccionarse ahí y pagarse en lote más adelante
+  // (ver handleConfirmarPagoLoteGastos), cuando llegue el comprobante único del banco.
+  const handleGuardarFacturasTercero = async () => {
+    if (!registrarFacturasTercero) return;
+    const { terceroId, terceroNombre, fecha, empresa, ceco, lineas } = registrarFacturasTercero;
+    if (!terceroNombre.trim()) { alert('Escribe o elige el tercero que envía las facturas (ej. Caelum)'); return; }
+    if (!empresa) { alert('Elige la empresa'); return; }
+    if (!ceco) { alert('Elige el CECO para estas facturas'); return; }
+    const invalidas = lineas.filter(l => !l.responsable || !l.valor || parseFloat(l.valor) <= 0);
+    if (invalidas.length > 0) { alert('Cada línea necesita Colaborador y un Valor mayor a cero'); return; }
+
+    setGuardandoFacturasTercero(true);
+    try {
+      const [empresaId, cecoId] = await Promise.all([resolverEmpresaId(empresa), resolverCecoId(ceco)]);
+      let generados = 0;
+      const fallidos = [];
+      for (const linea of lineas) {
+        try {
+          const responsableId = personasFinanzas.find(r => r.nombre === linea.responsable)?.id || null;
+          const { data: nuevoGasto, error: errorGasto } = await supabase
+            .from('gastos')
+            .insert({
+              fecha,
+              tipo: 'Gasto',
+              empresa_id: empresaId,
+              responsable_id: responsableId,
+              ceco_id: cecoId,
+              cuenta: null,
+              detalle: linea.detalle?.trim() || `Factura ${terceroNombre} — ${linea.responsable}`,
+              valor: linea.valor,
+              estado: 'Pendiente',
+              observaciones: `${OBSERVACIONES_GASTO_LOTE_TERCERO} (${terceroNombre}).`,
+              tercero_id: terceroId || null
+            })
+            .select('id')
+            .single();
+          if (errorGasto) throw errorGasto;
+          if (linea.factura) await subirSoporteEntidad(linea.factura, 'gasto', nuevoGasto.id);
+          generados++;
+        } catch (errorLinea) {
+          console.error(`Error registrando la factura de ${linea.responsable}:`, errorLinea);
+          fallidos.push(`${linea.responsable || '(sin colaborador)'}: ${errorLinea.message || 'error inesperado'}`);
+        }
+      }
+      await cargarGastos();
+      if (fallidos.length === 0) {
+        setRegistrarFacturasTercero(null);
+        alert(`✅ Se registraron ${generados} factura(s) como Pendientes en Finanzas.\nCuando llegue el pago del banco, selecciónalas en Historial de Finanzas y usa "💳 Marcar Pagado en lote" para adjuntar un solo comprobante a todas.`);
+      } else {
+        alert(`Se registraron ${generados} de ${lineas.length}.\n⚠️ No se pudieron registrar: ${fallidos.join('; ')}`);
+      }
+    } finally {
+      setGuardandoFacturasTercero(false);
+    }
+  };
+
+  // ============================================================
+  // PAGO EN LOTE CON COMPROBANTE COMPARTIDO — para Gastos ya registrados (de a uno o por
+  // "Registrar Facturas de un Tercero") que se pagaron juntos con UN solo comprobante bancario.
+  // ============================================================
+
+  const handleAbrirPagoLoteGastos = (gastosSeleccionados) => {
+    if (!gastosSeleccionados.length) return;
+    // La cuenta elegida en el modal aplica igual a TODOS los gastos del lote — si vienen de
+    // empresas distintas, esa única cuenta no tendría sentido para todos (cada empresa tiene
+    // sus propias cuentas bancarias). Se pide separar la selección por empresa en ese caso.
+    const empresasDistintas = [...new Set(gastosSeleccionados.map(g => g.empresa))];
+    if (empresasDistintas.length > 1) {
+      alert(`⚠️ Los gastos seleccionados son de empresas distintas (${empresasDistintas.join(', ')}). Selecciona solo los de una misma empresa para marcarlos pagados juntos, ya que cada una tiene sus propias cuentas bancarias.`);
+      return;
+    }
+    setPagoLoteGastosComprobante({ gastos: gastosSeleccionados, cuenta: '', fecha: new Date().toISOString().split('T')[0], comprobantes: [] });
+  };
+
+  const handleSeleccionarComprobantePagoLoteGastos = (e) => {
+    const files = Array.from(e.target.files);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const nuevo = { id: Date.now() + Math.random(), nombre: file.name, tipo: file.type, data: event.target.result };
+        setPagoLoteGastosComprobante(prev => prev ? { ...prev, comprobantes: [...(prev.comprobantes || []), nuevo] } : prev);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const handleQuitarComprobantePagoLoteGastos = (id) => {
+    setPagoLoteGastosComprobante(prev => prev ? { ...prev, comprobantes: (prev.comprobantes || []).filter(c => c.id !== id) } : prev);
+  };
+
+  // Marca "Pagado" cada Gasto del lote con la misma Cuenta/Fecha, y sube el/los comprobante(s)
+  // UNA sola vez (al primer Gasto) — a los demás se les refleja el MISMO bucket_path como un
+  // soporte más (sin volver a subir el archivo a Storage), igual patrón que usa
+  // generarMovimientoDesdeSolicitud para copiar soportes entre Solicitud y Gasto/Ingreso.
+  const handleConfirmarPagoLoteGastos = async () => {
+    if (!pagoLoteGastosComprobante) return;
+    const { gastos: gastosLote, cuenta, fecha, comprobantes } = pagoLoteGastosComprobante;
+    if (!gastosLote || !gastosLote.length) return;
+    if (!cuenta) { alert('Elige con qué cuenta de la empresa se hizo el pago'); return; }
+    if (!fecha) { alert('Elige la fecha del pago'); return; }
+    if (!comprobantes || !comprobantes.length) { alert('Adjunta el comprobante de pago del banco'); return; }
+
+    setGuardandoPagoLoteGastos(true);
+    try {
+      const rutasComprobantes = [];
+      for (const comprobante of comprobantes) {
+        const ruta = await subirSoporteEntidad(comprobante, 'gasto', gastosLote[0].id);
+        if (ruta) {
+          rutasComprobantes.push({
+            ruta,
+            nombre: comprobante.nombre,
+            tamanoKb: Math.round(dataUrlToUint8Array(comprobante.data).length / 1024)
+          });
+        }
+      }
+
+      let actualizados = 0;
+      const fallidos = [];
+      for (const gasto of gastosLote) {
+        try {
+          const { error: errorUpdate } = await supabase.from('gastos').update({ estado: 'Pagado', cuenta, fecha }).eq('id', gasto.id);
+          if (errorUpdate) throw errorUpdate;
+
+          if (gasto.id !== gastosLote[0].id) {
+            for (const rc of rutasComprobantes) {
+              const { error: errorSoporte } = await supabase.from('soportes').insert({
+                bucket_path: rc.ruta,
+                nombre_original: rc.nombre,
+                tamano_kb: rc.tamanoKb,
+                entidad_tipo: 'gasto',
+                entidad_id: gasto.id,
+                subido_por: user.id
+              });
+              if (errorSoporte) throw errorSoporte;
+            }
+          }
+          actualizados++;
+        } catch (errorItem) {
+          console.error(`Error marcando pagado el gasto "${gasto.detalle}":`, errorItem);
+          fallidos.push(`${gasto.detalle || gasto.id}: ${errorItem.message || 'error inesperado'}`);
+        }
+      }
+
+      await cargarGastos();
+      setSeleccionGastosPendientesLote([]);
+      setPagoLoteGastosComprobante(null);
+      alert(fallidos.length > 0
+        ? `✅ ${actualizados} gasto(s) marcados Pagado.\n⚠️ No se pudieron actualizar: ${fallidos.join('; ')}`
+        : `✅ ${actualizados} gasto(s) marcados Pagado, todos con el mismo comprobante adjunto.`);
+    } finally {
+      setGuardandoPagoLoteGastos(false);
+    }
+  };
+
   const handleAddPresupuestoAnual = async () => {
     if (!newPresupuestoAnual.valorAnual || parseFloat(newPresupuestoAnual.valorAnual) <= 0) {
       alert('El valor anual es obligatorio y debe ser mayor a cero');
@@ -7044,6 +7258,14 @@ const App = () => {
                   <button onClick={handleAbrirInformeFinanzas} disabled={registrosFinanzas.length === 0} style={{ padding: '0.4rem 0.9rem', borderRadius: '4px', border: '1px solid #6C63D1', backgroundColor: registrosFinanzas.length === 0 ? '#E6E0D2' : '#6C63D1', color: '#FFFFFF', fontWeight: 'bold', fontSize: '0.8rem', cursor: registrosFinanzas.length === 0 ? 'not-allowed' : 'pointer' }}>
                     👁️ Ver Informe
                   </button>
+                  {/* Varias facturas del mismo tercero (ej. Caelum) a distintos colaboradores, un
+                      solo pago del banco: esto crea un Gasto Pendiente por colaborador de una vez;
+                      el comprobante único se adjunta después, en lote, desde la tabla de abajo. */}
+                  {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
+                    <button onClick={handleAbrirRegistrarFacturasTercero} style={{ padding: '0.4rem 0.9rem', borderRadius: '4px', border: '1px solid #C4A747', backgroundColor: '#FBF3E5', color: '#8A6D1D', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}>
+                    🧾 Registrar Facturas de un Tercero
+                  </button>
+                  )}
                 </div>
               </div>
 
@@ -7080,10 +7302,23 @@ const App = () => {
               </div>
 
               {(cargandoGastos || cargandoIngresos) && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando...</p>}
+              {(() => {
+                const puedeGestionarFinanzasLote = user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa';
+                if (!puedeGestionarFinanzasLote) return null;
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                    <button onClick={() => handleAbrirPagoLoteGastos(registrosFinanzas.filter(r => seleccionGastosPendientesLote.includes(r.id) && r._origen === 'gasto' && !r._ladoTraslado && r.estado === 'Pendiente'))} disabled={seleccionGastosPendientesLote.length === 0} style={{ padding: '0.6rem 1.25rem', backgroundColor: seleccionGastosPendientesLote.length === 0 ? '#D8D2C2' : '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: seleccionGastosPendientesLote.length === 0 ? 'not-allowed' : 'pointer', fontSize: '0.85rem' }}>
+                      💳 Marcar Pagado en lote {seleccionGastosPendientesLote.length > 0 ? `(${seleccionGastosPendientesLote.length})` : ''}
+                    </button>
+                    <span style={{ color: '#8F8877', fontSize: '0.8rem' }}>Marca varios Gastos Pendientes (ej. facturas del mismo tercero) para adjuntarles UN solo comprobante de pago a todos.</span>
+                  </div>
+                );
+              })()}
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                   <thead style={{ backgroundColor: '#F8F6F1' }}>
                     <tr style={{ borderBottom: '2px solid #C4A747' }}>
+                      {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}></th>}
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
                       {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
@@ -7098,7 +7333,7 @@ const App = () => {
                   </thead>
                   <tbody>
                     {registrosFinanzas.length === 0 ? (
-                      <tr><td colSpan={9} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin registros para este filtro.</td></tr>
+                      <tr><td colSpan={(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') ? 10 : 9} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin registros para este filtro.</td></tr>
                     ) : registrosFinanzas.map(r => {
                       const esGasto = r.tipo === 'Gasto';
                       const esTraslado = r.tipo === 'Traslado';
@@ -7121,8 +7356,22 @@ const App = () => {
                       // en cualquier fila que no fuera la suya propia.
                       const colaboradorInfo = colaboradoresPublico.find(c => c.id === r.responsableId);
                       const nombreColaborador = colaboradorInfo?.nombre || r.responsableNombre || '—';
+                      // Solo se puede seleccionar para "Marcar Pagado en lote" un Gasto/Pago a
+                      // Tercero real (no las líneas sintéticas de Traslado ni un Ingreso) que
+                      // siga Pendiente.
+                      const esSeleccionablePagoLote = r._origen === 'gasto' && !r._ladoTraslado && r.estado === 'Pendiente';
+                      const nombreTerceroCatalogo = !esPagoTercero && r.terceroId ? todosTerceros.find(t => t.id === r.terceroId)?.nombre : null;
                       return (
                         <tr key={`${r.tipo}-${r.id}${r._ladoTraslado ? '-' + r._ladoTraslado : ''}`} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
+                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                              {esSeleccionablePagoLote && (
+                                <input type="checkbox" checked={seleccionGastosPendientesLote.includes(r.id)} onChange={(e) => {
+                                  setSeleccionGastosPendientesLote(prev => e.target.checked ? [...prev, r.id] : prev.filter(id => id !== r.id));
+                                }} />
+                              )}
+                            </td>
+                          )}
                           <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{r.fecha}</td>
                           <td style={{ padding: '0.75rem', fontSize: '0.8rem' }}>
                             {iconoTipo} {r.tipo}
@@ -7140,11 +7389,17 @@ const App = () => {
                             {esPagoTercero && r.terceroInfo?.nombre && (
                               <div style={{ fontSize: '0.7rem', color: '#8F8877' }}>👤 {r.terceroInfo.nombre}{r.terceroInfo.dni ? ` · ${r.terceroInfo.dni}` : ''}</div>
                             )}
+                            {nombreTerceroCatalogo && (
+                              <div style={{ fontSize: '0.7rem', color: '#8F8877' }}>🏢 {nombreTerceroCatalogo}</div>
+                            )}
                             {r.solicitudOrigenId && (
                               <div style={{ fontSize: '0.7rem', color: '#6C63D1' }}>🔗 Generado desde Solicitudes</div>
                             )}
                             {r.presupuestoItemId && r.observaciones === OBSERVACIONES_GASTO_DESDE_PRESUPUESTO && (
                               <div style={{ fontSize: '0.7rem', color: '#6C63D1' }}>🔗 Generado desde Presupuesto</div>
+                            )}
+                            {r.observaciones && r.observaciones.startsWith(OBSERVACIONES_GASTO_LOTE_TERCERO) && (
+                              <div style={{ fontSize: '0.7rem', color: '#6C63D1' }}>🧾 Factura de tercero (lote)</div>
                             )}
                           </td>
                           <td style={{ padding: '0.75rem', color: esPagoTercero ? '#CC4B4B' : colorValor, textAlign: 'right', fontWeight: 'bold' }}>
@@ -8277,6 +8532,146 @@ const App = () => {
                   {guardandoPagoLotePresupuesto ? 'Guardando...' : `✅ Confirmar Pago (${confirmarPagoLotePresupuesto.items.length})`}
                 </button>
                 <button disabled={guardandoPagoLotePresupuesto} onClick={() => setConfirmarPagoLotePresupuesto(null)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL REGISTRAR FACTURAS DE UN TERCERO EN LOTE (ej. Caelum manda varias facturas de
+            distintos colaboradores para un solo pago) — una línea por colaborador, cada una con
+            su propio valor y su propia factura; se crean como Gastos "Pendiente" listos para
+            seleccionarse en la tabla y pagarse en lote con UN solo comprobante (ver siguiente modal). */}
+        {registrarFacturasTercero && (
+          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
+            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '680px', width: '90%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
+              <h2 style={{ color: '#C4A747', marginBottom: '0.5rem' }}>🧾 Registrar Facturas de un Tercero</h2>
+              <p style={{ color: '#6B6458', fontSize: '0.85rem', marginTop: 0, marginBottom: '1.25rem' }}>
+                Crea un Gasto "Pendiente" por cada colaborador con su propia factura. Cuando llegue el pago del banco, ciérralo en Historial de Finanzas con "💳 Marcar Pagado en lote" adjuntando un solo comprobante a todos.
+              </p>
+
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Tercero que envía las facturas *</label>
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                  <select value={registrarFacturasTercero.terceroId} onChange={(e) => {
+                    const id = e.target.value;
+                    const t = todosTerceros.find(x => x.id === id);
+                    setRegistrarFacturasTercero({ ...registrarFacturasTercero, terceroId: id, terceroNombre: t?.nombre || registrarFacturasTercero.terceroNombre });
+                  }} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }}>
+                    <option value="">✍️ Escribir el nombre abajo</option>
+                    {todosTerceros.filter(t => t.activo !== false).map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                  </select>
+                </div>
+                <input type="text" placeholder="Nombre del tercero (ej. Caelum) *" value={registrarFacturasTercero.terceroNombre} onChange={(e) => setRegistrarFacturasTercero({ ...registrarFacturasTercero, terceroId: '', terceroNombre: e.target.value })} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }} />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+                <div>
+                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Fecha de las facturas</label>
+                  <input type="date" value={registrarFacturasTercero.fecha} onChange={(e) => setRegistrarFacturasTercero({ ...registrarFacturasTercero, fecha: e.target.value })} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }} />
+                </div>
+                <div>
+                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Empresa *</label>
+                  <select value={registrarFacturasTercero.empresa} onChange={(e) => setRegistrarFacturasTercero({ ...registrarFacturasTercero, empresa: e.target.value })} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                    {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>CECO *</label>
+                  <select value={registrarFacturasTercero.ceco} onChange={(e) => setRegistrarFacturasTercero({ ...registrarFacturasTercero, ceco: e.target.value })} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                    <option value="">Seleccionar</option>
+                    {cecosGasto.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ borderTop: '1px solid #E6E0D2', paddingTop: '1rem' }}>
+                {registrarFacturasTercero.lineas.map((linea, idx) => (
+                  <div key={linea.id} style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1.3fr 1fr auto', gap: '0.5rem', alignItems: 'center', padding: '0.6rem 0', borderBottom: '1px solid #F0EDE4' }}>
+                    <select value={linea.responsable} onChange={(e) => handleCambiarLineaFacturaTercero(linea.id, 'responsable', e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', fontSize: '0.8rem' }}>
+                      <option value="">Colaborador *</option>
+                      {personasFinanzas.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+                    </select>
+                    <input type="number" placeholder="Valor *" value={linea.valor} onChange={(e) => handleCambiarLineaFacturaTercero(linea.id, 'valor', e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', fontSize: '0.8rem' }} />
+                    <input type="text" placeholder={`Detalle (ej. Factura ${registrarFacturasTercero.terceroNombre || 'tercero'})`} value={linea.detalle} onChange={(e) => handleCambiarLineaFacturaTercero(linea.id, 'detalle', e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', fontSize: '0.8rem' }} />
+                    <div>
+                      <input type="file" onChange={(e) => handleSeleccionarFacturaLinea(linea.id, e)} style={{ fontSize: '0.7rem', width: '100%' }} />
+                      {linea.factura && <p style={{ margin: '0.2rem 0 0 0', color: '#2F9E52', fontSize: '0.7rem' }}>✅ {linea.factura.nombre}</p>}
+                    </div>
+                    <button onClick={() => handleQuitarLineaFacturaTercero(linea.id)} disabled={registrarFacturasTercero.lineas.length === 1} style={{ background: 'none', border: 'none', cursor: registrarFacturasTercero.lineas.length === 1 ? 'not-allowed' : 'pointer', color: '#CC4B4B', fontSize: '1rem', opacity: registrarFacturasTercero.lineas.length === 1 ? 0.4 : 1 }} title="Quitar esta línea">🗑️</button>
+                  </div>
+                ))}
+              </div>
+
+              <button onClick={handleAgregarLineaFacturaTercero} style={{ marginTop: '1rem', padding: '0.5rem 1rem', backgroundColor: '#F8F6F1', border: '1px dashed #C4A747', borderRadius: '4px', color: '#8A6D1D', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
+                ➕ Agregar otro colaborador
+              </button>
+
+              <p style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem', marginTop: '1.25rem' }}>
+                Total: {formatMoney(registrarFacturasTercero.lineas.reduce((sum, l) => sum + (parseFloat(l.valor) || 0), 0), registrarFacturasTercero.empresa)}
+              </p>
+
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
+                <button disabled={guardandoFacturasTercero} onClick={handleGuardarFacturasTercero} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoFacturasTercero ? 'not-allowed' : 'pointer', opacity: guardandoFacturasTercero ? 0.6 : 1 }}>
+                  {guardandoFacturasTercero ? 'Guardando...' : `✅ Registrar ${registrarFacturasTercero.lineas.length} factura(s)`}
+                </button>
+                <button disabled={guardandoFacturasTercero} onClick={() => setRegistrarFacturasTercero(null)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL PAGO EN LOTE CON COMPROBANTE COMPARTIDO — marca "Pagado" varios Gastos ya
+            registrados (típicamente las facturas creadas arriba) con la misma Cuenta/Fecha,
+            adjuntando UN solo comprobante de pago del banco a todos a la vez. */}
+        {pagoLoteGastosComprobante && (
+          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
+            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '560px', width: '90%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
+              <h2 style={{ color: '#C4A747', marginBottom: '0.5rem' }}>💳 Marcar Pagado en lote — {pagoLoteGastosComprobante.gastos.length} gasto{pagoLoteGastosComprobante.gastos.length !== 1 ? 's' : ''}</h2>
+              <p style={{ color: '#6B6458', fontSize: '0.85rem', marginTop: 0, marginBottom: '1.25rem' }}>
+                Total: {formatMoney(pagoLoteGastosComprobante.gastos.reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0), pagoLoteGastosComprobante.gastos[0]?.empresa)}
+              </p>
+
+              <div style={{ borderTop: '1px solid #E6E0D2', borderBottom: '1px solid #E6E0D2', padding: '0.75rem 0', marginBottom: '1.25rem' }}>
+                {pagoLoteGastosComprobante.gastos.map(g => (
+                  <div key={g.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', padding: '0.3rem 0', fontSize: '0.8rem' }}>
+                    <span style={{ color: '#221E15' }}>{g.detalle}</span>
+                    <span style={{ color: '#6B6458' }}>{formatMoney(g.valor, g.empresa)}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
+                <div>
+                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta con la que se pagó *</label>
+                  <select value={pagoLoteGastosComprobante.cuenta} onChange={(e) => setPagoLoteGastosComprobante({ ...pagoLoteGastosComprobante, cuenta: e.target.value })} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                    <option value="">Seleccionar</option>
+                    {(cuentasPorEmpresa[pagoLoteGastosComprobante.gastos[0]?.empresa] || []).map(cuenta => <option key={cuenta} value={cuenta}>{cuenta}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Fecha del pago *</label>
+                  <input type="date" value={pagoLoteGastosComprobante.fecha} onChange={(e) => setPagoLoteGastosComprobante({ ...pagoLoteGastosComprobante, fecha: e.target.value })} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }} />
+                </div>
+              </div>
+
+              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>📎 Comprobante de pago del banco * <span style={{ fontWeight: 'normal', color: '#6B6458' }}>(puedes elegir varios; se adjuntan iguales a todos)</span></label>
+              <input type="file" multiple onChange={handleSeleccionarComprobantePagoLoteGastos} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '0.75rem', boxSizing: 'border-box', cursor: 'pointer' }} />
+              {(pagoLoteGastosComprobante.comprobantes || []).map(c => (
+                <p key={c.id} style={{ margin: '0 0 0.35rem 0', color: '#2F9E52', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  ✅ {c.nombre}
+                  <button onClick={() => handleQuitarComprobantePagoLoteGastos(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '0.85rem', padding: 0 }}>🗑️</button>
+                </p>
+              ))}
+
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
+                <button disabled={guardandoPagoLoteGastos} onClick={handleConfirmarPagoLoteGastos} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoPagoLoteGastos ? 'not-allowed' : 'pointer', opacity: guardandoPagoLoteGastos ? 0.6 : 1 }}>
+                  {guardandoPagoLoteGastos ? 'Guardando...' : `✅ Confirmar Pago (${pagoLoteGastosComprobante.gastos.length})`}
+                </button>
+                <button disabled={guardandoPagoLoteGastos} onClick={() => setPagoLoteGastosComprobante(null)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
                   Cancelar
                 </button>
               </div>
