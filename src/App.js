@@ -487,6 +487,12 @@ const App = () => {
   const nuevoSoportePendienteVacio = { fecha: new Date().toISOString().split('T')[0], proveedor: '', nit: '', descripcion: '', valor: '', tipoSoporte: '', archivo: null };
   const [nuevoSoportePendiente, setNuevoSoportePendiente] = useState(nuevoSoportePendienteVacio);
   const [subiendoSoportePendiente, setSubiendoSoportePendiente] = useState(false);
+  // Edición en línea de un recibo ya guardado en la bandeja (Fecha/Pagado a/NIT/Concepto/Valor/
+  // Tipo) — reemplaza la fila por inputs mientras se edita; el archivo en sí no se reemplaza
+  // desde aquí (para eso hay que eliminar y volver a subir).
+  const [editandoPendienteId, setEditandoPendienteId] = useState(null);
+  const [pendienteEditData, setPendienteEditData] = useState(null);
+  const [guardandoEdicionPendiente, setGuardandoEdicionPendiente] = useState(false);
   // Ids de la bandeja que quedaron "en uso" al prellenar el formulario de Nueva Solicitud
   // (ver handleUsarPendientesEnSolicitud) — se marcan usado=true recién cuando la solicitud
   // se guarda con éxito, nunca antes.
@@ -624,20 +630,38 @@ const App = () => {
       }
     }
 
+    // Extensión del nombre de archivo — respaldo para decidir cómo tratar un soporte cuando su
+    // "tipo" (mime) viene vacío o mal puesto. Esto pasa con más frecuencia de la que debería con
+    // fotos tomadas DIRECTO con la cámara del celular (sobre todo en Android/webviews): el
+    // navegador a veces no les pone un File.type, y antes ese soporte se descartaba de una vez
+    // (caía al "else" de abajo) sin siquiera intentar incluirlo — la foto quedaba pagada/registrada
+    // en la solicitud pero jamás aparecía en el PDF de soportes.
+    const extensionDe = (nombre) => (nombre || '').split('.').pop().toLowerCase();
+
     for (const soporte of soportes) {
       try {
         const bytes = dataUrlToUint8Array(soporte.data);
-        if (soporte.tipo === 'application/pdf') {
+        const ext = extensionDe(soporte.nombre);
+        const esPDF = soporte.tipo === 'application/pdf' || ext === 'pdf';
+        const esImagen = (soporte.tipo && soporte.tipo.startsWith('image/')) || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'].includes(ext);
+
+        if (esPDF) {
           const srcPdf = await PDFDocument.load(bytes);
           const pages = await mergedPdf.copyPages(srcPdf, srcPdf.getPageIndices());
           pages.forEach(p => mergedPdf.addPage(p));
-        } else if (soporte.tipo && soporte.tipo.startsWith('image/')) {
+        } else if (esImagen) {
+          // Se prueba PNG y JPG sin fiarse ciegamente del "tipo" declarado — se intenta primero el
+          // que sugiere el tipo/extensión, y si falla, el otro formato antes de rendirse. Esto
+          // recupera fotos con mime type vacío o mal puesto (típico al tomar la foto directo con
+          // la cámara). Si de verdad es un formato que pdf-lib no soporta (ej. HEIC de iPhone sin
+          // convertir), sí falla aquí — y ese caso lo maneja el llamador: en vez de perder la foto,
+          // la adjunta suelta a la solicitud sin meterla en el PDF combinado.
           let image;
+          const esPngPorTipoOExtension = soporte.tipo === 'image/png' || ext === 'png';
           try {
-            image = soporte.tipo === 'image/png' ? await mergedPdf.embedPng(bytes) : await mergedPdf.embedJpg(bytes);
+            image = esPngPorTipoOExtension ? await mergedPdf.embedPng(bytes) : await mergedPdf.embedJpg(bytes);
           } catch (e) {
-            // Algunos navegadores etiquetan mal el mime type — probamos el otro formato antes de rendirnos
-            image = await mergedPdf.embedPng(bytes).catch(() => mergedPdf.embedJpg(bytes));
+            image = esPngPorTipoOExtension ? await mergedPdf.embedJpg(bytes) : await mergedPdf.embedPng(bytes);
           }
           const pageWidth = 612;
           const pageHeight = 792;
@@ -654,23 +678,23 @@ const App = () => {
             height: drawHeight
           });
         } else {
-          omitidos.push(soporte.nombre);
+          omitidos.push(soporte);
         }
       } catch (error) {
         console.warn('No se pudo unir el soporte al PDF:', soporte.nombre, error);
-        omitidos.push(soporte.nombre);
+        omitidos.push(soporte);
       }
-    }
-
-    if (omitidos.length > 0) {
-      alert(`⚠️ No se pudieron unir al PDF (formato no soportado, solo PDF o imágenes): ${omitidos.join(', ')}`);
     }
 
     const mergedBytes = await mergedPdf.save();
     return {
       nombre: `Soportes_Consolidados_${Date.now()}.pdf`,
       tipo: 'application/pdf',
-      data: uint8ArrayToDataUrl(mergedBytes, 'application/pdf')
+      data: uint8ArrayToDataUrl(mergedBytes, 'application/pdf'),
+      // Soportes que NO se pudieron meter en el PDF combinado (formato que pdf-lib no soporta,
+      // ej. HEIC) — el llamador los sube sueltos, uno por uno, para que la solicitud NUNCA se
+      // quede sin ese archivo aunque no haya podido unirse al consolidado.
+      omitidos
     };
   };
 
@@ -1710,6 +1734,17 @@ const App = () => {
     setSoportesTerceroTemp(soportesTerceroTemp.filter(s => s.id !== id));
   };
 
+  // Fotos tomadas DIRECTO con la cámara del celular a veces llegan al navegador sin
+  // File.type (sobre todo en Android/webviews) — sin esto, ese archivo se guardaba en Storage
+  // como "application/octet-stream" y, al usarse luego en una Legalización/Reembolso, el PDF
+  // consolidado lo descartaba sin avisar porque no lo reconocía como imagen. Se infiere el tipo
+  // real por la extensión del nombre como respaldo cuando el navegador no lo trae.
+  const inferirMimePorExtension = (nombre) => {
+    const ext = (nombre || '').split('.').pop().toLowerCase();
+    const mapa = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp', pdf: 'application/pdf', heic: 'image/heic', heif: 'image/heif' };
+    return mapa[ext] || '';
+  };
+
   // BANDEJA DE SOPORTES — lee el archivo elegido a memoria (igual que el resto de uploads)
   // y lo deja listo en el formulario cortico de "agregar a la bandeja" (todavía no sube nada).
   const handleSeleccionarArchivoPendiente = (e) => {
@@ -1717,7 +1752,8 @@ const App = () => {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (event) => {
-      setNuevoSoportePendiente(prev => ({ ...prev, archivo: { nombre: file.name, tipo: file.type, tamaño: file.size, data: event.target.result } }));
+      const tipo = file.type || inferirMimePorExtension(file.name);
+      setNuevoSoportePendiente(prev => ({ ...prev, archivo: { nombre: file.name, tipo, tamaño: file.size, data: event.target.result } }));
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -1792,6 +1828,48 @@ const App = () => {
 
   const toggleSeleccionPendiente = (id) => {
     setSeleccionPendientes(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  // Editar un recibo ya guardado en la bandeja: la fila se vuelve inputs con los datos actuales.
+  const handleIniciarEdicionPendiente = (item) => {
+    setEditandoPendienteId(item.id);
+    setPendienteEditData({ fecha: item.fecha, proveedor: item.proveedor, nit: item.nit, descripcion: item.descripcion, valor: item.valor, tipoSoporte: item.tipoSoporte });
+  };
+
+  const handleCancelarEdicionPendiente = () => {
+    setEditandoPendienteId(null);
+    setPendienteEditData(null);
+  };
+
+  const handleGuardarEdicionPendiente = async (id) => {
+    if (!pendienteEditData.fecha || !pendienteEditData.valor) {
+      alert('Fecha y valor son obligatorios');
+      return;
+    }
+    setGuardandoEdicionPendiente(true);
+    try {
+      const { error } = await supabase
+        .from('soportes_pendientes')
+        .update({
+          fecha: pendienteEditData.fecha,
+          proveedor: pendienteEditData.proveedor || null,
+          nit: pendienteEditData.nit || null,
+          descripcion: pendienteEditData.descripcion || null,
+          valor: parseFloat(pendienteEditData.valor) || 0,
+          tipo_soporte: pendienteEditData.tipoSoporte || null
+        })
+        .eq('id', id);
+      if (error) {
+        console.error('Error editando recibo de la bandeja:', error);
+        alert('❌ No se pudo guardar la edición: ' + error.message);
+        return;
+      }
+      await cargarSoportesPendientes();
+      setEditandoPendienteId(null);
+      setPendienteEditData(null);
+    } finally {
+      setGuardandoEdicionPendiente(false);
+    }
   };
 
   // Toma los recibos marcados en la bandeja y prellena el formulario de "Nueva Solicitud" de
@@ -2005,6 +2083,17 @@ const App = () => {
             fecha: newSolicitud.fecha
           });
           await subirSoporteEntidad(soportePDF, 'solicitud', inserted.id);
+
+          // Los soportes que no se pudieron unir al PDF (ej. una foto en un formato que pdf-lib
+          // no soporta) NUNCA se pierden: se suben sueltos, cada uno como su propia fila en
+          // public.soportes de esta misma solicitud, para que sigan visibles en "Ver Soportes"
+          // aunque no queden dentro del PDF consolidado.
+          if (soportePDF.omitidos && soportePDF.omitidos.length > 0) {
+            for (const soporteOmitido of soportePDF.omitidos) {
+              await subirSoporteEntidad(soporteOmitido, 'solicitud', inserted.id);
+            }
+            alert(`⚠️ ${soportePDF.omitidos.length} archivo(s) no se pudieron unir al PDF consolidado (formato no compatible, ej. HEIC) — se guardaron sueltos, cada uno por su cuenta: ${soportePDF.omitidos.map(s => s.nombre).join(', ')}`);
+          }
         } catch (mergeError) {
           console.error('Error uniendo soportes a PDF:', mergeError);
           alert('⚠️ La solicitud se guardó, pero hubo un error uniendo los soportes en un solo PDF.');
@@ -6105,7 +6194,31 @@ const App = () => {
                             </tr>
                           </thead>
                           <tbody>
-                            {soportesPendientes.map(item => (
+                            {soportesPendientes.map(item => {
+                              const enEdicion = editandoPendienteId === item.id;
+                              if (enEdicion) {
+                                return (
+                                  <tr key={item.id} style={{ borderBottom: '1px solid #E6E0D2', backgroundColor: '#FBF8EF' }}>
+                                    <td style={{ padding: '0.5rem', textAlign: 'center' }}></td>
+                                    <td style={{ padding: '0.35rem' }}><input type="date" value={pendienteEditData.fecha} onChange={(e) => setPendienteEditData({...pendienteEditData, fecha: e.target.value})} style={{ width: '100%', padding: '0.4rem', border: '1px solid #E6E0D2', borderRadius: '3px', boxSizing: 'border-box', fontSize: '0.8rem' }} /></td>
+                                    <td style={{ padding: '0.35rem' }}><input type="text" value={pendienteEditData.proveedor} onChange={(e) => setPendienteEditData({...pendienteEditData, proveedor: e.target.value})} style={{ width: '100%', padding: '0.4rem', border: '1px solid #E6E0D2', borderRadius: '3px', boxSizing: 'border-box', fontSize: '0.8rem' }} /></td>
+                                    <td style={{ padding: '0.35rem' }}>
+                                      <input type="text" placeholder="Concepto" value={pendienteEditData.descripcion} onChange={(e) => setPendienteEditData({...pendienteEditData, descripcion: e.target.value})} style={{ width: '100%', padding: '0.4rem', border: '1px solid #E6E0D2', borderRadius: '3px', boxSizing: 'border-box', fontSize: '0.8rem', marginBottom: '0.25rem' }} />
+                                      <select value={pendienteEditData.tipoSoporte} onChange={(e) => setPendienteEditData({...pendienteEditData, tipoSoporte: e.target.value})} style={{ width: '100%', padding: '0.4rem', border: '1px solid #E6E0D2', borderRadius: '3px', boxSizing: 'border-box', fontSize: '0.75rem' }}>
+                                        <option value="">Tipo de Soporte</option>
+                                        {tiposSoporte.map(t => <option key={t} value={t}>{t}</option>)}
+                                      </select>
+                                    </td>
+                                    <td style={{ padding: '0.35rem' }}><input type="number" value={pendienteEditData.valor} onChange={(e) => setPendienteEditData({...pendienteEditData, valor: e.target.value})} style={{ width: '100%', padding: '0.4rem', border: '1px solid #E6E0D2', borderRadius: '3px', boxSizing: 'border-box', fontSize: '0.8rem', textAlign: 'right' }} /></td>
+                                    <td style={{ padding: '0.5rem', color: '#6B6458', fontSize: '0.75rem' }}>{item.nombre}</td>
+                                    <td style={{ padding: '0.5rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                      <button onClick={() => handleGuardarEdicionPendiente(item.id)} disabled={guardandoEdicionPendiente} title="Guardar" style={{ background: 'none', border: 'none', cursor: guardandoEdicionPendiente ? 'not-allowed' : 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.4rem' }}>✅</button>
+                                      <button onClick={handleCancelarEdicionPendiente} disabled={guardandoEdicionPendiente} title="Cancelar" style={{ background: 'none', border: 'none', cursor: guardandoEdicionPendiente ? 'not-allowed' : 'pointer', color: '#8F8877', fontSize: '1rem' }}>✖️</button>
+                                    </td>
+                                  </tr>
+                                );
+                              }
+                              return (
                               <tr key={item.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                                 <td style={{ padding: '0.5rem', textAlign: 'center' }}><input type="checkbox" checked={seleccionPendientes.includes(item.id)} onChange={() => toggleSeleccionPendiente(item.id)} /></td>
                                 <td style={{ padding: '0.5rem', color: '#6B6458' }}>{item.fecha}</td>
@@ -6113,9 +6226,14 @@ const App = () => {
                                 <td style={{ padding: '0.5rem', color: '#6B6458' }}>{item.descripcion}</td>
                                 <td style={{ padding: '0.5rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(item.valor, user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)}</td>
                                 <td style={{ padding: '0.5rem', color: '#6B6458', fontSize: '0.75rem' }}>{item.nombre}</td>
-                                <td style={{ padding: '0.5rem', textAlign: 'center' }}><button onClick={() => handleEliminarSoportePendiente(item)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B' }}>🗑️</button></td>
+                                <td style={{ padding: '0.5rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                  <button onClick={() => handlePreviewSoporte(item)} disabled={cargandoPreviewSoporte} title="Ver archivo" style={{ background: 'none', border: 'none', cursor: cargandoPreviewSoporte ? 'default' : 'pointer', color: '#C4A747', fontSize: '1rem', marginRight: '0.4rem' }}>👁️</button>
+                                  <button onClick={() => handleIniciarEdicionPendiente(item)} title="Editar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.4rem' }}>✏️</button>
+                                  <button onClick={() => handleEliminarSoportePendiente(item)} title="Eliminar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
+                                </td>
                               </tr>
-                            ))}
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
