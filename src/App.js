@@ -397,6 +397,16 @@ const App = () => {
   const [colaboradoresPublico, setColaboradoresPublico] = useState([]);
   const [editingResponsableOrigen, setEditingResponsableOrigen] = useState('responsables'); // 'responsables' | 'admin' — de qué lista viene el registro que se está editando
   const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', valorAnticipoOriginal: '', anticipoIds: [], detalle: '', empresa: 'AM SPORTS GROUP SAS', documentos: [], moneda: 'COP', terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false });
+  // Edición de una Solicitud ya guardada — solo se permite mientras está en estado Pendiente
+  // (quien la creó, o Administrador/Coordinadora Administrativa). Reutiliza el mismo formulario
+  // "Nueva Solicitud" de arriba: al editar, se precarga newSolicitud con los datos existentes y
+  // este id queda distinto de null — handleAddSolicitud hace UPDATE en vez de INSERT. El Tipo NO
+  // se deja cambiar en edición (cambiaría toda la estructura de campos/documentos).
+  const [editingSolicitudId, setEditingSolicitudId] = useState(null);
+  // Soportes sueltos para "completar" una solicitud ya guardada (ej. la factura que faltó subir
+  // al crearla) — se suben directo como archivos independientes de esa solicitud, SIN tocar el
+  // PDF consolidado que ya se generó (evita el riesgo de tener que regenerarlo).
+  const [soportesAdicionalesEdicion, setSoportesAdicionalesEdicion] = useState([]);
   // Soportes de "Pago a Tercero" — archivos simples adjuntos (foto/PDF/etc.), cada uno una fila
   // propia en public.soportes (igual que los de Gasto/Ingreso), a diferencia de los de
   // Legalización/Reembolso que se unen en un solo PDF al guardar.
@@ -1914,9 +1924,98 @@ const App = () => {
     }
   };
 
-  // Guardar solicitud — inserta en public.solicitudes y luego, si hay soportes cargados,
-  // los une en un solo PDF consolidado (como antes) y sube ESE PDF único al bucket
+  // Puede editar una Solicitud mientras esté Pendiente: quien la creó, o Administrador/
+  // Coordinadora Administrativa (los mismos roles que ya gestionan todo el flujo). Una vez
+  // Aprobada/Pagada/Legalizada/Rechazada ya no se puede editar — solo mientras es corregible
+  // sin afectar nada que ya se haya movido en Finanzas.
+  const puedeEditarSolicitud = (s) => s.estado === 'Pendiente' && !isReadOnly && (s.responsableId === user.id || canApprove);
+
+  // Carga una Solicitud existente en el formulario "Nueva Solicitud" de arriba (mismo formulario,
+  // ahora en modo edición) y hace scroll hasta allá. El Tipo queda fijo — cambiarlo cambiaría toda
+  // la estructura de campos/documentos de la solicitud ya guardada.
+  const handleIniciarEdicionSolicitud = (s) => {
+    if (!puedeEditarSolicitud(s)) return;
+    setEditingSolicitudId(s.id);
+    setNewSolicitud({
+      fecha: s.fecha,
+      tipo: s.tipo,
+      valor: s.valor || '',
+      valorAnticipoOriginal: s.valorAnticipoOriginal || '',
+      anticipoIds: s.anticipoIds || [],
+      detalle: s.detalle || '',
+      empresa: s.empresa || 'AM SPORTS GROUP SAS',
+      documentos: s.documentos || [],
+      moneda: s.moneda || 'COP',
+      terceroId: s.terceroId || '',
+      terceroNombre: s.terceroInfo?.nombre || '',
+      terceroDni: s.terceroInfo?.dni || '',
+      terceroPaisOrigen: s.terceroInfo?.paisOrigen || '',
+      terceroBanco: s.terceroInfo?.banco || '',
+      terceroTipoCuenta: s.terceroInfo?.tipoCuenta || '',
+      terceroNumeroCuenta: s.terceroInfo?.numeroCuenta || '',
+      guardarTercero: false,
+      actualizarTercero: false
+    });
+    setSoportesAdicionalesEdicion([]);
+    setTimeout(() => {
+      document.getElementById('form-nueva-solicitud')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  };
+
+  const handleCancelarEdicionSolicitud = () => {
+    setEditingSolicitudId(null);
+    setSoportesAdicionalesEdicion([]);
+    setSoportesLegalizacionTemp([]);
+    setSoportesTerceroTemp([]);
+    setNewSolicitud({
+      fecha: new Date().toISOString().split('T')[0],
+      tipo: '',
+      valor: '',
+      valorAnticipoOriginal: '',
+      anticipoIds: [],
+      detalle: '',
+      empresa: 'AM SPORTS GROUP SAS',
+      documentos: [],
+      moneda: 'COP',
+      terceroId: '',
+      terceroNombre: '',
+      terceroDni: '',
+      terceroPaisOrigen: '',
+      terceroBanco: '',
+      terceroTipoCuenta: '',
+      terceroNumeroCuenta: '',
+      guardarTercero: true,
+      actualizarTercero: false
+    });
+  };
+
+  // Soportes sueltos para completar una solicitud ya guardada (ej. la factura que faltó al
+  // crearla) — se leen a memoria igual que el resto de uploads y se suben recién al Guardar,
+  // cada uno como su propia fila en public.soportes, sin tocar nada que ya estuviera subido.
+  const handleSeleccionarSoporteAdicionalEdicion = (e) => {
+    const files = Array.from(e.target.files);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const tipo = file.type || inferirMimePorExtension(file.name);
+        const nuevo = { id: Date.now() + Math.random(), nombre: file.name, tipo, tamaño: file.size, data: event.target.result };
+        setSoportesAdicionalesEdicion(prev => [...prev, nuevo]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const handleQuitarSoporteAdicionalEdicion = (id) => {
+    setSoportesAdicionalesEdicion(prev => prev.filter(s => s.id !== id));
+  };
+
+  // Guardar solicitud — en modo creación inserta en public.solicitudes y, si hay soportes
+  // cargados, los une en un solo PDF consolidado (como antes) y sube ESE PDF único al bucket
   // "soportes" con su fila en public.soportes (queda registrado en Supabase, no en localStorage).
+  // En modo edición (editingSolicitudId) actualiza esa misma fila en vez de crear una nueva, y
+  // solo sube soportes sueltos adicionales — no vuelve a generar el PDF consolidado ni la ficha
+  // de Pago a Tercero, para no duplicar lo que ya se subió al crearla.
   const handleAddSolicitud = async () => {
     if (!newSolicitud.tipo) {
       alert('Selecciona un tipo');
@@ -2041,40 +2140,68 @@ const App = () => {
         }
       }
 
-      const { data: inserted, error } = await supabase
-        .from('solicitudes')
-        .insert({
-          fecha: newSolicitud.fecha,
-          tipo: newSolicitud.tipo,
-          valor: (newSolicitud.tipo === 'Anticipo' || newSolicitud.tipo === 'Pago a Tercero') ? (parseFloat(newSolicitud.valor) || 0) : 0,
-          total_calculado: totalCalculado,
-          detalle: newSolicitud.detalle || null,
-          empresa_id: empresaId,
-          responsable_id: user.id,
-          documentos: newSolicitud.documentos,
-          // anticipo_id (singular, columna vieja) se sigue llenando con el primero elegido, solo
-          // por compatibilidad con cualquier reporte/consulta externa que todavía la use.
-          anticipo_id: anticiposVinculados.length > 0 ? anticiposVinculados[0].id : null,
-          anticipo_ids: anticiposVinculados.map(a => a.id),
-          valor_anticipo_original: newSolicitud.tipo === 'Legalización' ? (parseFloat(newSolicitud.valorAnticipoOriginal) || null) : null,
-          moneda_pago: newSolicitud.tipo === 'Pago a Tercero' ? newSolicitud.moneda : null,
-          tercero_info: terceroInfoFinal,
-          tercero_id: terceroIdFinal,
-          estado: 'Pendiente'
-        })
-        .select('id')
-        .single();
+      // Campos comunes a INSERT (solicitud nueva) y UPDATE (edición de una Pendiente) — lo único
+      // que NUNCA se toca en edición es responsable_id y estado (una edición no puede cambiar de
+      // dueño ni saltarse el flujo de aprobación).
+      const camposSolicitud = {
+        fecha: newSolicitud.fecha,
+        valor: (newSolicitud.tipo === 'Anticipo' || newSolicitud.tipo === 'Pago a Tercero') ? (parseFloat(newSolicitud.valor) || 0) : 0,
+        total_calculado: totalCalculado,
+        detalle: newSolicitud.detalle || null,
+        empresa_id: empresaId,
+        documentos: newSolicitud.documentos,
+        // anticipo_id (singular, columna vieja) se sigue llenando con el primero elegido, solo
+        // por compatibilidad con cualquier reporte/consulta externa que todavía la use.
+        anticipo_id: anticiposVinculados.length > 0 ? anticiposVinculados[0].id : null,
+        anticipo_ids: anticiposVinculados.map(a => a.id),
+        valor_anticipo_original: newSolicitud.tipo === 'Legalización' ? (parseFloat(newSolicitud.valorAnticipoOriginal) || null) : null,
+        moneda_pago: newSolicitud.tipo === 'Pago a Tercero' ? newSolicitud.moneda : null,
+        tercero_info: terceroInfoFinal,
+        tercero_id: terceroIdFinal
+      };
 
-      if (error) {
-        console.error('Error creando solicitud:', error);
-        alert('❌ No se pudo guardar la solicitud: ' + error.message);
-        return;
+      let solicitudId;
+      if (editingSolicitudId) {
+        const { error: updateError } = await supabase
+          .from('solicitudes')
+          .update(camposSolicitud)
+          .eq('id', editingSolicitudId);
+        if (updateError) {
+          console.error('Error editando solicitud:', updateError);
+          alert('❌ No se pudo guardar la edición: ' + updateError.message);
+          return;
+        }
+        solicitudId = editingSolicitudId;
+      } else {
+        const { data: inserted, error } = await supabase
+          .from('solicitudes')
+          .insert({ ...camposSolicitud, tipo: newSolicitud.tipo, responsable_id: user.id, estado: 'Pendiente' })
+          .select('id')
+          .single();
+        if (error) {
+          console.error('Error creando solicitud:', error);
+          alert('❌ No se pudo guardar la solicitud: ' + error.message);
+          return;
+        }
+        solicitudId = inserted.id;
       }
 
+      // Soportes sueltos agregados durante una EDICIÓN (ej. la factura que faltó subir al crear
+      // la solicitud) — cada uno queda como su propia fila en public.soportes, sin tocar el PDF
+      // consolidado ni ninguna ficha que ya se hubiera generado al crearla.
+      if (editingSolicitudId && soportesAdicionalesEdicion.length > 0) {
+        for (const soporte of soportesAdicionalesEdicion) {
+          await subirSoporteEntidad(soporte, 'solicitud', solicitudId);
+        }
+      }
+
+      // Lo que sigue (unir soportes de la Bandeja en un PDF, subir soportes de Pago a Tercero,
+      // generar la ficha automática, marcar recibos de la bandeja como usados) es exclusivo de
+      // CREAR una solicitud nueva — en edición no se repite para no duplicar lo ya generado.
       // Los soportes de Legalización/Reembolso se unen en un solo PDF (con portada de la
       // empresa) y ese PDF único se sube al bucket "soportes" (una sola fila en public.soportes
       // por solicitud).
-      if (soportesLegalizacionTemp.length > 0) {
+      if (!editingSolicitudId && soportesLegalizacionTemp.length > 0) {
         try {
           const soportePDF = await mergeSoportesToPDF(soportesLegalizacionTemp, {
             empresa: empresaNombre,
@@ -2082,7 +2209,7 @@ const App = () => {
             responsableNombre: user.nombre,
             fecha: newSolicitud.fecha
           });
-          await subirSoporteEntidad(soportePDF, 'solicitud', inserted.id);
+          await subirSoporteEntidad(soportePDF, 'solicitud', solicitudId);
 
           // Los soportes que no se pudieron unir al PDF (ej. una foto en un formato que pdf-lib
           // no soporta) NUNCA se pierden: se suben sueltos, cada uno como su propia fila en
@@ -2090,7 +2217,7 @@ const App = () => {
           // aunque no queden dentro del PDF consolidado.
           if (soportePDF.omitidos && soportePDF.omitidos.length > 0) {
             for (const soporteOmitido of soportePDF.omitidos) {
-              await subirSoporteEntidad(soporteOmitido, 'solicitud', inserted.id);
+              await subirSoporteEntidad(soporteOmitido, 'solicitud', solicitudId);
             }
             alert(`⚠️ ${soportePDF.omitidos.length} archivo(s) no se pudieron unir al PDF consolidado (formato no compatible, ej. HEIC) — se guardaron sueltos, cada uno por su cuenta: ${soportePDF.omitidos.map(s => s.nombre).join(', ')}`);
           }
@@ -2102,9 +2229,9 @@ const App = () => {
 
       // Soportes de Pago a Tercero: cada archivo queda como su propia fila en public.soportes
       // (sin unirse en un PDF), igual que en Gasto/Ingreso.
-      if (soportesTerceroTemp.length > 0) {
+      if (!editingSolicitudId && soportesTerceroTemp.length > 0) {
         for (const soporte of soportesTerceroTemp) {
-          await subirSoporteEntidad(soporte, 'solicitud', inserted.id);
+          await subirSoporteEntidad(soporte, 'solicitud', solicitudId);
         }
       }
 
@@ -2112,7 +2239,7 @@ const App = () => {
       // tercero + cuenta bancaria) y se sube a "Ver Soportes" junto a los adjuntos del
       // colaborador — así la Coordinadora Administrativa tiene TODO lo que necesita para
       // ejecutar el pago en un solo lugar, sin depender de que alguien lo pida aparte.
-      if (newSolicitud.tipo === 'Pago a Tercero') {
+      if (!editingSolicitudId && newSolicitud.tipo === 'Pago a Tercero') {
         try {
           const pdfDoc = construirPDFPagoTercero({
             empresa: empresaNombre,
@@ -2129,7 +2256,7 @@ const App = () => {
             nombre: `Pago_a_Tercero_${(newSolicitud.terceroNombre || 'tercero').replace(/\s+/g, '_')}.pdf`,
             tipo: 'application/pdf',
             data: pdfDoc.output('datauristring')
-          }, 'solicitud', inserted.id);
+          }, 'solicitud', solicitudId);
         } catch (pdfError) {
           console.error('Error generando el PDF de Pago a Tercero:', pdfError);
           alert('⚠️ La solicitud se guardó, pero hubo un error generando el PDF automático.');
@@ -2138,10 +2265,10 @@ const App = () => {
 
       // Los recibos de la bandeja que se usaron para prellenar este formulario quedan marcados
       // "usado" y ligados a esta solicitud — recién ahora que se guardó con éxito.
-      if (pendientesEnUso.length > 0) {
+      if (!editingSolicitudId && pendientesEnUso.length > 0) {
         const { error: errorMarcar } = await supabase
           .from('soportes_pendientes')
-          .update({ usado: true, solicitud_id: inserted.id })
+          .update({ usado: true, solicitud_id: solicitudId })
           .in('id', pendientesEnUso);
         if (errorMarcar) console.error('Error marcando recibos de la bandeja como usados:', errorMarcar);
         setPendientesEnUso([]);
@@ -2153,29 +2280,9 @@ const App = () => {
         await cargarTerceros();
       }
 
-      setNewSolicitud({
-        fecha: new Date().toISOString().split('T')[0],
-        tipo: '',
-        valor: '',
-        valorAnticipoOriginal: '',
-        anticipoIds: [],
-        detalle: '',
-        empresa: 'AM SPORTS GROUP SAS',
-        documentos: [],
-        moneda: 'COP',
-        terceroId: '',
-        terceroNombre: '',
-        terceroDni: '',
-        terceroPaisOrigen: '',
-        terceroBanco: '',
-        terceroTipoCuenta: '',
-        terceroNumeroCuenta: '',
-        guardarTercero: true,
-        actualizarTercero: false
-      });
-      setSoportesLegalizacionTemp([]);
-      setSoportesTerceroTemp([]);
-      alert('✅ Solicitud creada');
+      const eraEdicion = !!editingSolicitudId;
+      handleCancelarEdicionSolicitud();
+      alert(eraEdicion ? '✅ Solicitud actualizada' : '✅ Solicitud creada');
     } finally {
       setGuardandoSolicitud(false);
     }
@@ -6246,8 +6353,8 @@ const App = () => {
                 </div>
               )}
 
-              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nueva Solicitud</h2>
+              <div id="form-nueva-solicitud" style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: editingSolicitudId ? '2px solid #6C63D1' : '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
+                <h2 style={{ color: editingSolicitudId ? '#6C63D1' : '#C4A747', margin: '0 0 1.5rem 0' }}>{editingSolicitudId ? '✏️ Editando Solicitud' : '➕ Nueva Solicitud'}</h2>
 
                 {isReadOnly && (
                   <div style={{ backgroundColor: '#FFF4F4', border: '1px solid #CC4B4B', borderRadius: '4px', padding: '1rem', marginBottom: '1rem', color: '#B0102B' }}>
@@ -6255,10 +6362,17 @@ const App = () => {
                     <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem' }}>Los Contadores no pueden crear ni editar solicitudes. Solo pueden ver y descargar.</p>
                   </div>
                 )}
-                
+
+                {editingSolicitudId && (
+                  <div style={{ backgroundColor: '#F1EFFB', border: '1px solid #6C63D1', borderRadius: '4px', padding: '1rem', marginBottom: '1rem', color: '#4A4499' }}>
+                    <p style={{ margin: 0, fontWeight: 'bold' }}>✏️ Editando una Solicitud Pendiente</p>
+                    <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem' }}>Corrige lo que haga falta y agrega algún soporte faltante más abajo. El Tipo no se puede cambiar. Cuando termines, dale "Guardar Cambios" — o "Cancelar edición" para dejarla como estaba.</p>
+                  </div>
+                )}
+
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem', opacity: isReadOnly ? 0.5 : 1, pointerEvents: isReadOnly ? 'none' : 'auto' }}>
                   <input type="date" value={newSolicitud.fecha} onChange={(e) => setNewSolicitud({...newSolicitud, fecha: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                  <select value={newSolicitud.tipo} onChange={(e) => setNewSolicitud({...newSolicitud, tipo: e.target.value, documentos: []})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }}>
+                  <select value={newSolicitud.tipo} disabled={!!editingSolicitudId} onChange={(e) => setNewSolicitud({...newSolicitud, tipo: e.target.value, documentos: []})} style={{ padding: '0.75rem', backgroundColor: editingSolicitudId ? '#EDEAE0' : '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }}>
                     <option value="">Seleccionar Tipo</option>
                     <option value="Anticipo">Anticipo</option>
                     <option value="Legalización">Legalización</option>
@@ -6295,10 +6409,13 @@ const App = () => {
                   if (misAnticipos.length === 0) return null;
                   // Un Anticipo ya legalizado (cualquier Legalización propia, en cualquier estado,
                   // que ya lo tenga en su anticipo_ids) se muestra tachado y deshabilitado, para no
-                  // volver a seleccionarlo por error y duplicar la legalización.
+                  // volver a seleccionarlo por error y duplicar la legalización. Si se está
+                  // EDITANDO una Legalización, esa misma solicitud se excluye de la comparación —
+                  // si no, sus propios anticipos vinculados aparecerían tachados e imposibles de
+                  // desmarcar.
                   const idsYaLegalizados = new Set(
                     solicitudes
-                      .filter(x => x.tipo === 'Legalización' && x.responsableId === user.id)
+                      .filter(x => x.tipo === 'Legalización' && x.responsableId === user.id && x.id !== editingSolicitudId)
                       .flatMap(x => x.anticipoIds || [])
                   );
                   return (
@@ -6482,9 +6599,34 @@ const App = () => {
                   </>
                 )}
 
-                <button onClick={handleAddSolicitud} disabled={isReadOnly || guardandoSolicitud} style={{ width: '100%', padding: '0.75rem', backgroundColor: isReadOnly ? '#D8D2C2' : '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: isReadOnly || guardandoSolicitud ? 'not-allowed' : 'pointer', opacity: isReadOnly || guardandoSolicitud ? 0.5 : 1 }}>
-                  {guardandoSolicitud ? '⏳ Guardando solicitud...' : 'Guardar Solicitud'}
-                </button>
+                {editingSolicitudId && (
+                  <div style={{ marginBottom: '1rem', backgroundColor: '#F8F6F1', padding: '1rem', borderRadius: '4px', border: '1px solid #E6E0D2' }}>
+                    <h3 style={{ color: '#6C63D1', margin: '0 0 0.5rem 0', fontSize: '0.95rem' }}>📎 Agregar soporte faltante</h3>
+                    <p style={{ color: '#6B6458', fontSize: '0.8rem', margin: '0 0 0.75rem 0' }}>Sube aquí algún soporte que haya faltado al crear la solicitud (ej. la factura o el comprobante de pago). Se agrega suelto, sin tocar los soportes que ya estaban subidos.</p>
+                    <input type="file" accept="application/pdf,image/*" multiple onChange={handleSeleccionarSoporteAdicionalEdicion} style={{ width: '100%', padding: '0.6rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', boxSizing: 'border-box', cursor: 'pointer' }} />
+                    {soportesAdicionalesEdicion.length > 0 && (
+                      <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        {soportesAdicionalesEdicion.map(soporte => (
+                          <div key={soporte.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF', padding: '0.5rem 0.75rem', borderRadius: '3px', border: '1px solid #E6E0D2' }}>
+                            <span style={{ color: '#2F9E52', fontSize: '0.8rem' }}>📎 {soporte.nombre}</span>
+                            <button onClick={() => handleQuitarSoporteAdicionalEdicion(soporte.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '0.9rem' }}>🗑️</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button onClick={handleAddSolicitud} disabled={isReadOnly || guardandoSolicitud} style={{ flex: 1, padding: '0.75rem', backgroundColor: isReadOnly ? '#D8D2C2' : (editingSolicitudId ? '#6C63D1' : '#C4A747'), color: editingSolicitudId ? '#FFFFFF' : '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: isReadOnly || guardandoSolicitud ? 'not-allowed' : 'pointer', opacity: isReadOnly || guardandoSolicitud ? 0.5 : 1 }}>
+                    {guardandoSolicitud ? '⏳ Guardando...' : (editingSolicitudId ? '✅ Guardar Cambios' : 'Guardar Solicitud')}
+                  </button>
+                  {editingSolicitudId && (
+                    <button onClick={handleCancelarEdicionSolicitud} disabled={guardandoSolicitud} style={{ padding: '0.75rem 1.25rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoSolicitud ? 'not-allowed' : 'pointer' }}>
+                      Cancelar edición
+                    </button>
+                  )}
+                </div>
               </div>
               </div>
 
@@ -6663,6 +6805,11 @@ const App = () => {
                               </>
                             );
                           })()}
+                          {/* Editar: solo mientras está Pendiente — quien la creó, o Administrador/
+                              Coordinadora Administrativa. Reabre el formulario de arriba precargado. */}
+                          {puedeEditarSolicitud(s) && (
+                            <button onClick={() => handleIniciarEdicionSolicitud(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.5rem' }} title="Editar">✏️</button>
+                          )}
                           {(user.rol === 'Responsable' || user.rol === 'Gerente' || user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
                             <button onClick={() => handleDeleteSolicitud(s.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }} title="Eliminar">✕</button>
                           )}
