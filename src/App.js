@@ -396,7 +396,7 @@ const App = () => {
   // exponer cédula, banco ni documentos de nadie (eso solo lo ve Admin/Coordinadora o el dueño).
   const [colaboradoresPublico, setColaboradoresPublico] = useState([]);
   const [editingResponsableOrigen, setEditingResponsableOrigen] = useState('responsables'); // 'responsables' | 'admin' — de qué lista viene el registro que se está editando
-  const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', valorAnticipoOriginal: '', anticipoId: '', detalle: '', empresa: 'AM SPORTS GROUP SAS', documentos: [], moneda: 'COP', terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false });
+  const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', valorAnticipoOriginal: '', anticipoIds: [], detalle: '', empresa: 'AM SPORTS GROUP SAS', documentos: [], moneda: 'COP', terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false });
   // Soportes de "Pago a Tercero" — archivos simples adjuntos (foto/PDF/etc.), cada uno una fila
   // propia en public.soportes (igual que los de Gasto/Ingreso), a diferencia de los de
   // Legalización/Reembolso que se unen en un solo PDF al guardar.
@@ -1006,7 +1006,12 @@ const App = () => {
     valor: row.valor,
     totalCalculado: row.total_calculado,
     valorAnticipoOriginal: row.valor_anticipo_original || '',
-    anticipoId: row.anticipo_id || '',
+    // "anticipo_ids" (lista) es la fuente de verdad desde que Legalización admite varios
+    // Anticipos a la vez; "anticipo_id" (columna vieja, singular) se sigue leyendo como
+    // respaldo por si una fila quedó sin migrar. anticipoId (singular) se mantiene también
+    // por compatibilidad con reportes/lógica que solo necesitan "el primero".
+    anticipoIds: (row.anticipo_ids && row.anticipo_ids.length > 0) ? row.anticipo_ids : (row.anticipo_id ? [row.anticipo_id] : []),
+    anticipoId: row.anticipo_id || (row.anticipo_ids && row.anticipo_ids[0]) || '',
     revisadoPorId: row.revisado_por_id || '',
     revisadoAt: row.revisado_at || '',
     aprobadoPorId: row.aprobado_por_id || '',
@@ -1048,7 +1053,7 @@ const App = () => {
       // aprobado_por_id (Sección 19), hay 3 FKs de solicitudes hacia usuarios. Sin indicar
       // por cuál columna se hace el embed, PostgREST no sabe cuál usar y el select entero
       // falla con "more than one relationship was found" (deja el historial vacío).
-      .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
+      .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -1886,12 +1891,13 @@ const App = () => {
         empresaId = empresaRow?.id || null;
       }
 
-      // Legalización ligada de verdad a la Solicitud de Anticipo que le dio origen (si se eligió
-      // una): valor_anticipo_original queda como respaldo/compatibilidad, pero la fecha y el
-      // valor "oficiales" del anticipo se resuelven en pantalla a partir de anticipo_id.
-      const anticipoVinculado = newSolicitud.tipo === 'Legalización' && newSolicitud.anticipoId
-        ? solicitudes.find(a => a.id === newSolicitud.anticipoId)
-        : null;
+      // Legalización ligada de verdad a las Solicitudes de Anticipo que le dieron origen (si se
+      // eligió al menos una — ahora se pueden elegir varias): valor_anticipo_original queda
+      // como la SUMA de todos los anticipos elegidos (respaldo/compatibilidad con reportes que
+      // ya lo leían así), y anticipo_ids es la lista real para saber cuáles quedaron vinculados.
+      const anticiposVinculados = newSolicitud.tipo === 'Legalización' && newSolicitud.anticipoIds.length > 0
+        ? newSolicitud.anticipoIds.map(id => solicitudes.find(a => a.id === id)).filter(Boolean)
+        : [];
 
       // Pago a Tercero: la moneda es la que se elige en el formulario (independiente de la
       // empresa que paga — puede ser una empresa en COP pagando a alguien en USD, o al revés),
@@ -1968,7 +1974,10 @@ const App = () => {
           empresa_id: empresaId,
           responsable_id: user.id,
           documentos: newSolicitud.documentos,
-          anticipo_id: anticipoVinculado ? anticipoVinculado.id : null,
+          // anticipo_id (singular, columna vieja) se sigue llenando con el primero elegido, solo
+          // por compatibilidad con cualquier reporte/consulta externa que todavía la use.
+          anticipo_id: anticiposVinculados.length > 0 ? anticiposVinculados[0].id : null,
+          anticipo_ids: anticiposVinculados.map(a => a.id),
           valor_anticipo_original: newSolicitud.tipo === 'Legalización' ? (parseFloat(newSolicitud.valorAnticipoOriginal) || null) : null,
           moneda_pago: newSolicitud.tipo === 'Pago a Tercero' ? newSolicitud.moneda : null,
           tercero_info: terceroInfoFinal,
@@ -2060,7 +2069,7 @@ const App = () => {
         tipo: '',
         valor: '',
         valorAnticipoOriginal: '',
-        anticipoId: '',
+        anticipoIds: [],
         detalle: '',
         empresa: 'AM SPORTS GROUP SAS',
         documentos: [],
@@ -2581,9 +2590,13 @@ const App = () => {
   const handleGenerarExcel = (s) => {
     const moneda = getMoneda(s.empresa);
     const responsable = usuariosDB.find(u => u.id === s.responsableId);
-    const anticipoVinculado = s.anticipoId ? solicitudes.find(a => a.id === s.anticipoId) : null;
-    const valorAnticipo = anticipoVinculado ? (parseFloat(anticipoVinculado.valor) || 0) : (parseFloat(s.valorAnticipoOriginal) || 0);
-    const fechaAnticipo = anticipoVinculado ? anticipoVinculado.fecha : '';
+    // Puede haber varios Anticipos vinculados a una misma Legalización — se suman los valores y
+    // se listan todas las fechas separadas por coma.
+    const anticiposVinculados = (s.anticipoIds || []).map(id => solicitudes.find(a => a.id === id)).filter(Boolean);
+    const valorAnticipo = anticiposVinculados.length > 0
+      ? anticiposVinculados.reduce((sum, a) => sum + (parseFloat(a.valor) || 0), 0)
+      : (parseFloat(s.valorAnticipoOriginal) || 0);
+    const fechaAnticipo = anticiposVinculados.length > 0 ? anticiposVinculados.map(a => a.fecha).join(', ') : '';
     const revisadoPor = s.revisadoPorId ? (usuariosDB.find(u => u.id === s.revisadoPorId)?.nombre || '') : '';
     const aprobadoPor = s.aprobadoPorId ? (usuariosDB.find(u => u.id === s.aprobadoPorId)?.nombre || '') : '';
 
@@ -2607,7 +2620,7 @@ const App = () => {
     rows.push([]);
 
     if (esLegalizacion) {
-      if (fechaAnticipo) rows.push([`Fecha de la solicitud de anticipo: ${fechaAnticipo}`]);
+      if (fechaAnticipo) rows.push([`${anticiposVinculados.length > 1 ? 'Fechas de las solicitudes de anticipo' : 'Fecha de la solicitud de anticipo'}: ${fechaAnticipo}`]);
       rows.push([]);
       const totalGastos = s.totalCalculado || 0;
       const diferencia = totalGastos - valorAnticipo;
@@ -6143,7 +6156,7 @@ const App = () => {
                     <input type="number" placeholder={`Valor Solicitado (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
                   )}
                   {newSolicitud.tipo === 'Legalización' && (
-                    <input type="number" placeholder={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} disabled={!!newSolicitud.anticipoId} value={newSolicitud.valorAnticipoOriginal} onChange={(e) => setNewSolicitud({...newSolicitud, valorAnticipoOriginal: e.target.value})} style={{ padding: '0.75rem', backgroundColor: newSolicitud.anticipoId ? '#EDEAE0' : '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
+                    <input type="number" placeholder={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} disabled={newSolicitud.anticipoIds.length > 0} value={newSolicitud.valorAnticipoOriginal} onChange={(e) => setNewSolicitud({...newSolicitud, valorAnticipoOriginal: e.target.value})} style={{ padding: '0.75rem', backgroundColor: newSolicitud.anticipoIds.length > 0 ? '#EDEAE0' : '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
                   )}
                   {/* Pago a Tercero: la moneda del pago se elige aparte — no depende de la empresa
                       que paga, a diferencia de los demás tipos (puede ser una empresa en COP
@@ -6162,17 +6175,47 @@ const App = () => {
                 {newSolicitud.tipo === 'Legalización' && (() => {
                   const misAnticipos = solicitudes.filter(a => a.tipo === 'Anticipo' && a.responsableId === user.id);
                   if (misAnticipos.length === 0) return null;
+                  // Un Anticipo ya legalizado (cualquier Legalización propia, en cualquier estado,
+                  // que ya lo tenga en su anticipo_ids) se muestra tachado y deshabilitado, para no
+                  // volver a seleccionarlo por error y duplicar la legalización.
+                  const idsYaLegalizados = new Set(
+                    solicitudes
+                      .filter(x => x.tipo === 'Legalización' && x.responsableId === user.id)
+                      .flatMap(x => x.anticipoIds || [])
+                  );
                   return (
                     <div style={{ marginBottom: '1rem' }}>
-                      <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Vincular al Anticipo que se está legalizando (opcional, recomendado)</label>
-                      <select value={newSolicitud.anticipoId} onChange={(e) => {
-                        const id = e.target.value;
-                        const anticipo = misAnticipos.find(a => a.id === id);
-                        setNewSolicitud({...newSolicitud, anticipoId: id, valorAnticipoOriginal: anticipo ? anticipo.valor : ''});
-                      }} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#221E15', boxSizing: 'border-box', marginTop: '0.5rem' }}>
-                        <option value="">Sin vincular (diligenciar el valor manualmente)</option>
-                        {misAnticipos.map(a => <option key={a.id} value={a.id}>{a.fecha} — {formatMoney(a.valor, a.empresa)}</option>)}
-                      </select>
+                      <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Vincular a los Anticipos que se están legalizando (opcional, recomendado — puedes elegir varios)</label>
+                      <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: '220px', overflowY: 'auto', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '0.6rem', backgroundColor: '#F8F6F1' }}>
+                        {misAnticipos.map(a => {
+                          const yaLegalizado = idsYaLegalizados.has(a.id);
+                          const seleccionado = newSolicitud.anticipoIds.includes(a.id);
+                          return (
+                            <label key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: yaLegalizado ? '#AFA897' : '#221E15', textDecoration: yaLegalizado ? 'line-through' : 'none', cursor: yaLegalizado ? 'not-allowed' : 'pointer' }}>
+                              <input
+                                type="checkbox"
+                                disabled={yaLegalizado}
+                                checked={seleccionado}
+                                onChange={(e) => {
+                                  const marcado = e.target.checked;
+                                  const nuevosIds = marcado
+                                    ? [...newSolicitud.anticipoIds, a.id]
+                                    : newSolicitud.anticipoIds.filter(id => id !== a.id);
+                                  const nuevosAnticipos = misAnticipos.filter(x => nuevosIds.includes(x.id));
+                                  const sumaValor = nuevosAnticipos.reduce((sum, x) => sum + (parseFloat(x.valor) || 0), 0);
+                                  setNewSolicitud({...newSolicitud, anticipoIds: nuevosIds, valorAnticipoOriginal: nuevosIds.length > 0 ? sumaValor : ''});
+                                }}
+                              />
+                              <span>{a.fecha} — {formatMoney(a.valor, a.empresa)}{yaLegalizado ? '  (ya legalizado)' : ''}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {newSolicitud.anticipoIds.length > 1 && (
+                        <div style={{ fontSize: '0.75rem', color: '#6C63D1', marginTop: '0.35rem' }}>
+                          {newSolicitud.anticipoIds.length} anticipos seleccionados — suma: {formatMoney(parseFloat(newSolicitud.valorAnticipoOriginal) || 0, newSolicitud.empresa)}
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
@@ -6402,7 +6445,7 @@ const App = () => {
                       // legalizado" en el Anticipo si su Legalización quedó oculta por el filtro.
                       const esLegalizacionConAnticipo = s.tipo === 'Legalización' && s.valorAnticipoOriginal;
                       const diferenciaReembolso = esLegalizacionConAnticipo ? (s.totalCalculado || 0) - parseFloat(s.valorAnticipoOriginal) : null;
-                      const legalizacionVinculada = s.tipo === 'Anticipo' ? solicitudesUsuario.find(x => x.tipo === 'Legalización' && x.anticipoId === s.id) : null;
+                      const legalizacionVinculada = s.tipo === 'Anticipo' ? solicitudesUsuario.find(x => x.tipo === 'Legalización' && (x.anticipoIds || []).includes(s.id)) : null;
                       return (
                       <tr key={s.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.fecha}</td>
