@@ -2053,7 +2053,11 @@ const App = () => {
     }
 
     const totalCalculado = newSolicitud.documentos.reduce((sum, doc) => sum + (parseFloat(doc.valor) || 0), 0);
-    const empresaNombre = (user.rol === 'Responsable' || user.rol === 'Gerente') ? user.empresa : newSolicitud.empresa;
+    // Pago a Tercero es la excepción: ahí SÍ se respeta la Empresa elegida en el formulario aunque
+    // quien crea sea Responsable/Gerente (puede pagarse desde una empresa distinta a la suya, ej.
+    // ARKO en USD) — para los demás tipos, la Empresa de un Responsable/Gerente sigue siendo
+    // siempre la propia, sin excepción.
+    const empresaNombre = (newSolicitud.tipo !== 'Pago a Tercero' && (user.rol === 'Responsable' || user.rol === 'Gerente')) ? user.empresa : newSolicitud.empresa;
 
     setGuardandoSolicitud(true);
     try {
@@ -6372,14 +6376,33 @@ const App = () => {
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem', opacity: isReadOnly ? 0.5 : 1, pointerEvents: isReadOnly ? 'none' : 'auto' }}>
                   <input type="date" value={newSolicitud.fecha} onChange={(e) => setNewSolicitud({...newSolicitud, fecha: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                  <select value={newSolicitud.tipo} disabled={!!editingSolicitudId} onChange={(e) => setNewSolicitud({...newSolicitud, tipo: e.target.value, documentos: []})} style={{ padding: '0.75rem', backgroundColor: editingSolicitudId ? '#EDEAE0' : '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }}>
+                  <select value={newSolicitud.tipo} disabled={!!editingSolicitudId} onChange={(e) => {
+                    const nuevoTipo = e.target.value;
+                    setNewSolicitud({
+                      ...newSolicitud,
+                      tipo: nuevoTipo,
+                      documentos: [],
+                      // Pago a Tercero es el único tipo donde la Empresa que paga puede NO ser la
+                      // propia del Responsable/Gerente (ej. un pago en USD que sale de ARKO en vez
+                      // de su empresa de siempre) — se precarga con la suya como punto de partida,
+                      // pero el selector de Empresa (abajo) queda editable para ese tipo.
+                      empresa: (nuevoTipo === 'Pago a Tercero' && (user.rol === 'Responsable' || user.rol === 'Gerente')) ? user.empresa : newSolicitud.empresa
+                    });
+                  }} style={{ padding: '0.75rem', backgroundColor: editingSolicitudId ? '#EDEAE0' : '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }}>
                     <option value="">Seleccionar Tipo</option>
                     <option value="Anticipo">Anticipo</option>
                     <option value="Legalización">Legalización</option>
                     <option value="Reembolso">Reembolso</option>
                     <option value="Pago a Tercero">Pago a Tercero</option>
                   </select>
-                  {user.rol !== 'Responsable' && user.rol !== 'Gerente' && (
+                  {/* Anticipo/Legalización/Reembolso: para Responsable/Gerente la Empresa siempre es
+                      la suya (ese gasto sale de su propio presupuesto), por eso el selector queda
+                      oculto para esos tipos. Pago a Tercero es la excepción: el pago puede necesitar
+                      salir de OTRA empresa de la holding (ej. ARKO para pagar en USD) — sin esto,
+                      quedaba fijo en su empresa de siempre y, al momento de pagar, el modal de
+                      Confirmar Pago solo ofrecía las cuentas de esa empresa, sin forma de elegir la
+                      cuenta correcta. */}
+                  {(user.rol !== 'Responsable' && user.rol !== 'Gerente' || newSolicitud.tipo === 'Pago a Tercero') && (
                     <select value={newSolicitud.empresa} onChange={(e) => setNewSolicitud({...newSolicitud, empresa: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }}>
                       {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
                     </select>
