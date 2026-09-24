@@ -6402,7 +6402,7 @@ const App = () => {
                       quedaba fijo en su empresa de siempre y, al momento de pagar, el modal de
                       Confirmar Pago solo ofrecía las cuentas de esa empresa, sin forma de elegir la
                       cuenta correcta. */}
-                  {(user.rol !== 'Responsable' && user.rol !== 'Gerente' || newSolicitud.tipo === 'Pago a Tercero') && (
+                  {((user.rol !== 'Responsable' && user.rol !== 'Gerente') || newSolicitud.tipo === 'Pago a Tercero') && (
                     <select value={newSolicitud.empresa} onChange={(e) => setNewSolicitud({...newSolicitud, empresa: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }}>
                       {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
                     </select>
