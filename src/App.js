@@ -5938,35 +5938,34 @@ const App = () => {
           <div>
             <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📊 Dashboard</h2>
             
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.5rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Total Solicitudes</p>
-                <h3 style={{ color: '#C4A747', margin: 0, fontSize: '2.5rem' }}>{totalSolicitudes}</h3>
-              </div>
-              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.5rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Monto Total (COP)</p>
-                <h3 style={{ color: '#2F9E52', margin: 0, fontSize: '2.5rem' }}>{formatMoneyByMoneda(totalMontoCOP, 'COP')}</h3>
-              </div>
-              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.5rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Monto Total ARKO (USD)</p>
-                <h3 style={{ color: '#2F9E52', margin: 0, fontSize: '2.5rem' }}>{formatMoneyByMoneda(totalMontoUSD, 'USD')}</h3>
-              </div>
-              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.5rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Pendiente</p>
-                <h3 style={{ color: '#CC4B4B', margin: 0, fontSize: '2.5rem' }}>{statsEstado.Pendiente}</h3>
-              </div>
-              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.5rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Aprobado</p>
-                <h3 style={{ color: '#D6A419', margin: 0, fontSize: '2.5rem' }}>{statsEstado.Aprobado}</h3>
-              </div>
-              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.5rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Pagado</p>
-                <h3 style={{ color: '#2F9E52', margin: 0, fontSize: '2.5rem' }}>{statsEstado.Pagado}</h3>
-              </div>
-              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.5rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>Legalizado</p>
-                <h3 style={{ color: '#6C63D1', margin: 0, fontSize: '2.5rem' }}>{statsEstado.Legalizado}</h3>
-              </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+              {[
+                { icon: '📄', label: 'Total Solicitudes', value: totalSolicitudes, color: '#C4A747' },
+                { icon: '💵', label: 'Monto Total (COP)', value: formatMoneyByMoneda(totalMontoCOP, 'COP'), color: '#2F9E52', compact: true },
+                { icon: '💵', label: 'Monto Total ARKO (USD)', value: formatMoneyByMoneda(totalMontoUSD, 'USD'), color: '#2F9E52', compact: true },
+                { icon: '⏳', label: 'Pendiente', value: statsEstado.Pendiente, color: '#CC4B4B' },
+                { icon: '🔎', label: 'Aprobado', value: statsEstado.Aprobado, color: '#D6A419' },
+                { icon: '✅', label: 'Pagado', value: statsEstado.Pagado, color: '#2F9E52' },
+                { icon: '📎', label: 'Legalizado', value: statsEstado.Legalizado, color: '#6C63D1' },
+              ].map((card, idx) => (
+                <div key={idx} style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '12px', padding: '1.25rem 1.5rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.6rem', overflow: 'hidden' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
+                    <span style={{ fontSize: '0.95rem', lineHeight: 1, flexShrink: 0 }}>{card.icon}</span>
+                    <p style={{ color: '#6B6458', margin: 0, fontSize: '0.78rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.label}</p>
+                  </div>
+                  <h3 style={{
+                    color: card.color,
+                    margin: 0,
+                    fontSize: card.compact ? 'clamp(1.05rem, 2vw, 1.6rem)' : 'clamp(1.5rem, 2.5vw, 2.25rem)',
+                    fontWeight: 800,
+                    lineHeight: 1.15,
+                    wordBreak: 'break-word',
+                    overflowWrap: 'anywhere',
+                    fontVariantNumeric: 'tabular-nums',
+                    minWidth: 0
+                  }}>{card.value}</h3>
+                </div>
+              ))}
             </div>
 
             {statsPorEmpresa.length > 0 && (
