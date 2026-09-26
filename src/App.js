@@ -494,6 +494,9 @@ const App = () => {
   const [soportesPendientes, setSoportesPendientes] = useState([]);
   const [cargandoSoportesPendientes, setCargandoSoportesPendientes] = useState(true);
   const [seleccionPendientes, setSeleccionPendientes] = useState([]);
+  // Toggle "Ver todos" / "Ver solo el último" en Mi Bandeja de Soportes — para no tener que
+  // desplazarse tanto cuando hay muchos recibos acumulados. false = ver todos (como siempre).
+  const [bandejaSoloUltimo, setBandejaSoloUltimo] = useState(false);
   const nuevoSoportePendienteVacio = { fecha: new Date().toISOString().split('T')[0], proveedor: '', nit: '', descripcion: '', valor: '', tipoSoporte: '', archivo: null };
   const [nuevoSoportePendiente, setNuevoSoportePendiente] = useState(nuevoSoportePendienteVacio);
   const [subiendoSoportePendiente, setSubiendoSoportePendiente] = useState(false);
@@ -6483,6 +6486,22 @@ const App = () => {
                     <p style={{ color: '#AFA897', fontSize: '0.85rem' }}>Tu bandeja está vacía.</p>
                   ) : (
                     <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                        <span style={{ color: '#8F8877', fontSize: '0.75rem' }}>
+                          {bandejaSoloUltimo ? `Mostrando el último de ${soportesPendientes.length}` : `${soportesPendientes.length} en tu bandeja`}
+                        </span>
+                        {/* Para no tener que desplazarse tanto cuando hay muchos recibos acumulados
+                            — "el último" es el primero de la lista (ya viene ordenada por fecha
+                            descendente desde cargarSoportesPendientes). */}
+                        <div style={{ display: 'flex', gap: '0.4rem' }}>
+                          <button onClick={() => setBandejaSoloUltimo(false)} style={{ padding: '0.4rem 0.85rem', backgroundColor: !bandejaSoloUltimo ? '#C4A747' : '#F8F6F1', color: !bandejaSoloUltimo ? '#221E15' : '#6B6458', border: '1px solid #E6E0D2', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.75rem' }}>
+                            📋 Ver todos
+                          </button>
+                          <button onClick={() => setBandejaSoloUltimo(true)} style={{ padding: '0.4rem 0.85rem', backgroundColor: bandejaSoloUltimo ? '#C4A747' : '#F8F6F1', color: bandejaSoloUltimo ? '#221E15' : '#6B6458', border: '1px solid #E6E0D2', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.75rem' }}>
+                            🔽 Ver solo el último
+                          </button>
+                        </div>
+                      </div>
                       <div style={{ overflowX: 'auto', marginBottom: '1rem' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                           <thead>
@@ -6497,7 +6516,7 @@ const App = () => {
                             </tr>
                           </thead>
                           <tbody>
-                            {soportesPendientes.map(item => {
+                            {(bandejaSoloUltimo ? soportesPendientes.slice(0, 1) : soportesPendientes).map(item => {
                               const enEdicion = editandoPendienteId === item.id;
                               if (enEdicion) {
                                 return (
