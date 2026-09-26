@@ -44,6 +44,29 @@ const ColaboradorAvatar = ({ foto, nombre, size = 32, style = {} }) => {
   );
 };
 
+// Texto largo (Concepto/Detalle en Historial de Solicitudes y Finanzas) recortado a un resumen
+// con "ver más" — antes un concepto largo (ej. una solicitud copiada de un mensaje de WhatsApp)
+// ensanchaba toda la fila de la tabla, empujando el resto de columnas y dificultando comparar
+// varias filas de un vistazo. Se define fuera de App (no anidado) para que el estado de
+// "expandido" de cada fila sea independiente y no se resetee en cada render del componente padre.
+const TextoResumido = ({ texto, maxLength = 90, style = {} }) => {
+  const [expandido, setExpandido] = useState(false);
+  const valor = (texto || '').toString();
+  if (!valor) return <span style={style}>—</span>;
+  if (valor.length <= maxLength) return <span style={style}>{valor}</span>;
+  return (
+    <span style={style}>
+      {expandido ? valor : valor.slice(0, maxLength).trimEnd() + '…'}{' '}
+      <button
+        onClick={(e) => { e.stopPropagation(); setExpandido(!expandido); }}
+        style={{ background: 'none', border: 'none', color: '#6C63D1', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold', padding: 0, textDecoration: 'underline', whiteSpace: 'nowrap' }}
+      >
+        {expandido ? 'ver menos' : 'ver más'}
+      </button>
+    </span>
+  );
+};
+
 // Quita tildes/acentos y pasa a minúsculas, para comparar nombres sin depender de que estén escritos idéntico.
 const normalizarTexto = (s) => (s || '').toString().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
@@ -6986,8 +7009,8 @@ const App = () => {
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.fecha}</td>
                         {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={colaboradoresPublico.find(c => c.id === s.responsableId)?.foto_url} nombre={colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre} size={22} />{colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—'}</div></td>}
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
-                        <td style={{ padding: '0.75rem', color: '#6B6458' }}>
-                          {s.detalle || '—'}
+                        <td style={{ padding: '0.75rem', color: '#6B6458', maxWidth: '260px' }}>
+                          <TextoResumido texto={s.detalle} />
                           {s.tipo === 'Pago a Tercero' && s.terceroInfo?.nombre && (
                             <div style={{ fontSize: '0.7rem', color: '#8F8877' }}>👤 {s.terceroInfo.nombre}{s.terceroInfo.dni ? ` · ${s.terceroInfo.dni}` : ''}</div>
                           )}
@@ -7946,8 +7969,8 @@ const App = () => {
                             <span style={{ color: '#C4A747', fontWeight: 'bold' }}>{r.ceco}</span>
                             {r.cuenta && <div style={{ color: '#6B6458', fontSize: '0.75rem' }}>{r.cuenta}</div>}
                           </td>
-                          <td style={{ padding: '0.75rem', color: '#6B6458' }}>
-                            {r.detalle}
+                          <td style={{ padding: '0.75rem', color: '#6B6458', maxWidth: '260px' }}>
+                            <TextoResumido texto={r.detalle} />
                             {esPagoTercero && r.terceroInfo?.nombre && (
                               <div style={{ fontSize: '0.7rem', color: '#8F8877' }}>👤 {r.terceroInfo.nombre}{r.terceroInfo.dni ? ` · ${r.terceroInfo.dni}` : ''}</div>
                             )}
