@@ -239,7 +239,7 @@ const App = () => {
   const rolesSensibles = ['Administrador', 'Contadora', 'Coordinadora Administrativa'];
 
   const empresas = ['AM SPORTS GROUP SAS', 'PRO INVESTMENTS GLOBAL SAS', 'PRONOVA CAPITAL SAS', 'FOR SEVEN MEDIA SAS', 'ARKO'];
-  const estadosSolicitud = ['Pendiente', 'Aprobado', 'Pagado', 'Legalizado'];
+  const estadosSolicitud = ['Pendiente', 'Aprobado', 'Devuelto', 'Pagado', 'Legalizado'];
   const tiposSolicitud = ['Anticipo', 'Legalización', 'Reembolso', 'Pago a Tercero'];
   const tiposSoporte = ['Factura/Electrónica', 'Recibo/Entradas', 'Consignación', 'Cuenta de Cobro', 'Otro'];
 
@@ -530,6 +530,11 @@ const App = () => {
   // "Ver Lote de Pago" — lista de solicitudes/gastos que comparten un mismo lote_pago_id.
   // { titulo, items: [{fecha, nombre, valor, empresa}] } — null = modal cerrado.
   const [verLotePago, setVerLotePago] = useState(null);
+  // Modal "Devolver Solicitud" (Administrador/Coordinadora Administrativa): al pasar una
+  // Solicitud a "Devuelto" pide un motivo obligatorio, para que el colaborador sepa por qué no
+  // se aprobó y qué corregir. { solicitud, motivo } — null = modal cerrado.
+  const [devolverSolicitud, setDevolverSolicitud] = useState(null);
+  const [guardandoDevolucion, setGuardandoDevolucion] = useState(false);
   const [mostrarImportar, setMostrarImportar] = useState(false);
   const [archivoImportacion, setArchivoImportacion] = useState(null);
   // Informe de Finanzas (vista previa + PDF) — null cuando el modal está cerrado; mientras está
@@ -1084,6 +1089,9 @@ const App = () => {
     // Cuando esta Solicitud se pagó junto con otras en un mismo lote (Reembolsos, un solo
     // comprobante para varias), todas comparten este mismo UUID — ver "Pago en Lote".
     lotePagoId: row.lote_pago_id || '',
+    // Explicación de Administrador/Coordinadora Administrativa cuando el estado es "Devuelto" —
+    // se limpia al editar y reenviar (vuelve a "Pendiente").
+    motivoDevolucion: row.motivo_devolucion || '',
     // Conteo real de public.soportes para esta solicitud — se completa abajo en
     // cargarSolicitudes(). Necesario porque "documentos" (arriba) solo se llena para
     // Legalización/Reembolso (el desglose de recibos de la Bandeja de Soportes); Pago a
@@ -1101,7 +1109,7 @@ const App = () => {
       // aprobado_por_id (Sección 19), hay 3 FKs de solicitudes hacia usuarios. Sin indicar
       // por cuál columna se hace el embed, PostgREST no sabe cuál usar y el select entero
       // falla con "more than one relationship was found" (deja el historial vacío).
-      .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, lote_pago_id, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
+      .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, lote_pago_id, motivo_devolucion, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -1945,7 +1953,7 @@ const App = () => {
   // Coordinadora Administrativa (los mismos roles que ya gestionan todo el flujo). Una vez
   // Aprobada/Pagada/Legalizada/Rechazada ya no se puede editar — solo mientras es corregible
   // sin afectar nada que ya se haya movido en Finanzas.
-  const puedeEditarSolicitud = (s) => s.estado === 'Pendiente' && !isReadOnly && (s.responsableId === user.id || canApprove);
+  const puedeEditarSolicitud = (s) => (s.estado === 'Pendiente' || s.estado === 'Devuelto') && !isReadOnly && (s.responsableId === user.id || canApprove);
 
   // Carga una Solicitud existente en el formulario "Nueva Solicitud" de arriba (mismo formulario,
   // ahora en modo edición) y hace scroll hasta allá. El Tipo queda fijo — cambiarlo cambiaría toda
@@ -2161,9 +2169,12 @@ const App = () => {
         }
       }
 
-      // Campos comunes a INSERT (solicitud nueva) y UPDATE (edición de una Pendiente) — lo único
-      // que NUNCA se toca en edición es responsable_id y estado (una edición no puede cambiar de
-      // dueño ni saltarse el flujo de aprobación).
+      // Campos comunes a INSERT (solicitud nueva) y UPDATE (edición de una Pendiente/Devuelto) —
+      // lo único que NUNCA se toca en edición es responsable_id (una edición no puede cambiar de
+      // dueño). "estado" y "motivo_devolucion" SÍ se tocan a propósito: si se estaba editando una
+      // solicitud "Devuelto" (corrigiendo lo que motivó la devolución), guardar la reenvía a
+      // "Pendiente" y borra el motivo — vuelve a quedar en la cola de revisión. Si ya estaba
+      // "Pendiente" (la otra única editable), esto es un no-op.
       const camposSolicitud = {
         fecha: newSolicitud.fecha,
         valor: (newSolicitud.tipo === 'Anticipo' || newSolicitud.tipo === 'Pago a Tercero') ? (parseFloat(newSolicitud.valor) || 0) : 0,
@@ -2178,7 +2189,9 @@ const App = () => {
         valor_anticipo_original: newSolicitud.tipo === 'Legalización' ? (parseFloat(newSolicitud.valorAnticipoOriginal) || null) : null,
         moneda_pago: newSolicitud.tipo === 'Pago a Tercero' ? newSolicitud.moneda : null,
         tercero_info: terceroInfoFinal,
-        tercero_id: terceroIdFinal
+        tercero_id: terceroIdFinal,
+        estado: 'Pendiente',
+        motivo_devolucion: null
       };
 
       let solicitudId;
@@ -2317,12 +2330,17 @@ const App = () => {
     const anteriores = solicitudes;
     const ahora = new Date().toISOString();
     const patch = { estado: nuevoEstado, updated_at: ahora };
-    if (nuevoEstado === 'Aprobado') {
+    if (nuevoEstado === 'Aprobado' || nuevoEstado === 'Devuelto') {
       patch.revisado_por_id = user.id;
       patch.revisado_at = ahora;
     } else if (nuevoEstado === 'Pagado' || nuevoEstado === 'Legalizado') {
       patch.aprobado_por_id = user.id;
       patch.aprobado_at = ahora;
+    }
+    // "Devuelto": guarda la explicación de por qué no se pudo aprobar (obligatoria, validada
+    // antes de llamar a esta función desde el modal "Devolver Solicitud").
+    if (nuevoEstado === 'Devuelto') {
+      patch.motivo_devolucion = opciones.motivoDevolucion || null;
     }
     // Pago en lote (hoy solo Reembolsos, desde "Confirmar Pago en Lote"): todas las Solicitudes
     // pagadas juntas con un mismo comprobante quedan con el mismo lote_pago_id.
@@ -2335,7 +2353,8 @@ const App = () => {
       estado: nuevoEstado,
       ...(patch.revisado_por_id ? { revisadoPorId: patch.revisado_por_id, revisadoAt: ahora } : {}),
       ...(patch.aprobado_por_id ? { aprobadoPorId: patch.aprobado_por_id, aprobadoAt: ahora } : {}),
-      ...(patch.lote_pago_id ? { lotePagoId: patch.lote_pago_id } : {})
+      ...(patch.lote_pago_id ? { lotePagoId: patch.lote_pago_id } : {}),
+      ...(nuevoEstado === 'Devuelto' ? { motivoDevolucion: patch.motivo_devolucion || '' } : {})
     } : s));
 
     const { error } = await supabase
@@ -2522,6 +2541,29 @@ const App = () => {
   // Confirma el pago desde el modal: sube cada comprobante como soporte de la SOLICITUD (antes
   // de cambiar el estado, para que generarMovimientoDesdeSolicitud los encuentre y los refleje
   // también en el Gasto/Ingreso) y recién ahí marca "Pagado" con la cuenta y el CECO elegidos.
+  // "Devolver Solicitud" — Administrador/Coordinadora Administrativa explican por qué una
+  // Solicitud (Anticipo, Reembolso, Legalización o Pago a Tercero) no pudo aprobarse tal como
+  // está. El motivo es obligatorio: sin él, el colaborador no sabría qué corregir.
+  const handleAbrirDevolverSolicitud = (s) => {
+    setDevolverSolicitud({ solicitud: s, motivo: '' });
+  };
+
+  const handleConfirmarDevolucion = async () => {
+    if (!devolverSolicitud) return;
+    const { solicitud, motivo } = devolverSolicitud;
+    if (!motivo || !motivo.trim()) {
+      alert('Escribe el motivo de la devolución — el colaborador lo verá para saber qué corregir');
+      return;
+    }
+    setGuardandoDevolucion(true);
+    try {
+      await handleChangeEstado(solicitud.id, 'Devuelto', { motivoDevolucion: motivo.trim() });
+      setDevolverSolicitud(null);
+    } finally {
+      setGuardandoDevolucion(false);
+    }
+  };
+
   const handleConfirmarPagoSolicitud = async () => {
     if (!confirmarPagoSolicitud) return;
     const { solicitud, cuenta, ceco, comprobantes } = confirmarPagoSolicitud;
@@ -2708,6 +2750,7 @@ const App = () => {
   const statsEstado = {
     Pendiente: solicitudesUsuario.filter(s => s.estado === 'Pendiente').length,
     Aprobado: solicitudesUsuario.filter(s => s.estado === 'Aprobado').length,
+    Devuelto: solicitudesUsuario.filter(s => s.estado === 'Devuelto').length,
     Pagado: solicitudesUsuario.filter(s => s.estado === 'Pagado').length,
     Legalizado: solicitudesUsuario.filter(s => s.estado === 'Legalizado').length
   };
@@ -5864,7 +5907,7 @@ const App = () => {
   
   // Color estado
   const getColorEstado = (estado) => {
-    const colores = { 'Pendiente': '#CC4B4B', 'Aprobado': '#D6A419', 'Pagado': '#2F9E52', 'Legalizado': '#6C63D1' };
+    const colores = { 'Pendiente': '#CC4B4B', 'Aprobado': '#D6A419', 'Devuelto': '#C4622D', 'Pagado': '#2F9E52', 'Legalizado': '#6C63D1' };
     return colores[estado] || '#6B6458';
   };
 
@@ -6094,6 +6137,7 @@ const App = () => {
                 { icon: '💵', label: 'Monto Total ARKO (USD)', value: formatMoneyByMoneda(totalMontoUSD, 'USD'), color: '#2F9E52', compact: true },
                 { icon: '⏳', label: 'Pendiente', value: statsEstado.Pendiente, color: '#CC4B4B' },
                 { icon: '🔎', label: 'Aprobado', value: statsEstado.Aprobado, color: '#D6A419' },
+                { icon: '↩️', label: 'Devuelto', value: statsEstado.Devuelto, color: '#C4622D' },
                 { icon: '✅', label: 'Pagado', value: statsEstado.Pagado, color: '#2F9E52' },
                 { icon: '📎', label: 'Legalizado', value: statsEstado.Legalizado, color: '#6C63D1' },
               ].map((card, idx) => (
@@ -6928,6 +6972,11 @@ const App = () => {
                           {s.tipo === 'Pago a Tercero' && s.terceroInfo?.nombre && (
                             <div style={{ fontSize: '0.7rem', color: '#8F8877' }}>👤 {s.terceroInfo.nombre}{s.terceroInfo.dni ? ` · ${s.terceroInfo.dni}` : ''}</div>
                           )}
+                          {s.estado === 'Devuelto' && s.motivoDevolucion && (
+                            <div style={{ marginTop: '0.35rem', backgroundColor: '#FBEAE0', border: '1px solid #C4622D', borderRadius: '4px', padding: '0.4rem 0.6rem', fontSize: '0.7rem', color: '#8A3E17' }}>
+                              ↩️ <strong>Motivo de devolución:</strong> {s.motivoDevolucion}
+                            </div>
+                          )}
                         </td>
                         <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{s.tipo === 'Pago a Tercero' ? formatMoneyByMoneda(parseFloat(s.valor) || 0, s.moneda || getMoneda(s.empresa)) : formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
                         <td style={{ padding: '0.75rem', color: '#6B6458', textAlign: 'right' }}>{esLegalizacionConAnticipo ? formatMoney(parseFloat(s.valorAnticipoOriginal), s.empresa) : '—'}</td>
@@ -6957,6 +7006,10 @@ const App = () => {
                               // transiciones sigue igual.
                               if (nuevoEstado === 'Pagado' && !s.gastoGeneradoId && !s.ingresoGeneradoId && calcularAccionFinanzasSolicitud(s).accion !== 'ninguno') {
                                 setConfirmarPagoSolicitud({ solicitud: s, cuenta: '', ceco: '', comprobantes: [], ...calcularAccionFinanzasSolicitud(s) });
+                              } else if (nuevoEstado === 'Devuelto') {
+                                // Pide el motivo antes de guardar nada — sin él, el colaborador no
+                                // sabría qué corregir (ver modal "Devolver Solicitud").
+                                handleAbrirDevolverSolicitud(s);
                               } else {
                                 handleChangeEstado(s.id, nuevoEstado);
                               }
@@ -8965,6 +9018,40 @@ const App = () => {
           </div>
           );
         })()}
+
+        {/* MODAL DEVOLVER SOLICITUD — Administrador/Coordinadora Administrativa explican por qué
+            una Solicitud (Anticipo, Reembolso, Legalización o Pago a Tercero) no pudo aprobarse.
+            El motivo es obligatorio y queda visible para el colaborador en la tabla de
+            Solicitudes; puede editarla y reenviarla (vuelve a "Pendiente" y se limpia el motivo). */}
+        {devolverSolicitud && (
+          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
+            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '460px', width: '90%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
+              <h2 style={{ color: '#C4622D', marginBottom: '0.5rem' }}>↩️ Devolver Solicitud</h2>
+              <p style={{ color: '#6B6458', fontSize: '0.85rem', marginTop: 0, marginBottom: '1.25rem' }}>
+                {devolverSolicitud.solicitud.tipo} de {colaboradoresPublico.find(c => c.id === devolverSolicitud.solicitud.responsableId)?.nombre || devolverSolicitud.solicitud.responsableNombre || 'colaborador'} — {devolverSolicitud.solicitud.detalle || 'sin concepto'}
+              </p>
+
+              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Motivo de la devolución *</label>
+              <p style={{ color: '#8F8877', fontSize: '0.75rem', margin: '0.25rem 0 0.5rem 0' }}>El colaborador verá este texto en su Solicitud y podrá editarla para corregirlo y reenviarla.</p>
+              <textarea
+                value={devolverSolicitud.motivo}
+                onChange={(e) => setDevolverSolicitud({ ...devolverSolicitud, motivo: e.target.value })}
+                rows={4}
+                placeholder="Ej: Falta el soporte de la factura de transporte, el valor no coincide con el anticipo original..."
+                style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginBottom: '1rem', fontFamily: 'inherit', resize: 'vertical' }}
+              />
+
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button disabled={guardandoDevolucion} onClick={handleConfirmarDevolucion} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4622D', color: '#FFFFFF', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoDevolucion ? 'not-allowed' : 'pointer', opacity: guardandoDevolucion ? 0.6 : 1 }}>
+                  {guardandoDevolucion ? 'Guardando...' : '↩️ Devolver Solicitud'}
+                </button>
+                <button disabled={guardandoDevolucion} onClick={() => setDevolverSolicitud(null)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* MODAL CONFIRMAR PAGO EN LOTE (Presupuesto -> Finanzas) — para los conceptos
             "Pendiente" marcados en la pestaña Mensual: una sola Cuenta y Fecha para todo el
