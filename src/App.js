@@ -519,6 +519,17 @@ const App = () => {
   // Legalización): { solicitud, cuenta, ceco, comprobante, accion: 'gasto'|'ingreso', monto }.
   const [confirmarPagoSolicitud, setConfirmarPagoSolicitud] = useState(null);
   const [guardandoConfirmarPago, setGuardandoConfirmarPago] = useState(false);
+  // Pago en Lote de Reembolsos (Administrador/Coordinadora Administrativa): permite elegir
+  // varios Reembolsos "Aprobado" de la misma Empresa a la vez, adjuntar UN solo comprobante de
+  // banco y marcarlos todos "Pagado" de una — cada uno genera su propio Gasto en Finanzas, pero
+  // todos quedan con el mismo lote_pago_id para poder verlos agrupados después.
+  const [seleccionReembolsosPago, setSeleccionReembolsosPago] = useState([]); // array de ids
+  // { items: [solicitudes...], cuenta, ceco, comprobantes: [] } — null = modal cerrado.
+  const [confirmarPagoLoteReembolsos, setConfirmarPagoLoteReembolsos] = useState(null);
+  const [guardandoPagoLoteReembolsos, setGuardandoPagoLoteReembolsos] = useState(false);
+  // "Ver Lote de Pago" — lista de solicitudes/gastos que comparten un mismo lote_pago_id.
+  // { titulo, items: [{fecha, nombre, valor, empresa}] } — null = modal cerrado.
+  const [verLotePago, setVerLotePago] = useState(null);
   const [mostrarImportar, setMostrarImportar] = useState(false);
   const [archivoImportacion, setArchivoImportacion] = useState(null);
   // Informe de Finanzas (vista previa + PDF) — null cuando el modal está cerrado; mientras está
@@ -1070,6 +1081,9 @@ const App = () => {
     // colaborador debe devolver dinero) — ver calcularAccionFinanzasSolicitud.
     gastoGeneradoId: row.gasto_generado_id || '',
     ingresoGeneradoId: row.ingreso_generado_id || '',
+    // Cuando esta Solicitud se pagó junto con otras en un mismo lote (Reembolsos, un solo
+    // comprobante para varias), todas comparten este mismo UUID — ver "Pago en Lote".
+    lotePagoId: row.lote_pago_id || '',
     // Conteo real de public.soportes para esta solicitud — se completa abajo en
     // cargarSolicitudes(). Necesario porque "documentos" (arriba) solo se llena para
     // Legalización/Reembolso (el desglose de recibos de la Bandeja de Soportes); Pago a
@@ -1087,7 +1101,7 @@ const App = () => {
       // aprobado_por_id (Sección 19), hay 3 FKs de solicitudes hacia usuarios. Sin indicar
       // por cuál columna se hace el embed, PostgREST no sabe cuál usar y el select entero
       // falla con "more than one relationship was found" (deja el historial vacío).
-      .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
+      .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, lote_pago_id, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -1364,6 +1378,9 @@ const App = () => {
     terceroInfo: row.tercero_info || null,
     terceroId: row.tercero_id || '',
     solicitudOrigenId: row.solicitud_origen_id || '',
+    // Mismo lote_pago_id que la Solicitud que originó este Gasto, cuando se pagó junto con
+    // otras (ver "Pago en Lote" en Solicitudes/Finanzas).
+    lotePagoId: row.lote_pago_id || '',
     cantidadSoportes: 0
   });
 
@@ -1371,7 +1388,7 @@ const App = () => {
     setCargandoGastos(true);
     const { data, error } = await supabase
       .from('gastos')
-      .select('id, fecha, tipo, cuenta, cuenta_salida, cuenta_destino, detalle, valor, valor_destino, valor_bruto, deduccion_aplicada, categoria, estado, observaciones, presupuesto_item_id, soporte_drive_link, responsable_id, moneda_pago, tercero_info, tercero_id, solicitud_origen_id, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
+      .select('id, fecha, tipo, cuenta, cuenta_salida, cuenta_destino, detalle, valor, valor_destino, valor_bruto, deduccion_aplicada, categoria, estado, observaciones, presupuesto_item_id, soporte_drive_link, responsable_id, moneda_pago, tercero_info, tercero_id, solicitud_origen_id, lote_pago_id, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
       .order('fecha', { ascending: false });
     if (error) {
       console.error('Error cargando gastos:', error);
@@ -2307,12 +2324,18 @@ const App = () => {
       patch.aprobado_por_id = user.id;
       patch.aprobado_at = ahora;
     }
+    // Pago en lote (hoy solo Reembolsos, desde "Confirmar Pago en Lote"): todas las Solicitudes
+    // pagadas juntas con un mismo comprobante quedan con el mismo lote_pago_id.
+    if (nuevoEstado === 'Pagado' && opciones.loteId) {
+      patch.lote_pago_id = opciones.loteId;
+    }
 
     setSolicitudes(solicitudes.map(s => s.id === id ? {
       ...s,
       estado: nuevoEstado,
       ...(patch.revisado_por_id ? { revisadoPorId: patch.revisado_por_id, revisadoAt: ahora } : {}),
-      ...(patch.aprobado_por_id ? { aprobadoPorId: patch.aprobado_por_id, aprobadoAt: ahora } : {})
+      ...(patch.aprobado_por_id ? { aprobadoPorId: patch.aprobado_por_id, aprobadoAt: ahora } : {}),
+      ...(patch.lote_pago_id ? { lotePagoId: patch.lote_pago_id } : {})
     } : s));
 
     const { error } = await supabase
@@ -2337,7 +2360,7 @@ const App = () => {
       if (solicitud && !solicitud.gastoGeneradoId && !solicitud.ingresoGeneradoId) {
         const { accion, monto } = calcularAccionFinanzasSolicitud(solicitud);
         if (accion !== 'ninguno') {
-          await generarMovimientoDesdeSolicitud(solicitud, { cuentaPago: opciones.cuentaPago || null, cecoCodigo: opciones.cecoCodigo || null, accion, monto });
+          await generarMovimientoDesdeSolicitud(solicitud, { cuentaPago: opciones.cuentaPago || null, cecoCodigo: opciones.cecoCodigo || null, accion, monto, loteId: opciones.loteId || null });
         }
       }
     }
@@ -2369,7 +2392,7 @@ const App = () => {
   // esto solo agrega una fila más al mismo Finanzas que ya ven Admin/Coordinadora. Anticipo y
   // Reembolso quedan vinculados al Responsable de la solicitud (no llevan Tercero); Pago a
   // Tercero sigue llevando también los datos del tercero.
-  const generarMovimientoDesdeSolicitud = async (solicitud, { cuentaPago = null, cecoCodigo = null, accion, monto } = {}) => {
+  const generarMovimientoDesdeSolicitud = async (solicitud, { cuentaPago = null, cecoCodigo = null, accion, monto, loteId = null } = {}) => {
     try {
       const { data: solActual, error: errorLectura } = await supabase
         .from('solicitudes')
@@ -2413,7 +2436,8 @@ const App = () => {
         valor: monto,
         estado: 'Pagado',
         observaciones: observacionesPorTipo[solicitud.tipo] || 'Generado automáticamente desde Solicitudes.',
-        solicitud_origen_id: solicitud.id
+        solicitud_origen_id: solicitud.id,
+        lote_pago_id: loteId || null
       };
       if (solicitud.tipo === 'Pago a Tercero') {
         payload.moneda_pago = solicitud.moneda || null;
@@ -2523,6 +2547,131 @@ const App = () => {
     } finally {
       setGuardandoConfirmarPago(false);
     }
+  };
+
+  // ============================================================
+  // PAGO EN LOTE DE REEMBOLSOS — seleccionar varios Reembolsos "Aprobado" de la misma Empresa,
+  // adjuntar UN solo comprobante de banco y marcarlos todos "Pagado" de una sola vez.
+  // ============================================================
+
+  const handleToggleSeleccionReembolso = (id) => {
+    setSeleccionReembolsosPago(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const handleAbrirPagoLoteReembolsos = () => {
+    const items = solicitudesUsuario.filter(s => seleccionReembolsosPago.includes(s.id));
+    if (items.length === 0) return;
+    setConfirmarPagoLoteReembolsos({ items, cuenta: '', ceco: '', comprobantes: [] });
+  };
+
+  const handleSeleccionarComprobantePagoLoteReembolsos = (e) => {
+    const files = Array.from(e.target.files);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const nuevo = { id: Date.now() + Math.random(), nombre: file.name, tipo: file.type, data: event.target.result };
+        setConfirmarPagoLoteReembolsos(prev => prev ? { ...prev, comprobantes: [...(prev.comprobantes || []), nuevo] } : prev);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const handleQuitarComprobantePagoLoteReembolsos = (id) => {
+    setConfirmarPagoLoteReembolsos(prev => prev ? { ...prev, comprobantes: (prev.comprobantes || []).filter(c => c.id !== id) } : prev);
+  };
+
+  // Sube el/los comprobante(s) UNA sola vez (al primer Reembolso del lote) y los refleja como
+  // metadata en los demás, apuntando al mismo bucket_path — mismo patrón que "Pago a Tercero en
+  // Lote" (handleGuardarFacturasTercero), así no se duplica el archivo en Storage. Como
+  // generarMovimientoDesdeSolicitud ya copia los soportes de CADA solicitud a su propio Gasto,
+  // cada Gasto generado queda con el comprobante sin ningún paso extra.
+  const handleConfirmarPagoLoteReembolsos = async () => {
+    if (!confirmarPagoLoteReembolsos) return;
+    const { items, cuenta, ceco, comprobantes } = confirmarPagoLoteReembolsos;
+    if (!items || items.length === 0) return;
+    if (!cuenta) {
+      alert('Elige con qué cuenta de la empresa se hizo el pago');
+      return;
+    }
+    if (!ceco) {
+      alert('Elige el CECO para este lote de pago');
+      return;
+    }
+    if (!comprobantes || !comprobantes.length) {
+      alert('Adjunta el comprobante de pago del banco (aplica a todo el lote)');
+      return;
+    }
+
+    setGuardandoPagoLoteReembolsos(true);
+    try {
+      const rutasComprobantes = [];
+      for (const comprobante of comprobantes) {
+        const ruta = await subirSoporteEntidad(comprobante, 'solicitud', items[0].id);
+        if (ruta) {
+          rutasComprobantes.push({ ruta, nombre: comprobante.nombre, tamanoKb: Math.round(dataUrlToUint8Array(comprobante.data).length / 1024) });
+        }
+      }
+      for (const solicitud of items.slice(1)) {
+        for (const rc of rutasComprobantes) {
+          const { error: errorSoporte } = await supabase.from('soportes').insert({
+            bucket_path: rc.ruta,
+            nombre_original: rc.nombre,
+            tamano_kb: rc.tamanoKb,
+            entidad_tipo: 'solicitud',
+            entidad_id: solicitud.id,
+            subido_por: user.id
+          });
+          if (errorSoporte) console.error('Error reflejando el comprobante compartido en un reembolso del lote:', errorSoporte);
+        }
+      }
+
+      const loteId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      let pagados = 0;
+      const fallidos = [];
+      for (const solicitud of items) {
+        try {
+          // Releer el estado antes de pagar: evita marcar "Pagado" dos veces si alguien más ya
+          // lo hizo (u otra pestaña) mientras este modal seguía abierto.
+          const { data: solActual, error: errorLectura } = await supabase.from('solicitudes').select('estado').eq('id', solicitud.id).single();
+          if (errorLectura) throw errorLectura;
+          if (solActual.estado !== 'Aprobado') {
+            fallidos.push(`${solicitud.responsableNombre || solicitud.detalle || solicitud.id} (ya no estaba en Aprobado)`);
+            continue;
+          }
+          await handleChangeEstado(solicitud.id, 'Pagado', { cuentaPago: cuenta, cecoCodigo: ceco, loteId });
+          pagados++;
+        } catch (errorItem) {
+          console.error('Error pagando un reembolso del lote:', solicitud.id, errorItem);
+          fallidos.push(`${solicitud.responsableNombre || solicitud.detalle || solicitud.id}: ${errorItem.message || 'error inesperado'}`);
+        }
+      }
+
+      setSeleccionReembolsosPago([]);
+      setConfirmarPagoLoteReembolsos(null);
+      alert(fallidos.length > 0
+        ? `✅ ${pagados} reembolso(s) pagados en lote.\n⚠️ No se pudieron pagar: ${fallidos.join('; ')}`
+        : `✅ ${pagados} reembolso(s) marcados como Pagados con el mismo comprobante.`);
+    } finally {
+      setGuardandoPagoLoteReembolsos(false);
+    }
+  };
+
+  // "Ver Lote de Pago" — desde Solicitudes o desde Finanzas, muestra qué otros Reembolsos (o
+  // Gastos) se pagaron junto con este, en el mismo comprobante. Todo se arma en memoria a partir
+  // de lo ya cargado (solicitudes / gastos), sin ninguna consulta nueva.
+  const handleVerLotePagoSolicitudes = (lotePagoId) => {
+    const items = solicitudesUsuario
+      .filter(s => s.lotePagoId === lotePagoId)
+      .map(s => ({ fecha: s.fecha, nombre: colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—', valor: formatMoney(s.totalCalculado || 0, s.empresa), empresa: s.empresa }));
+    setVerLotePago({ titulo: `🔗 Reembolsos pagados en este lote (${items.length})`, items });
+  };
+
+  const handleVerLotePagoGastos = (lotePagoId) => {
+    const items = gastos
+      .filter(g => g.lotePagoId === lotePagoId)
+      .map(g => ({ fecha: g.fecha, nombre: colaboradoresPublico.find(c => c.id === g.responsableId)?.nombre || g.responsable || '—', valor: formatMoney(g.valor || 0, g.empresa), empresa: g.empresa }));
+    setVerLotePago({ titulo: `🔗 Gastos pagados en este lote (${items.length})`, items });
   };
 
   // Filtrar solicitudes por rol. El Gerente ahora se filtra igual que un Responsable: solo ve
@@ -6700,10 +6849,31 @@ const App = () => {
               </div>
 
               {cargandoSolicitudes && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando solicitudes...</p>}
+
+              {/* Barra de Pago en Lote de Reembolsos — solo Administrador/Coordinadora Administrativa.
+                  Aparece en cuanto hay al menos un Reembolso marcado con el checkbox de la tabla. */}
+              {canApprove && seleccionReembolsosPago.length > 0 && (() => {
+                const seleccionados = solicitudesUsuario.filter(s => seleccionReembolsosPago.includes(s.id));
+                const totalSeleccion = seleccionados.reduce((sum, s) => sum + (s.totalCalculado || 0), 0);
+                const empresaSeleccion = seleccionados[0]?.empresa;
+                return (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FBF3DC', border: '1px solid #C4A747', borderRadius: '8px', padding: '0.85rem 1.25rem', marginBottom: '1rem' }}>
+                    <span style={{ color: '#6B5A1E', fontSize: '0.85rem' }}>
+                      <strong>{seleccionados.length}</strong> reembolso{seleccionados.length !== 1 ? 's' : ''} de <strong>{empresaSeleccion}</strong> seleccionado{seleccionados.length !== 1 ? 's' : ''} — total <strong>{formatMoney(totalSeleccion, empresaSeleccion)}</strong>
+                    </span>
+                    <div style={{ display: 'flex', gap: '0.6rem' }}>
+                      <button onClick={() => setSeleccionReembolsosPago([])} style={{ padding: '0.6rem 1rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>Cancelar selección</button>
+                      <button onClick={handleAbrirPagoLoteReembolsos} style={{ padding: '0.6rem 1.25rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>💳 Pagar seleccionados en lote</button>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                   <thead style={{ backgroundColor: '#F8F6F1' }}>
                     <tr style={{ borderBottom: '2px solid #C4A747' }}>
+                      {canApprove && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}></th>}
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
                       {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
                       <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
@@ -6718,7 +6888,7 @@ const App = () => {
                   </thead>
                   <tbody>
                     {solicitudesFiltradas.length === 0 ? (
-                      <tr><td colSpan={10} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin solicitudes para estos filtros.</td></tr>
+                      <tr><td colSpan={canApprove ? 11 : 10} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin solicitudes para estos filtros.</td></tr>
                     ) : solicitudesFiltradas.map(s => {
                       // Legalización con anticipo vinculado: base para las 2 columnas nuevas y para
                       // marcar el anticipo original como "ya legalizado" (solo visual, no toca s.estado).
@@ -6728,8 +6898,28 @@ const App = () => {
                       const esLegalizacionConAnticipo = s.tipo === 'Legalización' && s.valorAnticipoOriginal;
                       const diferenciaReembolso = esLegalizacionConAnticipo ? (s.totalCalculado || 0) - parseFloat(s.valorAnticipoOriginal) : null;
                       const legalizacionVinculada = s.tipo === 'Anticipo' ? solicitudesUsuario.find(x => x.tipo === 'Legalización' && (x.anticipoIds || []).includes(s.id)) : null;
+                      // Checkbox de Pago en Lote: solo Reembolsos "Aprobado" son elegibles, y solo se
+                      // puede mezclar en la selección los de la MISMA empresa (un comprobante de
+                      // banco corresponde a una sola cuenta bancaria).
+                      const empresaLoteActual = seleccionReembolsosPago.length > 0 ? solicitudesUsuario.find(x => x.id === seleccionReembolsosPago[0])?.empresa : null;
+                      const elegibleParaLote = s.tipo === 'Reembolso' && s.estado === 'Aprobado';
+                      const deshabilitadoPorEmpresa = elegibleParaLote && empresaLoteActual && s.empresa !== empresaLoteActual;
                       return (
                       <tr key={s.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                        {canApprove && (
+                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            {elegibleParaLote && (
+                              <input
+                                type="checkbox"
+                                checked={seleccionReembolsosPago.includes(s.id)}
+                                disabled={deshabilitadoPorEmpresa}
+                                onChange={() => handleToggleSeleccionReembolso(s.id)}
+                                title={deshabilitadoPorEmpresa ? `Ya elegiste reembolsos de ${empresaLoteActual} — solo se puede pagar en lote una empresa a la vez` : 'Elegir para pago en lote'}
+                                style={{ cursor: deshabilitadoPorEmpresa ? 'not-allowed' : 'pointer', width: '16px', height: '16px' }}
+                              />
+                            )}
+                          </td>
+                        )}
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.fecha}</td>
                         {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={colaboradoresPublico.find(c => c.id === s.responsableId)?.foto_url} nombre={colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre} size={22} />{colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—'}</div></td>}
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
@@ -6778,6 +6968,11 @@ const App = () => {
                           )}
                           {legalizacionVinculada && (
                             <div style={{ marginTop: '0.35rem', fontSize: '0.65rem', color: '#6C63D1', fontWeight: 'bold' }}>✅ Ya legalizado</div>
+                          )}
+                          {s.lotePagoId && (
+                            <button onClick={() => handleVerLotePagoSolicitudes(s.lotePagoId)} style={{ display: 'block', marginTop: '0.35rem', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.65rem', color: '#6C63D1', fontWeight: 'bold', padding: 0 }}>
+                              🔗 Pagado en lote
+                            </button>
                           )}
                         </td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
@@ -7695,6 +7890,11 @@ const App = () => {
                             )}
                             {r.observaciones && r.observaciones.startsWith(OBSERVACIONES_GASTO_LOTE_TERCERO) && (
                               <div style={{ fontSize: '0.7rem', color: '#6C63D1' }}>🧾 Factura de tercero (lote)</div>
+                            )}
+                            {r.lotePagoId && (
+                              <button onClick={() => handleVerLotePagoGastos(r.lotePagoId)} style={{ display: 'block', marginTop: '0.15rem', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.7rem', color: '#6C63D1', fontWeight: 'bold', padding: 0 }}>
+                                🔗 Pagado en lote junto con otros
+                              </button>
                             )}
                           </td>
                           <td style={{ padding: '0.75rem', color: esPagoTercero ? '#CC4B4B' : colorValor, textAlign: 'right', fontWeight: 'bold' }}>
@@ -8830,6 +9030,98 @@ const App = () => {
                   Cancelar
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL CONFIRMAR PAGO EN LOTE — REEMBOLSOS (Solicitudes -> Finanzas) — Administrador/
+            Coordinadora Administrativa eligen varios Reembolsos "Aprobado" de la misma Empresa
+            desde la tabla de Solicitudes, y aquí adjuntan UN solo comprobante de banco para
+            todos. Al confirmar, cada uno se marca "Pagado" y genera su propio Gasto en
+            Finanzas — todos con el mismo lote_pago_id para poder verlos agrupados después. */}
+        {confirmarPagoLoteReembolsos && (() => {
+          const { items, cuenta, ceco } = confirmarPagoLoteReembolsos;
+          const empresaLote = items[0]?.empresa;
+          const totalLote = items.reduce((sum, it) => sum + (it.totalCalculado || 0), 0);
+          return (
+          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
+            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '520px', width: '90%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
+              <h2 style={{ color: '#C4A747', marginBottom: '0.5rem' }}>💳 Confirmar Pago en Lote — {items.length} reembolso{items.length !== 1 ? 's' : ''}</h2>
+              <p style={{ color: '#6B6458', fontSize: '0.85rem', marginTop: 0, marginBottom: '1.25rem' }}>
+                {empresaLote} — Total: {formatMoney(totalLote, empresaLote)}
+              </p>
+
+              <div style={{ border: '1px solid #E6E0D2', borderRadius: '6px', padding: '0.75rem', marginBottom: '1.25rem', maxHeight: '150px', overflowY: 'auto' }}>
+                {items.map(it => (
+                  <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', padding: '0.3rem 0' }}>
+                    <span style={{ color: '#221E15' }}>{colaboradoresPublico.find(c => c.id === it.responsableId)?.nombre || it.responsableNombre || '—'} — {it.detalle || 'Reembolso'}</span>
+                    <span style={{ color: '#2F9E52', fontWeight: 'bold' }}>{formatMoney(it.totalCalculado || 0, it.empresa)}</span>
+                  </div>
+                ))}
+              </div>
+
+              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta de la empresa con la que se pagó *</label>
+              <select value={cuenta} onChange={(e) => setConfirmarPagoLoteReembolsos({...confirmarPagoLoteReembolsos, cuenta: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', marginBottom: '1rem' }}>
+                <option value="">Seleccionar</option>
+                {(cuentasPorEmpresa[empresaLote] || []).map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+
+              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>CECO del lote *</label>
+              <select value={ceco} onChange={(e) => setConfirmarPagoLoteReembolsos({...confirmarPagoLoteReembolsos, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', marginBottom: '1rem' }}>
+                <option value="">Seleccionar</option>
+                {cecosGasto.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
+              </select>
+
+              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Comprobante(s) de pago del banco * <span style={{ fontWeight: 'normal', color: '#6B6458' }}>(aplica a todo el lote, puedes adjuntar varios)</span></label>
+              <input type="file" multiple onChange={handleSeleccionarComprobantePagoLoteReembolsos} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '0.5rem', boxSizing: 'border-box', cursor: 'pointer' }} />
+              {(confirmarPagoLoteReembolsos.comprobantes || []).length > 0 && (
+                <div style={{ margin: '0 0 1rem 0' }}>
+                  {confirmarPagoLoteReembolsos.comprobantes.map(c => (
+                    <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '0.5rem 0.75rem', marginBottom: '0.4rem' }}>
+                      <span style={{ color: '#2F9E52', fontSize: '0.8rem' }}>✅ {c.nombre}</span>
+                      <button onClick={() => handleQuitarComprobantePagoLoteReembolsos(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '0.9rem', padding: '0.25rem' }}>🗑️</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button disabled={guardandoPagoLoteReembolsos} onClick={handleConfirmarPagoLoteReembolsos} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoPagoLoteReembolsos ? 'not-allowed' : 'pointer', opacity: guardandoPagoLoteReembolsos ? 0.6 : 1 }}>
+                  {guardandoPagoLoteReembolsos ? 'Guardando...' : `✅ Confirmar Pago (${items.length})`}
+                </button>
+                <button disabled={guardandoPagoLoteReembolsos} onClick={() => setConfirmarPagoLoteReembolsos(null)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+          );
+        })()}
+
+        {/* MODAL VER LOTE DE PAGO — lista simple (fecha, colaborador, valor) de qué otras
+            Solicitudes o Gastos se pagaron junto con este, con el mismo comprobante. */}
+        {verLotePago && (
+          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
+            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '460px', width: '90%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
+              <h2 style={{ color: '#C4A747', marginBottom: '1rem' }}>{verLotePago.titulo}</h2>
+              {verLotePago.items.length === 0 ? (
+                <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>No se encontraron otros registros de este lote.</p>
+              ) : (
+                <div style={{ border: '1px solid #E6E0D2', borderRadius: '6px' }}>
+                  {verLotePago.items.map((it, idx) => (
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0.85rem', borderBottom: idx < verLotePago.items.length - 1 ? '1px solid #F0EDE4' : 'none' }}>
+                      <div>
+                        <p style={{ margin: 0, color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>{it.nombre}</p>
+                        <p style={{ margin: '0.15rem 0 0 0', color: '#6B6458', fontSize: '0.75rem' }}>{it.fecha} · {it.empresa}</p>
+                      </div>
+                      <span style={{ color: '#2F9E52', fontWeight: 'bold', fontSize: '0.85rem' }}>{it.valor}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button onClick={() => setVerLotePago(null)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1.25rem' }}>
+                Cerrar
+              </button>
             </div>
           </div>
         )}
