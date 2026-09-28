@@ -242,11 +242,13 @@ const App = () => {
   const getMoneda = (empresa) => empresa === 'ARKO' ? 'USD' : 'COP';
 
   const formatMoneyByMoneda = (valor, moneda) => {
+    // Espacio irrompible ( ) entre el signo y el número: evita que las tablas angostas
+    // partan la línea dejando el signo de moneda arriba y el número abajo.
     const num = parseFloat(valor) || 0;
     if (moneda === 'USD') {
-      return `US$ ${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      return `US$ ${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
-    return `$ ${num.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
+    return `$ ${num.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
   };
 
   const formatMoney = (valor, empresa) => formatMoneyByMoneda(valor, getMoneda(empresa));
