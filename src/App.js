@@ -265,8 +265,19 @@ const App = () => {
 
   const empresas = ['AM SPORTS GROUP SAS', 'PRO INVESTMENTS GLOBAL SAS', 'PRONOVA CAPITAL SAS', 'FOR SEVEN MEDIA SAS', 'ARKO'];
   const estadosSolicitud = ['Pendiente', 'Aprobado', 'Devuelto', 'Pagado', 'Legalizado'];
-  const tiposSolicitud = ['Anticipo', 'Legalización', 'Reembolso', 'Pago a Tercero'];
-  const tiposSoporte = ['Factura/Electrónica', 'Recibo/Entradas', 'Consignación', 'Cuenta de Cobro', 'Otro'];
+  const tiposSolicitud = ['Anticipo', 'Legalización', 'Reembolso', 'Pago a Tercero', 'Legalización T. Pro'];
+  const tiposSoporte = ['Factura/Electrónica', 'Recibo/Entradas', 'Consignación', 'Cuenta de Cobro', 'Efectivo/T.Personal', 'Otro'];
+
+  // "Legalización T. Pro": gastos pagados con efectivo o tarjeta personal del colaborador (no hay
+  // anticipo previo de la empresa). Hoy solo aplica a este colaborador — ver el botón "Usar
+  // seleccionados en Legalización T. Pro" en Mi Bandeja de Soportes, que solo él ve.
+  const COLABORADOR_LEGALIZACION_TPRO = 'Luis Rivas';
+  // Flujo reducido a 3 estados (sin Aprobado/Pagado): el colaborador ya pagó de su bolsillo, así
+  // que no hay "aprobar antes de pagar" — Administrador/Coordinadora revisan y la pasan directo a
+  // "Legalizado" (eso genera el Gasto en Finanzas automáticamente, igual que "Pagado" en los
+  // demás tipos).
+  const estadosSolicitudLegalizacionTPro = ['Pendiente', 'Devuelto', 'Legalizado'];
+  const estadosParaSolicitud = (s) => s.tipo === 'Legalización T. Pro' ? estadosSolicitudLegalizacionTPro : estadosSolicitud;
 
   // PRESUPUESTO — datos iniciales migrados del PDF "PRESUPUESTO PARA MIGRAR" (conceptos recurrentes mensuales).
   // Quedan como punto de partida editable desde "Gestión de Conceptos"; no se incluyó CUBO (no es una de las 5 empresas
@@ -1977,11 +1988,26 @@ const App = () => {
     }
   };
 
-  // Puede editar una Solicitud mientras esté Pendiente: quien la creó, o Administrador/
-  // Coordinadora Administrativa (los mismos roles que ya gestionan todo el flujo). Una vez
-  // Aprobada/Pagada/Legalizada/Rechazada ya no se puede editar — solo mientras es corregible
-  // sin afectar nada que ya se haya movido en Finanzas.
-  const puedeEditarSolicitud = (s) => (s.estado === 'Pendiente' || s.estado === 'Devuelto') && !isReadOnly && (s.responsableId === user.id || canApprove);
+  // Puede editar una Solicitud mientras esté Pendiente o Devuelto: quien la creó, o
+  // Administrador/Coordinadora Administrativa (los mismos roles que ya gestionan todo el flujo).
+  // Una vez Aprobada/Pagada/Legalizada ya no se puede editar — solo mientras es corregible sin
+  // afectar nada que ya se haya movido en Finanzas. Excepción: "Legalización T. Pro" ya
+  // Legalizada SÍ se puede seguir editando, pero solo por Administrador/Coordinadora
+  // Administrativa (ej. corregir un dato después de haberla revisado).
+  const puedeEditarSolicitud = (s) => {
+    if (isReadOnly) return false;
+    if (s.estado === 'Pendiente' || s.estado === 'Devuelto') return s.responsableId === user.id || canApprove;
+    if (s.tipo === 'Legalización T. Pro' && s.estado === 'Legalizado') return canApprove;
+    return false;
+  };
+
+  // Puede eliminar: igual que siempre para el resto de tipos (sin restricción de estado, como ya
+  // funcionaba) — con una excepción nueva: una "Legalización T. Pro" ya Legalizada solo la puede
+  // eliminar Administrador/Coordinadora Administrativa.
+  const puedeEliminarSolicitud = (s) => {
+    if (s.tipo === 'Legalización T. Pro' && s.estado === 'Legalizado') return canApprove;
+    return true;
+  };
 
   // Carga una Solicitud existente en el formulario "Nueva Solicitud" de arriba (mismo formulario,
   // ahora en modo edición) y hace scroll hasta allá. El Tipo queda fijo — cambiarlo cambiaría toda
@@ -2085,7 +2111,7 @@ const App = () => {
       return;
     }
 
-    if ((newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso') && newSolicitud.documentos.length === 0) {
+    if ((newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso' || newSolicitud.tipo === 'Legalización T. Pro') && newSolicitud.documentos.length === 0) {
       alert('Agrega al menos un documento');
       return;
     }
@@ -2203,6 +2229,14 @@ const App = () => {
       // solicitud "Devuelto" (corrigiendo lo que motivó la devolución), guardar la reenvía a
       // "Pendiente" y borra el motivo — vuelve a quedar en la cola de revisión. Si ya estaba
       // "Pendiente" (la otra única editable), esto es un no-op.
+      // Excepción: una "Legalización T. Pro" ya Legalizada que Administrador/Coordinadora edita
+      // (ver puedeEditarSolicitud) NO se reenvía a "Pendiente" — se queda Legalizada, porque el
+      // Gasto en Finanzas ya se generó y reabrirla como si nada se hubiera aprobado sería
+      // confuso.
+      const solicitudOriginalEnEdicion = editingSolicitudId ? solicitudes.find(s => s.id === editingSolicitudId) : null;
+      const estadoAlGuardar = (solicitudOriginalEnEdicion && solicitudOriginalEnEdicion.tipo === 'Legalización T. Pro' && solicitudOriginalEnEdicion.estado === 'Legalizado')
+        ? 'Legalizado'
+        : 'Pendiente';
       const camposSolicitud = {
         fecha: newSolicitud.fecha,
         valor: (newSolicitud.tipo === 'Anticipo' || newSolicitud.tipo === 'Pago a Tercero') ? (parseFloat(newSolicitud.valor) || 0) : 0,
@@ -2218,7 +2252,7 @@ const App = () => {
         moneda_pago: newSolicitud.tipo === 'Pago a Tercero' ? newSolicitud.moneda : null,
         tercero_info: terceroInfoFinal,
         tercero_id: terceroIdFinal,
-        estado: 'Pendiente',
+        estado: estadoAlGuardar,
         motivo_devolucion: null
       };
 
@@ -2402,8 +2436,13 @@ const App = () => {
     // tenga que volver a digitarlo — el Gasto o Ingreso correspondiente en Finanzas, con sus
     // soportes visibles desde ambas pantallas. No bloquea nada si falla: el cambio de estado
     // ya quedó guardado arriba.
-    if (nuevoEstado === 'Pagado') {
-      const solicitud = anteriores.find(s => s.id === id);
+    // "Legalización T. Pro" no pasa por "Pagado" (su flujo salta directo de Pendiente/Devuelto a
+    // Legalizado) — para ese tipo, "Legalizado" es el estado que dispara el registro automático
+    // en Finanzas, igual que "Pagado" en los demás tipos.
+    const solicitudQueCambia = anteriores.find(s => s.id === id);
+    const disparaFinanzas = nuevoEstado === 'Pagado' || (nuevoEstado === 'Legalizado' && solicitudQueCambia?.tipo === 'Legalización T. Pro');
+    if (disparaFinanzas) {
+      const solicitud = solicitudQueCambia;
       if (solicitud && !solicitud.gastoGeneradoId && !solicitud.ingresoGeneradoId) {
         const { accion, monto } = calcularAccionFinanzasSolicitud(solicitud);
         if (accion !== 'ninguno') {
@@ -2421,6 +2460,7 @@ const App = () => {
     if (s.tipo === 'Pago a Tercero') return { accion: 'gasto', monto: parseFloat(s.valor) || 0 };
     if (s.tipo === 'Anticipo') return { accion: 'gasto', monto: parseFloat(s.valor) || 0 };
     if (s.tipo === 'Reembolso') return { accion: 'gasto', monto: s.totalCalculado || 0 };
+    if (s.tipo === 'Legalización T. Pro') return { accion: 'gasto', monto: s.totalCalculado || 0 };
     if (s.tipo === 'Legalización') {
       const diferencia = (s.totalCalculado || 0) - (parseFloat(s.valorAnticipoOriginal) || 0);
       if (diferencia > 0) return { accion: 'gasto', monto: diferencia }; // hay que reembolsar la diferencia
@@ -2612,7 +2652,8 @@ const App = () => {
       for (const comprobante of comprobantes) {
         await subirSoporteEntidad(comprobante, 'solicitud', solicitud.id);
       }
-      await handleChangeEstado(solicitud.id, 'Pagado', { cuentaPago: cuenta, cecoCodigo: ceco || null });
+      const nuevoEstadoFinal = solicitud.tipo === 'Legalización T. Pro' ? 'Legalizado' : 'Pagado';
+      await handleChangeEstado(solicitud.id, nuevoEstadoFinal, { cuentaPago: cuenta, cecoCodigo: ceco || null });
       setConfirmarPagoSolicitud(null);
     } finally {
       setGuardandoConfirmarPago(false);
@@ -2834,7 +2875,7 @@ const App = () => {
       let yPos = 20;
 
       doc.setFontSize(16);
-      doc.text(s.tipo === 'Anticipo' ? 'SOLICITUD DE ANTICIPO' : s.tipo === 'Legalización' ? 'LEGALIZACIÓN DE ANTICIPO' : 'REPORTE DE REEMBOLSO', pageWidth / 2, yPos, { align: 'center' });
+      doc.text(s.tipo === 'Anticipo' ? 'SOLICITUD DE ANTICIPO' : s.tipo === 'Legalización' ? 'LEGALIZACIÓN DE ANTICIPO' : s.tipo === 'Legalización T. Pro' ? 'LEGALIZACIÓN EFECTIVO/TARJETA PERSONAL' : 'REPORTE DE REEMBOLSO', pageWidth / 2, yPos, { align: 'center' });
       yPos += 15;
 
       doc.setFontSize(10);
@@ -3021,8 +3062,9 @@ const App = () => {
     const aprobadoPor = s.aprobadoPorId ? (usuariosDB.find(u => u.id === s.aprobadoPorId)?.nombre || '') : '';
 
     const esLegalizacion = s.tipo === 'Legalización';
-    const tituloFormato = esLegalizacion ? 'FORMATO LEGALIZACIÓN DE ANTICIPO' : 'FORMATO REEMBOLSO DE GASTOS';
-    const accionTexto = esLegalizacion ? 'LA LEGALIZACIÓN DEL GASTO' : 'LA SOLICITUD DE REEMBOLSO DEL GASTO';
+    const esLegalizacionTPro = s.tipo === 'Legalización T. Pro';
+    const tituloFormato = esLegalizacion ? 'FORMATO LEGALIZACIÓN DE ANTICIPO' : esLegalizacionTPro ? 'FORMATO LEGALIZACIÓN EFECTIVO/TARJETA PERSONAL' : 'FORMATO REEMBOLSO DE GASTOS';
+    const accionTexto = esLegalizacion ? 'LA LEGALIZACIÓN DEL GASTO' : esLegalizacionTPro ? 'LA LEGALIZACIÓN DEL GASTO PAGADO CON EFECTIVO/TARJETA PERSONAL' : 'LA SOLICITUD DE REEMBOLSO DEL GASTO';
     const conceptosUnicos = [...new Set((s.documentos || []).map(d => (d.descripcion || '').trim()).filter(Boolean))];
     const conceptoResumen = (conceptosUnicos.join(', ') || s.detalle || '').toUpperCase();
     const datosCuenta = responsable && responsable.numeroCuenta
@@ -3036,7 +3078,7 @@ const App = () => {
     rows.push([]);
     rows.push(['Empresa: ', s.empresa]);
     rows.push(['NIT: ', NIT_EMPRESAS[s.empresa] || '']);
-    rows.push([esLegalizacion ? 'Fecha legalización' : 'Fecha reembolso', new Date().toISOString().split('T')[0]]);
+    rows.push([(esLegalizacion || esLegalizacionTPro) ? 'Fecha legalización' : 'Fecha reembolso', new Date().toISOString().split('T')[0]]);
     rows.push([]);
 
     if (esLegalizacion) {
@@ -3049,7 +3091,7 @@ const App = () => {
       rows.push([]);
     }
 
-    rows.push([`Detalle de los pagos realizados por los cuales se solicita ${esLegalizacion ? 'la legalización' : 'el reembolso'}`]);
+    rows.push([`Detalle de los pagos realizados por los cuales se solicita ${(esLegalizacion || esLegalizacionTPro) ? 'la legalización' : 'el reembolso'}`]);
     rows.push([]);
     rows.push(['Fecha del Gasto', 'Pagado a', 'NIT/CC', `Valor pagado (${moneda})`, 'Tipo de soporte', 'Por concepto de']);
     (s.documentos || []).forEach(d => {
@@ -6587,6 +6629,11 @@ const App = () => {
                       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                         <button onClick={() => handleUsarPendientesEnSolicitud('Legalización')} disabled={seleccionPendientes.length === 0} style={{ padding: '0.6rem 1.25rem', backgroundColor: seleccionPendientes.length === 0 ? '#D8D2C2' : '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: seleccionPendientes.length === 0 ? 'not-allowed' : 'pointer' }}>Usar seleccionados en Legalización</button>
                         <button onClick={() => handleUsarPendientesEnSolicitud('Reembolso')} disabled={seleccionPendientes.length === 0} style={{ padding: '0.6rem 1.25rem', backgroundColor: seleccionPendientes.length === 0 ? '#D8D2C2' : '#2F9E52', color: '#FFFFFF', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: seleccionPendientes.length === 0 ? 'not-allowed' : 'pointer' }}>Usar seleccionados en Reembolso</button>
+                        {/* "Legalización T. Pro" (gastos pagados con efectivo/tarjeta personal):
+                            hoy solo aplica a este colaborador. */}
+                        {user.nombre === COLABORADOR_LEGALIZACION_TPRO && (
+                          <button onClick={() => handleUsarPendientesEnSolicitud('Legalización T. Pro')} disabled={seleccionPendientes.length === 0} style={{ padding: '0.6rem 1.25rem', backgroundColor: seleccionPendientes.length === 0 ? '#D8D2C2' : '#6C63D1', color: '#FFFFFF', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: seleccionPendientes.length === 0 ? 'not-allowed' : 'pointer' }}>Usar seleccionados en Legalización T. Pro</button>
+                        )}
                       </div>
                     </>
                   )}
@@ -6603,12 +6650,20 @@ const App = () => {
                   </div>
                 )}
 
-                {editingSolicitudId && (
-                  <div style={{ backgroundColor: '#F1EFFB', border: '1px solid #6C63D1', borderRadius: '4px', padding: '1rem', marginBottom: '1rem', color: '#4A4499' }}>
-                    <p style={{ margin: 0, fontWeight: 'bold' }}>✏️ Editando una Solicitud Pendiente</p>
-                    <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem' }}>Corrige lo que haga falta y agrega algún soporte faltante más abajo. El Tipo no se puede cambiar. Cuando termines, dale "Guardar Cambios" — o "Cancelar edición" para dejarla como estaba.</p>
-                  </div>
-                )}
+                {editingSolicitudId && (() => {
+                  const solicitudEnEdicion = solicitudes.find(x => x.id === editingSolicitudId);
+                  const esLegalizadaTPro = solicitudEnEdicion?.tipo === 'Legalización T. Pro' && solicitudEnEdicion?.estado === 'Legalizado';
+                  return (
+                    <div style={{ backgroundColor: '#F1EFFB', border: '1px solid #6C63D1', borderRadius: '4px', padding: '1rem', marginBottom: '1rem', color: '#4A4499' }}>
+                      <p style={{ margin: 0, fontWeight: 'bold' }}>✏️ {esLegalizadaTPro ? 'Editando una Legalización T. Pro ya Legalizada' : 'Editando una Solicitud Pendiente'}</p>
+                      <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem' }}>
+                        {esLegalizadaTPro
+                          ? 'Corrige lo que haga falta. Como ya está Legalizada y el Gasto ya quedó registrado en Finanzas, se queda en estado "Legalizado" al guardar (no se reenvía a revisión).'
+                          : 'Corrige lo que haga falta y agrega algún soporte faltante más abajo. El Tipo no se puede cambiar. Cuando termines, dale "Guardar Cambios" — o "Cancelar edición" para dejarla como estaba.'}
+                      </p>
+                    </div>
+                  );
+                })()}
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem', opacity: isReadOnly ? 0.5 : 1, pointerEvents: isReadOnly ? 'none' : 'auto' }}>
                   <input type="date" value={newSolicitud.fecha} onChange={(e) => setNewSolicitud({...newSolicitud, fecha: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
@@ -6630,6 +6685,13 @@ const App = () => {
                     <option value="Legalización">Legalización</option>
                     <option value="Reembolso">Reembolso</option>
                     <option value="Pago a Tercero">Pago a Tercero</option>
+                    {/* "Legalización T. Pro" (gastos pagados con efectivo/tarjeta personal): hoy
+                        solo aplica a un colaborador — se ofrece en el desplegable para él, y se
+                        mantiene visible si ya se está editando una solicitud de ese tipo (para
+                        que Administrador/Coordinadora también la vean correctamente). */}
+                    {(user.nombre === COLABORADOR_LEGALIZACION_TPRO || newSolicitud.tipo === 'Legalización T. Pro') && (
+                      <option value="Legalización T. Pro">Legalización T. Pro</option>
+                    )}
                   </select>
                   {/* Anticipo/Legalización/Reembolso: para Responsable/Gerente la Empresa siempre es
                       la suya (ese gasto sale de su propio presupuesto), por eso el selector queda
@@ -6801,7 +6863,7 @@ const App = () => {
                   </>
                 )}
 
-                {(newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso') && (
+                {(newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso' || newSolicitud.tipo === 'Legalización T. Pro') && (
                   <>
                     <div style={{ marginBottom: '1rem', backgroundColor: '#F8F6F1', padding: '1rem', borderRadius: '4px', border: '1px solid #E6E0D2' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -7047,7 +7109,10 @@ const App = () => {
                               // Comprobante del banco en el modal "Confirmar Pago" — pero solo cuando
                               // el cambio realmente mueve plata (una Legalización cuadrada no genera
                               // nada en Finanzas, así que no interrumpe con el modal). El resto de
-                              // transiciones sigue igual.
+                              // transiciones sigue igual. "Legalización T. Pro" es la excepción: pasar
+                              // a "Legalizado" NO abre ese modal (no hace falta relacionar Cuenta,
+                              // CECO ni Comprobante) — el Gasto en Finanzas se genera solo, directo,
+                              // igual que cualquier otra transición (ver handleChangeEstado).
                               if (nuevoEstado === 'Pagado' && !s.gastoGeneradoId && !s.ingresoGeneradoId && calcularAccionFinanzasSolicitud(s).accion !== 'ninguno') {
                                 setConfirmarPagoSolicitud({ solicitud: s, cuenta: '', ceco: '', comprobantes: [], ...calcularAccionFinanzasSolicitud(s) });
                               } else if (nuevoEstado === 'Devuelto') {
@@ -7058,7 +7123,7 @@ const App = () => {
                                 handleChangeEstado(s.id, nuevoEstado);
                               }
                             }} style={{ backgroundColor: getColorEstado(s.estado), color: '#332D1E', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
-                              {estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}
+                              {estadosParaSolicitud(s).map(e => <option key={e} value={e}>{e}</option>)}
                             </select>
                           ) : (
                             <span style={{ backgroundColor: getColorEstado(s.estado), color: '#221E15', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{s.estado}</span>
@@ -7073,7 +7138,7 @@ const App = () => {
                           )}
                         </td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                          {(s.tipo === 'Legalización' || s.tipo === 'Reembolso') && s.documentos?.length > 0 && (() => {
+                          {(s.tipo === 'Legalización' || s.tipo === 'Reembolso' || s.tipo === 'Legalización T. Pro') && s.documentos?.length > 0 && (() => {
                             const esDueño = s.responsableId === user.id;
                             return (
                               <>
@@ -7124,7 +7189,7 @@ const App = () => {
                           {puedeEditarSolicitud(s) && (
                             <button onClick={() => handleIniciarEdicionSolicitud(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.5rem' }} title="Editar">✏️</button>
                           )}
-                          {(user.rol === 'Responsable' || user.rol === 'Gerente' || user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
+                          {(user.rol === 'Responsable' || user.rol === 'Gerente' || user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && puedeEliminarSolicitud(s) && (
                             <button onClick={() => handleDeleteSolicitud(s.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }} title="Eliminar">✕</button>
                           )}
                         </td>
@@ -9008,20 +9073,22 @@ const App = () => {
         {confirmarPagoSolicitud && (() => {
           const { solicitud, accion, monto } = confirmarPagoSolicitud;
           const esTercero = solicitud.tipo === 'Pago a Tercero';
+          const esLegalizacionTPro = solicitud.tipo === 'Legalización T. Pro';
           const moneda = esTercero ? (solicitud.moneda || getMoneda(solicitud.empresa)) : getMoneda(solicitud.empresa);
           const subtitulo = esTercero
             ? `${solicitud.terceroInfo?.nombre || 'Tercero'} — ${formatMoneyByMoneda(monto, moneda)}`
-            : `${solicitud.tipo} de ${solicitud.responsableNombre || 'colaborador'} — ${accion === 'ingreso' ? 'a devolver por el colaborador' : 'a pagar'}: ${formatMoneyByMoneda(monto, moneda)}`;
+            : `${solicitud.tipo} de ${solicitud.responsableNombre || 'colaborador'} — ${accion === 'ingreso' ? 'a devolver por el colaborador' : (esLegalizacionTPro ? 'a legalizar' : 'a pagar')}: ${formatMoneyByMoneda(monto, moneda)}`;
           const opcionesCeco = accion === 'ingreso' ? cecosIngreso : cecosGasto;
+          const tituloAccion = esLegalizacionTPro ? 'Legalización' : (accion === 'ingreso' ? 'Reintegro' : 'Pago');
           return (
           <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
             <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '460px', width: '90%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
-              <h2 style={{ color: '#C4A747', marginBottom: '0.5rem' }}>💳 Confirmar {accion === 'ingreso' ? 'Reintegro' : 'Pago'}</h2>
+              <h2 style={{ color: '#C4A747', marginBottom: '0.5rem' }}>💳 Confirmar {tituloAccion}</h2>
               <p style={{ color: '#6B6458', fontSize: '0.85rem', marginTop: 0, marginBottom: '1.25rem' }}>
                 {subtitulo}
               </p>
 
-              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta de la empresa {accion === 'ingreso' ? 'que recibió el dinero' : 'con la que se pagó'} *</label>
+              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta de la empresa {accion === 'ingreso' ? 'que recibió el dinero' : (esLegalizacionTPro ? 'con la que se le reembolsa' : 'con la que se pagó')} *</label>
               <select value={confirmarPagoSolicitud.cuenta} onChange={(e) => setConfirmarPagoSolicitud({...confirmarPagoSolicitud, cuenta: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', marginBottom: '1rem' }}>
                 <option value="">Seleccionar</option>
                 {(cuentasPorEmpresa[solicitud.empresa] || []).map(cuenta => <option key={cuenta} value={cuenta}>{cuenta}</option>)}
@@ -9052,7 +9119,7 @@ const App = () => {
 
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
                 <button disabled={guardandoConfirmarPago} onClick={handleConfirmarPagoSolicitud} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoConfirmarPago ? 'not-allowed' : 'pointer', opacity: guardandoConfirmarPago ? 0.6 : 1 }}>
-                  {guardandoConfirmarPago ? 'Guardando...' : `✅ Confirmar ${accion === 'ingreso' ? 'Reintegro' : 'Pago'}`}
+                  {guardandoConfirmarPago ? 'Guardando...' : `✅ Confirmar ${tituloAccion}`}
                 </button>
                 <button disabled={guardandoConfirmarPago} onClick={() => setConfirmarPagoSolicitud(null)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
                   Cancelar
