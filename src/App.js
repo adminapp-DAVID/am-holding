@@ -2705,11 +2705,14 @@ const App = () => {
     if (!confirmarPagoLoteReembolsos) return;
     const { items, cuenta, ceco, comprobantes } = confirmarPagoLoteReembolsos;
     if (!items || items.length === 0) return;
+    // Pago a Tercero siempre usa su CECO fijo (CECO_PAGO_TERCERO, ver generarMovimientoDesdeSolicitud)
+    // — no se pide en el modal para ese tipo, igual que en el pago individual.
+    const esLoteTercero = items[0]?.tipo === 'Pago a Tercero';
     if (!cuenta) {
       alert('Elige con qué cuenta de la empresa se hizo el pago');
       return;
     }
-    if (!ceco) {
+    if (!esLoteTercero && !ceco) {
       alert('Elige el CECO para este lote de pago');
       return;
     }
@@ -2764,9 +2767,10 @@ const App = () => {
 
       setSeleccionReembolsosPago([]);
       setConfirmarPagoLoteReembolsos(null);
+      const etiquetaTipo = esLoteTercero ? 'pago(s) a tercero' : 'reembolso(s)';
       alert(fallidos.length > 0
-        ? `✅ ${pagados} reembolso(s) pagados en lote.\n⚠️ No se pudieron pagar: ${fallidos.join('; ')}`
-        : `✅ ${pagados} reembolso(s) marcados como Pagados con el mismo comprobante.`);
+        ? `✅ ${pagados} ${etiquetaTipo} pagados en lote.\n⚠️ No se pudieron pagar: ${fallidos.join('; ')}`
+        : `✅ ${pagados} ${etiquetaTipo} marcados como Pagados con el mismo comprobante.`);
     } finally {
       setGuardandoPagoLoteReembolsos(false);
     }
@@ -7034,16 +7038,22 @@ const App = () => {
 
               {cargandoSolicitudes && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando solicitudes...</p>}
 
-              {/* Barra de Pago en Lote de Reembolsos — solo Administrador/Coordinadora Administrativa.
-                  Aparece en cuanto hay al menos un Reembolso marcado con el checkbox de la tabla. */}
+              {/* Barra de Pago en Lote — solo Administrador/Coordinadora Administrativa. Aparece en
+                  cuanto hay al menos un Reembolso o Pago a Tercero marcado con el checkbox de la
+                  tabla (los dos tipos comparten esta función, pero no se mezclan en un mismo lote). */}
               {canApprove && seleccionReembolsosPago.length > 0 && (() => {
                 const seleccionados = solicitudesUsuario.filter(s => seleccionReembolsosPago.includes(s.id));
-                const totalSeleccion = seleccionados.reduce((sum, s) => sum + (s.totalCalculado || 0), 0);
+                const tipoSeleccion = seleccionados[0]?.tipo;
                 const empresaSeleccion = seleccionados[0]?.empresa;
+                const esTerceroSeleccion = tipoSeleccion === 'Pago a Tercero';
+                const monedaSeleccion = esTerceroSeleccion ? (seleccionados[0]?.moneda || getMoneda(empresaSeleccion)) : null;
+                const totalSeleccion = seleccionados.reduce((sum, s) => sum + (esTerceroSeleccion ? (parseFloat(s.valor) || 0) : (s.totalCalculado || 0)), 0);
+                const totalFormateado = esTerceroSeleccion ? formatMoneyByMoneda(totalSeleccion, monedaSeleccion) : formatMoney(totalSeleccion, empresaSeleccion);
+                const etiquetaTipo = esTerceroSeleccion ? 'pago a tercero' : 'reembolso';
                 return (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FBF3DC', border: '1px solid #C4A747', borderRadius: '8px', padding: '0.85rem 1.25rem', marginBottom: '1rem' }}>
                     <span style={{ color: '#6B5A1E', fontSize: '0.85rem' }}>
-                      <strong>{seleccionados.length}</strong> reembolso{seleccionados.length !== 1 ? 's' : ''} de <strong>{empresaSeleccion}</strong> seleccionado{seleccionados.length !== 1 ? 's' : ''} — total <strong>{formatMoney(totalSeleccion, empresaSeleccion)}</strong>
+                      <strong>{seleccionados.length}</strong> {etiquetaTipo}{seleccionados.length !== 1 ? 's' : ''} de <strong>{empresaSeleccion}</strong> seleccionado{seleccionados.length !== 1 ? 's' : ''} — total <strong>{totalFormateado}</strong>
                     </span>
                     <div style={{ display: 'flex', gap: '0.6rem' }}>
                       <button onClick={() => setSeleccionReembolsosPago([])} style={{ padding: '0.6rem 1rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>Cancelar selección</button>
@@ -7082,12 +7092,22 @@ const App = () => {
                       const esLegalizacionConAnticipo = s.tipo === 'Legalización' && s.valorAnticipoOriginal;
                       const diferenciaReembolso = esLegalizacionConAnticipo ? (s.totalCalculado || 0) - parseFloat(s.valorAnticipoOriginal) : null;
                       const legalizacionVinculada = s.tipo === 'Anticipo' ? solicitudesUsuario.find(x => x.tipo === 'Legalización' && (x.anticipoIds || []).includes(s.id)) : null;
-                      // Checkbox de Pago en Lote: solo Reembolsos "Aprobado" son elegibles, y solo se
-                      // puede mezclar en la selección los de la MISMA empresa (un comprobante de
-                      // banco corresponde a una sola cuenta bancaria).
-                      const empresaLoteActual = seleccionReembolsosPago.length > 0 ? solicitudesUsuario.find(x => x.id === seleccionReembolsosPago[0])?.empresa : null;
-                      const elegibleParaLote = s.tipo === 'Reembolso' && s.estado === 'Aprobado';
-                      const deshabilitadoPorEmpresa = elegibleParaLote && empresaLoteActual && s.empresa !== empresaLoteActual;
+                      // Checkbox de Pago en Lote: Reembolsos y Pago a Tercero "Aprobado" son elegibles
+                      // (no mezclados entre sí), y dentro de un mismo lote solo se puede mezclar la
+                      // MISMA empresa — un comprobante de banco corresponde a una sola cuenta
+                      // bancaria — y, si es Pago a Tercero, también la MISMA moneda (COP/USD), porque
+                      // el pago sale de una sola cuenta en una sola divisa.
+                      const primeraSeleccionada = seleccionReembolsosPago.length > 0 ? solicitudesUsuario.find(x => x.id === seleccionReembolsosPago[0]) : null;
+                      const empresaLoteActual = primeraSeleccionada?.empresa || null;
+                      const tipoLoteActual = primeraSeleccionada?.tipo || null;
+                      const monedaLoteActual = primeraSeleccionada?.tipo === 'Pago a Tercero' ? (primeraSeleccionada?.moneda || getMoneda(primeraSeleccionada?.empresa)) : null;
+                      const elegibleParaLote = (s.tipo === 'Reembolso' || s.tipo === 'Pago a Tercero') && s.estado === 'Aprobado';
+                      const monedaSolicitud = s.tipo === 'Pago a Tercero' ? (s.moneda || getMoneda(s.empresa)) : null;
+                      const deshabilitadoPorEmpresa = elegibleParaLote && !!tipoLoteActual && (
+                        s.tipo !== tipoLoteActual ||
+                        s.empresa !== empresaLoteActual ||
+                        (tipoLoteActual === 'Pago a Tercero' && monedaSolicitud !== monedaLoteActual)
+                      );
                       return (
                       <tr key={s.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                         {canApprove && (
@@ -7098,7 +7118,7 @@ const App = () => {
                                 checked={seleccionReembolsosPago.includes(s.id)}
                                 disabled={deshabilitadoPorEmpresa}
                                 onChange={() => handleToggleSeleccionReembolso(s.id)}
-                                title={deshabilitadoPorEmpresa ? `Ya elegiste reembolsos de ${empresaLoteActual} — solo se puede pagar en lote una empresa a la vez` : 'Elegir para pago en lote'}
+                                title={deshabilitadoPorEmpresa ? `Ya elegiste ${tipoLoteActual === 'Pago a Tercero' ? 'Pago a Tercero' : 'Reembolsos'} de ${empresaLoteActual}${monedaLoteActual ? ` en ${monedaLoteActual}` : ''} — solo se puede pagar en lote un mismo tipo, empresa${tipoLoteActual === 'Pago a Tercero' ? ' y moneda' : ''} a la vez` : 'Elegir para pago en lote'}
                                 style={{ cursor: deshabilitadoPorEmpresa ? 'not-allowed' : 'pointer', width: '16px', height: '16px' }}
                               />
                             )}
@@ -9285,28 +9305,33 @@ const App = () => {
           </div>
         )}
 
-        {/* MODAL CONFIRMAR PAGO EN LOTE — REEMBOLSOS (Solicitudes -> Finanzas) — Administrador/
-            Coordinadora Administrativa eligen varios Reembolsos "Aprobado" de la misma Empresa
-            desde la tabla de Solicitudes, y aquí adjuntan UN solo comprobante de banco para
-            todos. Al confirmar, cada uno se marca "Pagado" y genera su propio Gasto en
-            Finanzas — todos con el mismo lote_pago_id para poder verlos agrupados después. */}
+        {/* MODAL CONFIRMAR PAGO EN LOTE — REEMBOLSOS o PAGO A TERCERO (Solicitudes -> Finanzas) —
+            Administrador/Coordinadora Administrativa eligen varias solicitudes "Aprobado" de un
+            mismo tipo, misma Empresa (y, si es Pago a Tercero, misma moneda) desde la tabla de
+            Solicitudes, y aquí adjuntan UN solo comprobante de banco para todas. Al confirmar,
+            cada una se marca "Pagado" y genera su propio Gasto en Finanzas — todas con el mismo
+            lote_pago_id para poder verlas agrupadas después. */}
         {confirmarPagoLoteReembolsos && (() => {
           const { items, cuenta, ceco } = confirmarPagoLoteReembolsos;
           const empresaLote = items[0]?.empresa;
-          const totalLote = items.reduce((sum, it) => sum + (it.totalCalculado || 0), 0);
+          const esLoteTerceroModal = items[0]?.tipo === 'Pago a Tercero';
+          const monedaLoteModal = esLoteTerceroModal ? (items[0]?.moneda || getMoneda(empresaLote)) : null;
+          const totalLote = items.reduce((sum, it) => sum + (esLoteTerceroModal ? (parseFloat(it.valor) || 0) : (it.totalCalculado || 0)), 0);
+          const totalLoteFormateado = esLoteTerceroModal ? formatMoneyByMoneda(totalLote, monedaLoteModal) : formatMoney(totalLote, empresaLote);
+          const etiquetaTipoModal = esLoteTerceroModal ? 'pago a tercero' : 'reembolso';
           return (
           <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
             <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '520px', width: '90%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
-              <h2 style={{ color: '#C4A747', marginBottom: '0.5rem' }}>💳 Confirmar Pago en Lote — {items.length} reembolso{items.length !== 1 ? 's' : ''}</h2>
+              <h2 style={{ color: '#C4A747', marginBottom: '0.5rem' }}>💳 Confirmar Pago en Lote — {items.length} {etiquetaTipoModal}{items.length !== 1 ? 's' : ''}</h2>
               <p style={{ color: '#6B6458', fontSize: '0.85rem', marginTop: 0, marginBottom: '1.25rem' }}>
-                {empresaLote} — Total: {formatMoney(totalLote, empresaLote)}
+                {empresaLote} — Total: {totalLoteFormateado}
               </p>
 
               <div style={{ border: '1px solid #E6E0D2', borderRadius: '6px', padding: '0.75rem', marginBottom: '1.25rem', maxHeight: '150px', overflowY: 'auto' }}>
                 {items.map(it => (
                   <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', padding: '0.3rem 0' }}>
-                    <span style={{ color: '#221E15' }}>{colaboradoresPublico.find(c => c.id === it.responsableId)?.nombre || it.responsableNombre || '—'} — {it.detalle || 'Reembolso'}</span>
-                    <span style={{ color: '#2F9E52', fontWeight: 'bold' }}>{formatMoney(it.totalCalculado || 0, it.empresa)}</span>
+                    <span style={{ color: '#221E15' }}>{esLoteTerceroModal ? (it.terceroInfo?.nombre || 'Tercero') : (colaboradoresPublico.find(c => c.id === it.responsableId)?.nombre || it.responsableNombre || '—')} — {it.detalle || (esLoteTerceroModal ? 'Pago a Tercero' : 'Reembolso')}</span>
+                    <span style={{ color: '#2F9E52', fontWeight: 'bold' }}>{esLoteTerceroModal ? formatMoneyByMoneda(parseFloat(it.valor) || 0, it.moneda || getMoneda(it.empresa)) : formatMoney(it.totalCalculado || 0, it.empresa)}</span>
                   </div>
                 ))}
               </div>
@@ -9317,11 +9342,17 @@ const App = () => {
                 {(cuentasPorEmpresa[empresaLote] || []).map(c => <option key={c} value={c}>{c}</option>)}
               </select>
 
-              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>CECO del lote *</label>
-              <select value={ceco} onChange={(e) => setConfirmarPagoLoteReembolsos({...confirmarPagoLoteReembolsos, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', marginBottom: '1rem' }}>
-                <option value="">Seleccionar</option>
-                {cecosGasto.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
-              </select>
+              {/* Pago a Tercero siempre usa su CECO fijo (CECO-015-PT) — no se pide acá, igual que
+                  en el pago individual de un solo Pago a Tercero. */}
+              {!esLoteTerceroModal && (
+                <>
+                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>CECO del lote *</label>
+                  <select value={ceco} onChange={(e) => setConfirmarPagoLoteReembolsos({...confirmarPagoLoteReembolsos, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', marginBottom: '1rem' }}>
+                    <option value="">Seleccionar</option>
+                    {cecosGasto.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
+                  </select>
+                </>
+              )}
 
               <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Comprobante(s) de pago del banco * <span style={{ fontWeight: 'normal', color: '#6B6458' }}>(aplica a todo el lote, puedes adjuntar varios)</span></label>
               <input type="file" multiple onChange={handleSeleccionarComprobantePagoLoteReembolsos} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '0.5rem', boxSizing: 'border-box', cursor: 'pointer' }} />
