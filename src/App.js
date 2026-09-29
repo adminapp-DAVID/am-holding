@@ -486,15 +486,12 @@ const App = () => {
   const [cargandoIngresos, setCargandoIngresos] = useState(true);
   const [guardandoGasto, setGuardandoGasto] = useState(false);
   const [guardandoIngreso, setGuardandoIngreso] = useState(false);
-  const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', valorDestino: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', soportes: [], presupuestoItemId: '', aplicarDeduccion: true, moneda: 'COP', terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false, valorBrutoManual: '', retencionManual: '' });
+  const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', valorDestino: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', soportes: [], presupuestoItemId: '', aplicarDeduccion: true, moneda: 'COP', terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false });
   const [newIngreso, setNewIngreso] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Ingreso', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CEIN-001-ING', detalle: '', valor: '', categoria: '', estado: 'Pagado', observaciones: '', linkSoporte: '', cuenta: '', soportes: [] });
-  // Editar un Gasto/Ingreso YA creado (Administrador/Coordinadora Administrativa) — reabre este
-  // mismo formulario precargado, igual que ya funciona en Solicitudes. { id, tabla: 'gastos' |
-  // 'ingresos' } — tabla define si el guardado hace UPDATE en gastos o en ingresos.
-  const [editingRegistroFinanzas, setEditingRegistroFinanzas] = useState(null);
-  // Soportes sueltos para completar un Gasto/Ingreso ya guardado (ej. un soporte sobreviniente
-  // que llegó después) — mismo patrón que "Agregar soporte faltante" en Solicitudes.
-  const [soportesAdicionalesFinanzas, setSoportesAdicionalesFinanzas] = useState([]);
+  // Subir un soporte sobreviniente (o varios) a un Gasto/Ingreso YA guardado, directo desde la
+  // fila del Historial — sin reabrir el formulario ni tocar el resto del registro. `id` guarda
+  // sobre qué fila del Historial está abierto el selector de archivos ahora mismo.
+  const [agregandoSoporteId, setAgregandoSoporteId] = useState(null);
   // El formulario/lógica de "Información del Tercero" en Finanzas se activa no solo eligiendo
   // el Tipo "Pago a Tercero", sino también al dejar el Tipo en "Gasto" pero elegir el CECO
   // "Pago a Terceros" (CECO_PAGO_TERCERO) — así un gasto categorizado bajo ese CECO también
@@ -1435,10 +1432,6 @@ const App = () => {
     // Mismo lote_pago_id que la Solicitud que originó este Gasto, cuando se pagó junto con
     // otras (ver "Pago en Lote" en Solicitudes/Finanzas).
     lotePagoId: row.lote_pago_id || '',
-    // Trazabilidad de ediciones posteriores a la creación (ver "Editar Gasto/Ingreso" en
-    // Finanzas) — quién y cuándo complementó/corrigió un registro ya creado.
-    editadoPorId: row.editado_por_id || '',
-    editadoAt: row.editado_at || '',
     cantidadSoportes: 0
   });
 
@@ -1446,7 +1439,7 @@ const App = () => {
     setCargandoGastos(true);
     const { data, error } = await supabase
       .from('gastos')
-      .select('id, fecha, tipo, cuenta, cuenta_salida, cuenta_destino, detalle, valor, valor_destino, valor_bruto, deduccion_aplicada, categoria, estado, observaciones, presupuesto_item_id, soporte_drive_link, responsable_id, moneda_pago, tercero_info, tercero_id, solicitud_origen_id, lote_pago_id, editado_por_id, editado_at, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
+      .select('id, fecha, tipo, cuenta, cuenta_salida, cuenta_destino, detalle, valor, valor_destino, valor_bruto, deduccion_aplicada, categoria, estado, observaciones, presupuesto_item_id, soporte_drive_link, responsable_id, moneda_pago, tercero_info, tercero_id, solicitud_origen_id, lote_pago_id, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
       .order('fecha', { ascending: false });
     if (error) {
       console.error('Error cargando gastos:', error);
@@ -1482,8 +1475,6 @@ const App = () => {
     // diferencia a favor de la empresa (el colaborador debe devolver dinero), queda acá el id
     // de la Solicitud que lo originó — mismo patrón que gastos.solicitud_origen_id.
     solicitudOrigenId: row.solicitud_origen_id || '',
-    editadoPorId: row.editado_por_id || '',
-    editadoAt: row.editado_at || '',
     cantidadSoportes: 0
   });
 
@@ -1491,7 +1482,7 @@ const App = () => {
     setCargandoIngresos(true);
     const { data, error } = await supabase
       .from('ingresos')
-      .select('id, fecha, tipo, cuenta, detalle, valor, categoria, estado, observaciones, soporte_drive_link, responsable_id, solicitud_origen_id, editado_por_id, editado_at, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
+      .select('id, fecha, tipo, cuenta, detalle, valor, categoria, estado, observaciones, soporte_drive_link, responsable_id, solicitud_origen_id, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
       .order('fecha', { ascending: false });
     if (error) {
       console.error('Error cargando ingresos:', error);
@@ -3912,112 +3903,38 @@ const App = () => {
     }
   };
 
-  // Soportes sueltos para completar un Gasto/Ingreso ya guardado (ej. un soporte que llegó
-  // después) — mismo patrón ya probado en Solicitudes ("Agregar soporte faltante"): se leen a
-  // memoria y se suben recién al Guardar, cada uno como su propia fila en public.soportes, sin
-  // tocar nada que ya estuviera subido.
-  const handleSeleccionarSoporteAdicionalFinanzas = (e) => {
-    const files = Array.from(e.target.files);
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const tipo = file.type || inferirMimePorExtension(file.name);
-        const nuevo = { id: Date.now() + Math.random(), nombre: file.name, tipo, tamaño: file.size, data: event.target.result };
-        setSoportesAdicionalesFinanzas(prev => [...prev, nuevo]);
-      };
-      reader.readAsDataURL(file);
-    });
-    e.target.value = '';
-  };
-
-  const handleQuitarSoporteAdicionalFinanzas = (id) => {
-    setSoportesAdicionalesFinanzas(prev => prev.filter(s => s.id !== id));
-  };
-
-  // Editar un Gasto/Ingreso ya creado (Administrador/Coordinadora Administrativa) — precarga el
-  // mismo formulario "Nuevo Gasto/Ingreso" (arriba en Finanzas) en modo edición, igual que ya
-  // funciona en Solicitudes: el Tipo queda fijo (cambiarlo cambiaría a qué tabla se guarda) y el
-  // botón pasa a "Guardar Cambios" (UPDATE en vez de INSERT). Sirve para complementar
-  // información (retención/descuento, cambio de divisa en Pago a Tercero, corregir el valor
-  // pagado real, etc.) o para adjuntar un soporte que llegó después.
-  const handleIniciarEdicionRegistroFinanzas = (r) => {
+  // Agregar uno o varios soportes sobrevinientes a un Gasto/Ingreso YA guardado, directo desde
+  // el Historial (Administrador/Coordinadora Administrativa) — sin tocar ningún otro dato del
+  // registro. Cada archivo se sube de una vez, igual que subirSoporteEntidad ya lo hace para los
+  // soportes que se cargan al crear el registro.
+  const handleAgregarSoporteHistorial = async (r, fileList) => {
     if (!(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa')) return;
-    const tabla = r._origen === 'ingreso' ? 'ingresos' : 'gastos';
-    setEditingRegistroFinanzas({ id: r.id, tabla });
-    if (tabla === 'ingresos') {
-      setNewIngreso({
-        fecha: r.fecha,
-        tipo: 'Ingreso',
-        empresa: r.empresa || 'AM SPORTS GROUP SAS',
-        responsable: r.responsableNombre || '',
-        ceco: r.ceco || '',
-        detalle: r.detalle || '',
-        valor: r.valor != null ? String(r.valor) : '',
-        categoria: r.categoria || '',
-        estado: r.estado || 'Pagado',
-        observaciones: r.observaciones || '',
-        linkSoporte: r.soporteDriveLink || '',
-        cuenta: r.cuenta || '',
-        soportes: []
-      });
-      // El Tipo del formulario (<select>) y el botón "Registrar" leen newGasto.tipo, no
-      // newIngreso.tipo — hay que igualarlo aquí también o el botón intentaría guardar como
-      // Gasto en vez de actualizar el Ingreso.
-      setNewGasto({...newGasto, tipo: 'Ingreso'});
-    } else {
-      // Un Traslado se ve en el Historial como DOS filas sintéticas (salida/entrada — ver
-      // registrosFinanzasTodos), y la fila "entrada" trae la empresa y el valor YA AJUSTADOS
-      // para mostrarse del lado del destino (valorDestino en vez de valor, empresaDestino en
-      // vez de la de origen). Si se edita desde esa fila hay que recuperar del registro
-      // original en `gastos` la empresa/valor de ORIGEN reales — si no, el formulario
-      // precargaría el traslado con los datos cambiados de lado.
-      const gastoOriginal = r.tipo === 'Traslado' ? gastos.find(g => g.id === r.id) : null;
-      setNewGasto({
-        fecha: r.fecha,
-        tipo: r.tipo,
-        empresa: (gastoOriginal || r).empresa || 'AM SPORTS GROUP SAS',
-        responsable: r.responsableNombre || '',
-        ceco: r.ceco || '',
-        cuenta: r.tipo === 'Traslado' ? '' : (r.cuenta || ''),
-        cuentaSalida: r.cuentaSalida || '',
-        cuentaDestino: r.cuentaDestino || '',
-        detalle: r.detalle || '',
-        valor: (gastoOriginal || r).valor != null ? String((gastoOriginal || r).valor) : '',
-        valorDestino: (gastoOriginal || r).valorDestino != null ? String((gastoOriginal || r).valorDestino) : '',
-        categoria: r.categoria || '',
-        estado: r.estado || 'Pendiente',
-        observaciones: r.observaciones || '',
-        linkSoporte: r.soporteDriveLink || '',
-        soportes: [],
-        presupuestoItemId: r.presupuestoItemId || '',
-        aplicarDeduccion: true,
-        moneda: r.moneda || 'COP',
-        terceroId: r.terceroId || '',
-        terceroNombre: r.terceroInfo?.nombre || '',
-        terceroDni: r.terceroInfo?.dni || '',
-        terceroPaisOrigen: r.terceroInfo?.paisOrigen || '',
-        terceroBanco: r.terceroInfo?.banco || '',
-        terceroTipoCuenta: r.terceroInfo?.tipoCuenta || '',
-        terceroNumeroCuenta: r.terceroInfo?.numeroCuenta || '',
-        guardarTercero: false,
-        actualizarTercero: !!r.terceroId,
-        valorBrutoManual: r.valorBruto != null ? String(r.valorBruto) : '',
-        retencionManual: r.deduccionAplicada != null ? String(r.deduccionAplicada) : ''
-      });
+    const files = Array.from(fileList);
+    if (!files.length) return;
+    const entidadTipo = r._origen === 'ingreso' ? 'ingreso' : 'gasto';
+    setAgregandoSoporteId(r.id);
+    try {
+      for (const file of files) {
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (event) => resolve(event.target.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        const tipo = file.type || inferirMimePorExtension(file.name);
+        await subirSoporteEntidad({ nombre: file.name, tipo, tamaño: file.size, data: dataUrl }, entidadTipo, r.id);
+      }
+      const conteo = await contarSoportesPorEntidad(entidadTipo, [r.id]);
+      const nuevoConteo = conteo[r.id] || 0;
+      if (entidadTipo === 'ingreso') {
+        setIngresos(prev => prev.map(i => i.id === r.id ? { ...i, cantidadSoportes: nuevoConteo } : i));
+      } else {
+        setGastos(prev => prev.map(g => g.id === r.id ? { ...g, cantidadSoportes: nuevoConteo } : g));
+      }
+      alert(`✅ ${files.length > 1 ? 'Soportes agregados' : 'Soporte agregado'} correctamente.`);
+    } finally {
+      setAgregandoSoporteId(null);
     }
-    setSoportesAdicionalesFinanzas([]);
-    setSoportesTemp([]);
-    setTimeout(() => {
-      document.getElementById('form-nuevo-gasto')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 0);
-  };
-
-  const handleCancelarEdicionRegistroFinanzas = () => {
-    setEditingRegistroFinanzas(null);
-    setSoportesAdicionalesFinanzas([]);
-    setSoportesTemp([]);
-    setNewGasto({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', valorDestino: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', soportes: [], presupuestoItemId: '', aplicarDeduccion: true, moneda: 'COP', terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false, valorBrutoManual: '', retencionManual: '' });
-    setNewIngreso({ fecha: new Date().toISOString().split('T')[0], tipo: 'Ingreso', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CEIN-001-ING', detalle: '', valor: '', categoria: '', estado: 'Pagado', observaciones: '', linkSoporte: '', cuenta: '', soportes: [] });
   };
 
   const handleAddGasto = async () => {
@@ -4161,25 +4078,12 @@ const App = () => {
         }
       }
 
-      // Retención/Descuento manual — bloque "💵 Retención / Descuento" que solo aparece al
-      // EDITAR un Gasto ya creado. Si se completan Valor Bruto + Retención ahí, mandan sobre el
-      // valor neto calculado arriba (incluso sobre el que ya venía del Presupuesto): es la forma
-      // de complementar/corregir esta información en un registro que ya existe.
-      const brutoManual = parseFloat(newGasto.valorBrutoManual) || 0;
-      const retencionManualVal = parseFloat(newGasto.retencionManual) || 0;
-      if (brutoManual > 0 && retencionManualVal > 0) {
-        valorBrutoFinal = brutoManual;
-        deduccionAplicadaFinal = retencionManualVal;
-        valorFinal = Math.max(0, brutoManual - retencionManualVal);
-      }
-
       const [empresaId, cecoId] = await Promise.all([resolverEmpresaId(newGasto.empresa), resolverCecoId(cecoFinal)]);
       const responsableId = personasFinanzas.find(r => r.nombre === newGasto.responsable)?.id || null;
 
-      const editandoGasto = editingRegistroFinanzas && editingRegistroFinanzas.tabla === 'gastos';
-
       const payloadGasto = {
         fecha: newGasto.fecha,
+        tipo: newGasto.tipo,
         empresa_id: empresaId,
         responsable_id: responsableId,
         ceco_id: cecoId,
@@ -4199,43 +4103,22 @@ const App = () => {
         tercero_info: terceroInfoFinal,
         tercero_id: terceroIdFinal
       };
-      // El Tipo queda fijo al editar (no se puede cambiar de tabla/estructura una vez creado) —
-      // solo se envía en el INSERT original.
-      if (!editandoGasto) payloadGasto.tipo = newGasto.tipo;
-      if (editandoGasto) { payloadGasto.editado_por_id = user.id; payloadGasto.editado_at = new Date().toISOString(); }
 
-      let gastoId;
-      if (editandoGasto) {
-        const { error: updateError } = await supabase.from('gastos').update(payloadGasto).eq('id', editingRegistroFinanzas.id);
-        if (updateError) {
-          console.error('Error editando gasto:', updateError);
-          alert('❌ No se pudo guardar la edición: ' + updateError.message);
-          return;
-        }
-        gastoId = editingRegistroFinanzas.id;
-      } else {
-        const { data: inserted, error } = await supabase.from('gastos').insert(payloadGasto).select('id').single();
-        if (error) {
-          console.error('Error creando gasto:', error);
-          alert('❌ No se pudo guardar la transacción: ' + error.message);
-          return;
-        }
-        gastoId = inserted.id;
+      const { data: inserted, error } = await supabase.from('gastos').insert(payloadGasto).select('id').single();
+      if (error) {
+        console.error('Error creando gasto:', error);
+        alert('❌ No se pudo guardar la transacción: ' + error.message);
+        return;
       }
+      const gastoId = inserted.id;
 
       for (const soporte of soportesTemp) {
         await subirSoporteEntidad(soporte, 'gasto', gastoId);
       }
-      // Soportes sueltos agregados al EDITAR (ej. un soporte sobreviniente que llegó después) —
-      // no tocan nada de lo ya subido, quedan como filas propias de este mismo gasto.
-      for (const soporte of soportesAdicionalesFinanzas) {
-        await subirSoporteEntidad(soporte, 'gasto', gastoId);
-      }
 
       // Igual que en Solicitudes: se genera automáticamente la ficha PDF del pago (datos del
-      // tercero + cuenta bancaria) y se sube junto a los demás soportes de este gasto — solo al
-      // CREAR, para no duplicar la ficha cada vez que se edita el registro.
-      if (!editandoGasto && esPagoTerceroFinanzas) {
+      // tercero + cuenta bancaria) y se sube junto a los demás soportes de este gasto.
+      if (esPagoTerceroFinanzas) {
         try {
           const pdfDoc = construirPDFPagoTercero({
             empresa: newGasto.empresa,
@@ -4264,46 +4147,38 @@ const App = () => {
         await Promise.all([cargarTerceros(), cargarTodosTerceros()]);
       }
 
-      if (editandoGasto) {
-        handleCancelarEdicionRegistroFinanzas();
-        alert('✅ Gasto actualizado');
-      } else {
-        setNewGasto({
-          fecha: new Date().toISOString().split('T')[0],
-          tipo: 'Gasto',
-          empresa: 'AM SPORTS GROUP SAS',
-          responsable: '',
-          ceco: 'CECO-001-GF',
-          cuenta: '',
-          detalle: '',
-          valor: '',
-          valorDestino: '',
-          categoria: '',
-          estado: 'Pendiente',
-          observaciones: '',
-          linkSoporte: '',
-          cuentaSalida: '',
-          cuentaDestino: '',
-          soportes: [],
-          presupuestoItemId: '',
-          aplicarDeduccion: true,
-          moneda: 'COP',
-          terceroId: '',
-          terceroNombre: '',
-          terceroDni: '',
-          terceroPaisOrigen: '',
-          terceroBanco: '',
-          terceroTipoCuenta: '',
-          terceroNumeroCuenta: '',
-          guardarTercero: true,
-          actualizarTercero: false,
-          valorBrutoManual: '',
-          retencionManual: ''
-        });
-        setSoportesTemp([]);
-        alert('✅ Transacción agregada con soportes');
-      }
-      setSoportesAdicionalesFinanzas([]);
+      setNewGasto({
+        fecha: new Date().toISOString().split('T')[0],
+        tipo: 'Gasto',
+        empresa: 'AM SPORTS GROUP SAS',
+        responsable: '',
+        ceco: 'CECO-001-GF',
+        cuenta: '',
+        detalle: '',
+        valor: '',
+        valorDestino: '',
+        categoria: '',
+        estado: 'Pendiente',
+        observaciones: '',
+        linkSoporte: '',
+        cuentaSalida: '',
+        cuentaDestino: '',
+        soportes: [],
+        presupuestoItemId: '',
+        aplicarDeduccion: true,
+        moneda: 'COP',
+        terceroId: '',
+        terceroNombre: '',
+        terceroDni: '',
+        terceroPaisOrigen: '',
+        terceroBanco: '',
+        terceroTipoCuenta: '',
+        terceroNumeroCuenta: '',
+        guardarTercero: true,
+        actualizarTercero: false
+      });
+      setSoportesTemp([]);
+      alert('✅ Transacción agregada con soportes');
     } finally {
       setGuardandoGasto(false);
     }
@@ -4330,10 +4205,9 @@ const App = () => {
       const [empresaId, cecoId] = await Promise.all([resolverEmpresaId(newIngreso.empresa), resolverCecoId(newIngreso.ceco)]);
       const responsableId = personasFinanzas.find(r => r.nombre === newIngreso.responsable)?.id || null;
 
-      const editandoIngreso = editingRegistroFinanzas && editingRegistroFinanzas.tabla === 'ingresos';
-
       const payloadIngreso = {
         fecha: newIngreso.fecha,
+        tipo: newIngreso.tipo,
         empresa_id: empresaId,
         responsable_id: responsableId,
         ceco_id: cecoId,
@@ -4344,60 +4218,38 @@ const App = () => {
         estado: newIngreso.estado,
         observaciones: newIngreso.observaciones || null
       };
-      if (!editandoIngreso) payloadIngreso.tipo = newIngreso.tipo;
-      if (editandoIngreso) { payloadIngreso.editado_por_id = user.id; payloadIngreso.editado_at = new Date().toISOString(); }
 
-      let ingresoId;
-      if (editandoIngreso) {
-        const { error: updateError } = await supabase.from('ingresos').update(payloadIngreso).eq('id', editingRegistroFinanzas.id);
-        if (updateError) {
-          console.error('Error editando ingreso:', updateError);
-          alert('❌ No se pudo guardar la edición: ' + updateError.message);
-          return;
-        }
-        ingresoId = editingRegistroFinanzas.id;
-      } else {
-        const { data: inserted, error } = await supabase.from('ingresos').insert(payloadIngreso).select('id').single();
-        if (error) {
-          console.error('Error creando ingreso:', error);
-          alert('❌ No se pudo guardar el ingreso: ' + error.message);
-          return;
-        }
-        ingresoId = inserted.id;
+      const { data: inserted, error } = await supabase.from('ingresos').insert(payloadIngreso).select('id').single();
+      if (error) {
+        console.error('Error creando ingreso:', error);
+        alert('❌ No se pudo guardar el ingreso: ' + error.message);
+        return;
       }
+      const ingresoId = inserted.id;
 
       for (const soporte of soportesTemp) {
-        await subirSoporteEntidad(soporte, 'ingreso', ingresoId);
-      }
-      for (const soporte of soportesAdicionalesFinanzas) {
         await subirSoporteEntidad(soporte, 'ingreso', ingresoId);
       }
 
       await cargarIngresos();
 
-      if (editandoIngreso) {
-        handleCancelarEdicionRegistroFinanzas();
-        alert('✅ Ingreso actualizado');
-      } else {
-        setNewIngreso({
-          fecha: new Date().toISOString().split('T')[0],
-          tipo: 'Ingreso',
-          empresa: 'AM SPORTS GROUP SAS',
-          responsable: '',
-          ceco: 'CEIN-001-ING',
-          detalle: '',
-          valor: '',
-          categoria: '',
-          estado: 'Pagado',
-          observaciones: '',
-          linkSoporte: '',
-          cuenta: '',
-          soportes: []
-        });
-        setSoportesTemp([]);
-        alert('✅ Ingreso agregado con soportes');
-      }
-      setSoportesAdicionalesFinanzas([]);
+      setNewIngreso({
+        fecha: new Date().toISOString().split('T')[0],
+        tipo: 'Ingreso',
+        empresa: 'AM SPORTS GROUP SAS',
+        responsable: '',
+        ceco: 'CEIN-001-ING',
+        detalle: '',
+        valor: '',
+        categoria: '',
+        estado: 'Pagado',
+        observaciones: '',
+        linkSoporte: '',
+        cuenta: '',
+        soportes: []
+      });
+      setSoportesTemp([]);
+      alert('✅ Ingreso agregado con soportes');
     } finally {
       setGuardandoIngreso(false);
     }
@@ -7685,31 +7537,24 @@ const App = () => {
 
             {/* NUEVA TRANSACCIÓN (SOLO ADMIN Y COORDINADORA) */}
             {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
-            <div id="form-nuevo-gasto" style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: editingRegistroFinanzas ? '2px solid #6C63D1' : '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-              <h2 style={{ color: editingRegistroFinanzas ? '#6C63D1' : '#C4A747', margin: '0 0 1.5rem 0' }}>{editingRegistroFinanzas ? `✏️ Editando ${editingRegistroFinanzas.tabla === 'ingresos' ? 'Ingreso' : 'Gasto'}` : '➕ Nuevo Gasto/Ingreso'}</h2>
-
-              {editingRegistroFinanzas && (
-                <div style={{ backgroundColor: '#F1EFFB', border: '1px solid #6C63D1', borderRadius: '4px', padding: '1rem', marginBottom: '1rem', color: '#4A4499' }}>
-                  <p style={{ margin: 0, fontWeight: 'bold' }}>✏️ Editando un registro ya guardado</p>
-                  <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem' }}>Complementa la información (retención/descuento, cambio de divisa, corregir el valor pagado real) o adjunta algún soporte que llegó después, más abajo. El Tipo no se puede cambiar. Cuando termines, dale "Guardar Cambios" — o "Cancelar edición" para dejarlo como estaba.</p>
-                </div>
-              )}
+            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
+              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nuevo Gasto/Ingreso</h2>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Tipo</label>
-                  <select value={newGasto.tipo} disabled={!!editingRegistroFinanzas} onChange={(e) => {
+                  <select value={newGasto.tipo} onChange={(e) => {
                     // "Pago a Tercero en Lote" no es un tipo real de Gasto — es un atajo que abre
                     // su propio formulario emergente (varias facturas de distintos colaboradores,
                     // un solo pago). No cambia newGasto.tipo, para no afectar el formulario normal.
                     if (e.target.value === 'PagoTerceroLote') { handleAbrirRegistrarFacturasTercero(); return; }
                     setNewGasto({...newGasto, tipo: e.target.value}); setNewIngreso({...newIngreso, tipo: e.target.value});
-                  }} style={{ width: '100%', padding: '0.75rem', backgroundColor: editingRegistroFinanzas ? '#EDEAE0' : '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                  }} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
                     <option value="Gasto">💸 Gasto</option>
                     <option value="Ingreso">💰 Ingreso</option>
                     <option value="Traslado">🔄 Traslado</option>
                     <option value="Pago a Tercero">🤝 Pago a Tercero</option>
-                    {!editingRegistroFinanzas && <option value="PagoTerceroLote">🧾 Pago a Tercero en Lote (varias facturas)</option>}
+                    <option value="PagoTerceroLote">🧾 Pago a Tercero en Lote (varias facturas)</option>
                   </select>
                 </div>
                 <div>
@@ -7927,33 +7772,6 @@ const App = () => {
                 );
               })()}
 
-              {/* RETENCIÓN / DESCUENTO MANUAL — solo al editar un Gasto ya creado, para
-                  complementar con una retención/descuento que no venía de una Deducción del
-                  Presupuesto (ej. una retención en la fuente que se conoció después). Si se
-                  llenan estos dos campos, tienen prioridad sobre valor_bruto/deduccion_aplicada
-                  calculados arriba desde el Presupuesto — mismo par de columnas, otro origen. */}
-              {editingRegistroFinanzas && editingRegistroFinanzas.tabla === 'gastos' && (
-                <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem', marginBottom: '1rem' }}>
-                  <h3 style={{ color: '#6C63D1', margin: '0 0 0.5rem 0', fontSize: '0.95rem' }}>💵 Retención / Descuento</h3>
-                  <p style={{ color: '#6B6458', fontSize: '0.8rem', margin: '0 0 0.75rem 0' }}>Opcional — solo si hay que registrar una retención o descuento sobre el valor de este gasto. Si se llenan estos dos campos, reemplazan cualquier deducción calculada automáticamente arriba.</p>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
-                    <div>
-                      <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.8rem' }}>Valor Bruto</label>
-                      <input type="number" placeholder="Valor bruto" value={newGasto.valorBrutoManual} onChange={(e) => setNewGasto({...newGasto, valorBrutoManual: e.target.value})} style={{ width: '100%', padding: '0.6rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.4rem' }} />
-                    </div>
-                    <div>
-                      <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.8rem' }}>Retención / Descuento</label>
-                      <input type="number" placeholder="Retención / descuento" value={newGasto.retencionManual} onChange={(e) => setNewGasto({...newGasto, retencionManual: e.target.value})} style={{ width: '100%', padding: '0.6rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.4rem' }} />
-                    </div>
-                  </div>
-                  {newGasto.valorBrutoManual && newGasto.retencionManual && (
-                    <p style={{ margin: '0.75rem 0 0 0', fontSize: '0.85rem', color: '#221E15' }}>
-                      <strong>Neto a guardar: {formatMoney(Math.max(0, (parseFloat(newGasto.valorBrutoManual) || 0) - (parseFloat(newGasto.retencionManual) || 0)), newGasto.empresa)}</strong> — al guardar, este neto reemplaza automáticamente el campo "Valor" de abajo.
-                    </p>
-                  )}
-                </div>
-              )}
-
               {/* Pago a Tercero: la moneda del pago se elige aparte, igual que en Solicitudes —
                   no depende de la empresa que paga. Aplica tanto si el Tipo es "Pago a
                   Tercero" como si es "Gasto" con el CECO "Pago a Terceros" elegido. */}
@@ -7980,59 +7798,30 @@ const App = () => {
 
               <input type="text" placeholder="Observaciones" value={newGasto.observaciones} onChange={(e) => {setNewGasto({...newGasto, observaciones: e.target.value}); setNewIngreso({...newIngreso, observaciones: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', marginBottom: '1rem', boxSizing: 'border-box' }} />
 
-              {/* CARGA DE SOPORTES — al crear un registro nuevo. Al editar uno ya existente se
-                  reemplaza por el bloque de abajo ("Agregar soporte adicional"): los soportes que
-                  ya estaban subidos no se tocan, y esto solo suma soportes sueltos nuevos. */}
-              {!editingRegistroFinanzas && (
-                <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem', marginBottom: '1rem' }}>
-                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>📎 Soportes (Archivos)</label>
-                  <input type="file" multiple onChange={handleAddSoporte} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '1rem', boxSizing: 'border-box', cursor: 'pointer' }} />
+              {/* CARGA DE SOPORTES */}
+              <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem', marginBottom: '1rem' }}>
+                <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>📎 Soportes (Archivos)</label>
+                <input type="file" multiple onChange={handleAddSoporte} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '1rem', boxSizing: 'border-box', cursor: 'pointer' }} />
 
-                  {soportesTemp.length > 0 && (
-                    <div style={{ marginTop: '1rem' }}>
-                      <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.8rem' }}>Archivos cargados: {soportesTemp.length}</p>
-                      {soportesTemp.map(soporte => (
-                        <div key={soporte.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div style={{ flex: 1 }}>
-                            <p style={{ color: '#C4A747', margin: '0 0 0.25rem 0', fontSize: '0.8rem', fontWeight: 'bold' }}>{soporte.nombre}</p>
-                            <p style={{ color: '#6B6458', margin: 0, fontSize: '0.75rem' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
-                          </div>
-                          <button onClick={() => handleRemoveSoporte(soporte.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem', padding: '0.5rem' }}>🗑️</button>
+                {soportesTemp.length > 0 && (
+                  <div style={{ marginTop: '1rem' }}>
+                    <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.8rem' }}>Archivos cargados: {soportesTemp.length}</p>
+                    {soportesTemp.map(soporte => (
+                      <div key={soporte.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ color: '#C4A747', margin: '0 0 0.25rem 0', fontSize: '0.8rem', fontWeight: 'bold' }}>{soporte.nombre}</p>
+                          <p style={{ color: '#6B6458', margin: 0, fontSize: '0.75rem' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {editingRegistroFinanzas && (
-                <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem', marginBottom: '1rem' }}>
-                  <h3 style={{ color: '#6C63D1', margin: '0 0 0.5rem 0', fontSize: '0.95rem' }}>📎 Agregar soporte adicional</h3>
-                  <p style={{ color: '#6B6458', fontSize: '0.8rem', margin: '0 0 0.75rem 0' }}>Sube aquí algún soporte sobreviniente (ej. una factura, retención o comprobante que llegó después). Se agrega suelto, sin tocar los soportes que ya estaban subidos.</p>
-                  <input type="file" accept="application/pdf,image/*" multiple onChange={handleSeleccionarSoporteAdicionalFinanzas} style={{ width: '100%', padding: '0.6rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', boxSizing: 'border-box', cursor: 'pointer' }} />
-                  {soportesAdicionalesFinanzas.length > 0 && (
-                    <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                      {soportesAdicionalesFinanzas.map(soporte => (
-                        <div key={soporte.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF', padding: '0.5rem 0.75rem', borderRadius: '3px', border: '1px solid #E6E0D2' }}>
-                          <span style={{ color: '#2F9E52', fontSize: '0.8rem' }}>📎 {soporte.nombre}</span>
-                          <button onClick={() => handleQuitarSoporteAdicionalFinanzas(soporte.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '0.9rem' }}>🗑️</button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div style={{ display: 'flex', gap: '0.75rem' }}>
-                <button disabled={guardandoGasto || guardandoIngreso} onClick={newGasto.tipo === 'Ingreso' ? handleAddIngreso : handleAddGasto} style={{ flex: 1, padding: '0.75rem', backgroundColor: editingRegistroFinanzas ? '#6C63D1' : '#C4A747', color: editingRegistroFinanzas ? '#FFFFFF' : '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: (guardandoGasto || guardandoIngreso) ? 'not-allowed' : 'pointer', opacity: (guardandoGasto || guardandoIngreso) ? 0.6 : 1 }}>
-                  {(guardandoGasto || guardandoIngreso) ? 'Guardando...' : (editingRegistroFinanzas ? '✅ Guardar Cambios' : `Registrar ${newGasto.tipo}`)}
-                </button>
-                {editingRegistroFinanzas && (
-                  <button onClick={handleCancelarEdicionRegistroFinanzas} disabled={guardandoGasto || guardandoIngreso} style={{ padding: '0.75rem 1.25rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: (guardandoGasto || guardandoIngreso) ? 'not-allowed' : 'pointer' }}>
-                    Cancelar edición
-                  </button>
+                        <button onClick={() => handleRemoveSoporte(soporte.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem', padding: '0.5rem' }}>🗑️</button>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
+
+              <button disabled={guardandoGasto || guardandoIngreso} onClick={newGasto.tipo === 'Ingreso' ? handleAddIngreso : handleAddGasto} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: (guardandoGasto || guardandoIngreso) ? 'not-allowed' : 'pointer', opacity: (guardandoGasto || guardandoIngreso) ? 0.6 : 1 }}>
+                {(guardandoGasto || guardandoIngreso) ? 'Guardando...' : `Registrar ${newGasto.tipo}`}
+              </button>
             </div>
             )}
 
@@ -8303,11 +8092,6 @@ const App = () => {
                                 🔗 Pagado en lote junto con otros
                               </button>
                             )}
-                            {r.editadoPorId && (
-                              <div style={{ fontSize: '0.7rem', color: '#8F8877' }} title={r.editadoAt || ''}>
-                                ✏️ Editado por {colaboradoresPublico.find(c => c.id === r.editadoPorId)?.nombre || '—'}{r.editadoAt ? ` · ${r.editadoAt.split('T')[0]}` : ''}
-                              </div>
-                            )}
                           </td>
                           <td style={{ padding: '0.75rem', color: esPagoTercero ? '#CC4B4B' : colorValor, textAlign: 'right', fontWeight: 'bold' }}>
                             {esSalidaTraslado ? '− ' : esEntradaTraslado ? '+ ' : ''}{esPagoTercero ? formatMoneyByMoneda(parseFloat(r.valor) || 0, r.moneda || getMoneda(r.empresa)) : formatMoney(r.valor, r.empresa)}
@@ -8332,6 +8116,25 @@ const App = () => {
                               <button onClick={() => verSoportesFn(r)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }}>📎 {r.soporteDriveLink ? 'Drive' : r.cantidadSoportes}</button>
                             ) : (
                               <span style={{ color: '#6B6458', fontSize: '0.8rem' }}>—</span>
+                            )}
+                            {/* Subir un soporte sobreviniente (o varios) a este registro ya guardado,
+                                sin abrir ningún formulario — solo Administrador/Coordinadora. */}
+                            {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
+                              <label title="Agregar soporte" style={{ display: 'inline-block', marginLeft: '0.4rem', cursor: agregandoSoporteId === r.id ? 'not-allowed' : 'pointer', color: '#6C63D1', fontSize: '1rem' }}>
+                                {agregandoSoporteId === r.id ? '⏳' : '📎+'}
+                                <input
+                                  type="file"
+                                  accept="application/pdf,image/*"
+                                  multiple
+                                  disabled={agregandoSoporteId === r.id}
+                                  style={{ display: 'none' }}
+                                  onChange={(e) => {
+                                    const files = e.target.files;
+                                    if (files && files.length) handleAgregarSoporteHistorial(r, files);
+                                    e.target.value = '';
+                                  }}
+                                />
+                              </label>
                             )}
                           </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
@@ -8361,7 +8164,6 @@ const App = () => {
                           </td>
                           {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
                             <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                              <button onClick={() => handleIniciarEdicionRegistroFinanzas(r)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.4rem' }} title="Editar este registro">✏️</button>
                               <button onClick={() => deleteFn(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
                             </td>
                           )}
