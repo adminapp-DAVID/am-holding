@@ -2260,17 +2260,6 @@ const App = () => {
         motivo_devolucion: null
       };
 
-      // Si la edición venía precedida de subir varios soportes (cada uno tarda su tiempo en leerse
-      // y subirse), el token de sesión puede quedar a punto de vencer justo antes de este guardado
-      // final. Pedir la sesión aquí deja que el cliente de Supabase la refresque si ya venció o
-      // está por vencer, en vez de que el UPDATE/INSERT de abajo llegue con un token inválido y
-      // falle en silencio (0 filas afectadas, sin error).
-      const { data: sesionActual } = await supabase.auth.getSession();
-      if (!sesionActual?.session) {
-        alert('❌ Tu sesión venció. Por favor cierra sesión, vuelve a entrar e inténtalo de nuevo (lo que ya tenías escrito en el formulario se perderá, lo sentimos).');
-        return;
-      }
-
       let solicitudId;
       if (editingSolicitudId) {
         // Importante: pedimos .select('id') en vez de solo comprobar "error". Si una política de
