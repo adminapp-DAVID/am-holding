@@ -6945,33 +6945,40 @@ const App = () => {
                       )}
                     </div>
 
-                    {/* SOPORTES CONSOLIDADOS — se unen automáticamente en un solo PDF al guardar */}
-                    <div style={{ marginBottom: '1rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem' }}>
-                      <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>📎 Soportes (PDFs e imágenes — se unen en un solo PDF)</label>
-                      <input type="file" multiple accept="application/pdf,image/*" onChange={handleAddSoporteLegalizacion} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '1rem', boxSizing: 'border-box', cursor: 'pointer' }} />
+                    {/* SOPORTES CONSOLIDADOS — se unen automáticamente en un solo PDF al guardar.
+                        SOLO aplica al CREAR: el PDF consolidado se arma una sola vez al crear la
+                        solicitud. En modo edición este bloque no se muestra (ver más abajo
+                        "Agregar soporte faltante") porque, antes de este fix, los archivos
+                        subidos aquí durante una edición se descartaban en silencio al guardar
+                        — el código de guardado solo arma el PDF consolidado "!editingSolicitudId". */}
+                    {!editingSolicitudId && (
+                      <div style={{ marginBottom: '1rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem' }}>
+                        <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>📎 Soportes (PDFs e imágenes — se unen en un solo PDF)</label>
+                        <input type="file" multiple accept="application/pdf,image/*" onChange={handleAddSoporteLegalizacion} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '1rem', boxSizing: 'border-box', cursor: 'pointer' }} />
 
-                      {soportesLegalizacionTemp.length > 0 && (
-                        <div style={{ marginTop: '1rem' }}>
-                          <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.8rem' }}>Archivos cargados: {soportesLegalizacionTemp.length} (se unirán en un solo PDF al guardar)</p>
-                          {soportesLegalizacionTemp.map(soporte => (
-                            <div key={soporte.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <div style={{ flex: 1 }}>
-                                <p style={{ color: '#C4A747', margin: '0 0 0.25rem 0', fontSize: '0.8rem', fontWeight: 'bold' }}>{soporte.nombre}</p>
-                                <p style={{ color: '#6B6458', margin: 0, fontSize: '0.75rem' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
+                        {soportesLegalizacionTemp.length > 0 && (
+                          <div style={{ marginTop: '1rem' }}>
+                            <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.8rem' }}>Archivos cargados: {soportesLegalizacionTemp.length} (se unirán en un solo PDF al guardar)</p>
+                            {soportesLegalizacionTemp.map(soporte => (
+                              <div key={soporte.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ flex: 1 }}>
+                                  <p style={{ color: '#C4A747', margin: '0 0 0.25rem 0', fontSize: '0.8rem', fontWeight: 'bold' }}>{soporte.nombre}</p>
+                                  <p style={{ color: '#6B6458', margin: 0, fontSize: '0.75rem' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
+                                </div>
+                                <button onClick={() => handleRemoveSoporteLegalizacion(soporte.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem', padding: '0.5rem' }}>🗑️</button>
                               </div>
-                              <button onClick={() => handleRemoveSoporteLegalizacion(soporte.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem', padding: '0.5rem' }}>🗑️</button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
 
                 {editingSolicitudId && (
                   <div style={{ marginBottom: '1rem', backgroundColor: '#F8F6F1', padding: '1rem', borderRadius: '4px', border: '1px solid #E6E0D2' }}>
-                    <h3 style={{ color: '#6C63D1', margin: '0 0 0.5rem 0', fontSize: '0.95rem' }}>📎 Agregar soporte faltante</h3>
-                    <p style={{ color: '#6B6458', fontSize: '0.8rem', margin: '0 0 0.75rem 0' }}>Sube aquí algún soporte que haya faltado al crear la solicitud (ej. la factura o el comprobante de pago). Se agrega suelto, sin tocar los soportes que ya estaban subidos.</p>
+                    <h3 style={{ color: '#6C63D1', margin: '0 0 0.5rem 0', fontSize: '0.95rem' }}>📎 Agregar soporte(s) de los ítems nuevos / faltante</h3>
+                    <p style={{ color: '#6B6458', fontSize: '0.8rem', margin: '0 0 0.75rem 0' }}>Sube aquí los soportes de los ítems que agregaste arriba (o algún soporte que haya faltado al crear la solicitud). Quedan junto a los demás soportes de esta solicitud — no reemplazan ni reorganizan el PDF que ya se había consolidado al crearla.</p>
                     <input type="file" accept="application/pdf,image/*" multiple onChange={handleSeleccionarSoporteAdicionalEdicion} style={{ width: '100%', padding: '0.6rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', boxSizing: 'border-box', cursor: 'pointer' }} />
                     {soportesAdicionalesEdicion.length > 0 && (
                       <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
@@ -7596,7 +7603,7 @@ const App = () => {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Empresa</label>
-                  <select value={newGasto.empresa} onChange={(e) => {setNewGasto({...newGasto, empresa: e.target.value, cuenta: ''}); setNewIngreso({...newIngreso, empresa: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                  <select value={newGasto.empresa} onChange={(e) => {setNewGasto({...newGasto, empresa: e.target.value, cuenta: ''}); setNewIngreso({...newIngreso, empresa: e.target.value, cuenta: ''});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
                     {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
                   </select>
                 </div>
@@ -7626,7 +7633,12 @@ const App = () => {
                   <>
                     <div>
                       <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta</label>
-                      <select value={newGasto.cuenta} onChange={(e) => setNewGasto({...newGasto, cuenta: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                      {/* Este mismo campo se usa para Gasto/Pago a Tercero (guarda en newGasto.cuenta)
+                          y para Ingreso (handleAddIngreso valida/guarda newIngreso.cuenta, un estado
+                          aparte) — sin este segundo setNewIngreso, elegir una Cuenta al crear un
+                          Ingreso no quedaba guardada ahí, y el guardado siempre fallaba con
+                          "Cuenta es obligatoria" aunque sí se hubiera seleccionado una. */}
+                      <select value={newGasto.cuenta} onChange={(e) => { setNewGasto({...newGasto, cuenta: e.target.value}); setNewIngreso({...newIngreso, cuenta: e.target.value}); }} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
                         <option value="">Seleccionar</option>
                         {(cuentasPorEmpresa[newGasto.empresa] || []).map(cuenta => <option key={cuenta} value={cuenta}>{cuenta}</option>)}
                       </select>
