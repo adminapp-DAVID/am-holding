@@ -2262,13 +2262,23 @@ const App = () => {
 
       let solicitudId;
       if (editingSolicitudId) {
-        const { error: updateError } = await supabase
+        // Importante: pedimos .select('id') en vez de solo comprobar "error". Si una política de
+        // RLS (o una sesión vencida: auth.uid() nulo) impide la actualización, Supabase NO
+        // lanza error — simplemente actualiza 0 filas y responde como si hubiera ido bien. Sin
+        // este chequeo, la app mostraba "✅ Solicitud actualizada" aunque nada se hubiera guardado.
+        const { data: filasActualizadas, error: updateError } = await supabase
           .from('solicitudes')
           .update(camposSolicitud)
-          .eq('id', editingSolicitudId);
+          .eq('id', editingSolicitudId)
+          .select('id');
         if (updateError) {
           console.error('Error editando solicitud:', updateError);
           alert('❌ No se pudo guardar la edición: ' + updateError.message);
+          return;
+        }
+        if (!filasActualizadas || filasActualizadas.length === 0) {
+          console.error('UPDATE de solicitud no afectó ninguna fila (posible sesión vencida o permiso insuficiente).');
+          alert('❌ No se pudo guardar: tu sesión puede haber vencido. Por favor cierra sesión, vuelve a entrar e inténtalo de nuevo.');
           return;
         }
         solicitudId = editingSolicitudId;
