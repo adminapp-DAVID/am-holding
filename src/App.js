@@ -1746,11 +1746,14 @@ const App = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentView, miPerfil]);
 
-  // Agregar documento (línea de gasto/soporte)
+  // Agregar documento (línea de gasto/soporte) — se agrega AL INICIO de la lista (no al final):
+  // con muchos ítems ya cargados, el usuario tenía que bajar hasta el fondo del formulario cada
+  // vez que daba "+ Agregar" para llegar a la fila nueva vacía. Así la fila a llenar siempre
+  // aparece arriba, justo debajo del botón.
   const handleAddDocumento = () => {
     setNewSolicitud({
       ...newSolicitud,
-      documentos: [...newSolicitud.documentos, { fecha: newSolicitud.fecha, proveedor: '', nit: '', descripcion: '', valor: '', tipoSoporte: '' }]
+      documentos: [{ fecha: newSolicitud.fecha, proveedor: '', nit: '', descripcion: '', valor: '', tipoSoporte: '' }, ...newSolicitud.documentos]
     });
   };
 
