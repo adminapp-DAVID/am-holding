@@ -551,6 +551,13 @@ const App = () => {
   // se guarda con éxito, nunca antes.
   const [pendientesEnUso, setPendientesEnUso] = useState([]);
   const [verSoportes, setVerSoportes] = useState(null);
+  // Contexto de qué entidad está abierta en el modal "Ver Soportes" — solo se llena al abrirlo
+  // desde una Solicitud (handleVerSoportesSolicitud); el resto de llamadores (Gasto, Ingreso,
+  // Cuenta de Cobro, Pago a Tercero) lo dejan null, así que ahí el botón 🗑️ Eliminar no aparece
+  // (se pidió puntualmente para Solicitudes). `puedeEliminar` replica el mismo criterio que ya
+  // decide si se puede editar la solicitud (puedeEditarSolicitud).
+  const [verSoportesContexto, setVerSoportesContexto] = useState(null);
+  const [eliminandoSoporteId, setEliminandoSoporteId] = useState(null);
   // Pago a Tercero: la coordinadora administrativa necesita ver de un vistazo los datos
   // bancarios del tercero para poder pagar — este modal muestra esa ficha sin tener que
   // abrir el PDF ni "Ver Soportes". Guarda la solicitud completa (trae terceroInfo embebido).
@@ -837,6 +844,47 @@ const App = () => {
         await supabase.storage.from('soportes').remove(rutasSeguras);
       }
       await supabase.from('soportes').delete().eq('entidad_tipo', entidadTipo).eq('entidad_id', entidadId);
+    }
+  };
+
+  // Elimina UN soporte puntual desde el modal "Ver Soportes" (botón 🗑️, hoy solo habilitado
+  // para Solicitudes — ver verSoportesContexto). Antes solo se podía agregar; si algo se subió
+  // por error no había forma de quitarlo sin pedirle a alguien que entrara a la base de datos.
+  // Mismo cuidado de siempre con el archivo físico: solo se borra de Storage si ninguna otra
+  // fila de public.soportes (de cualquier entidad, ej. el Gasto que esta misma solicitud generó
+  // en Finanzas) sigue apuntándole.
+  const handleEliminarUnSoporte = async (soporte) => {
+    if (!soporte.id) return;
+    if (!window.confirm(`¿Eliminar "${soporte.nombre}"? Esta acción no se puede deshacer.`)) return;
+    setEliminandoSoporteId(soporte.id);
+    try {
+      const { data: otras, error: errorOtras } = await supabase
+        .from('soportes')
+        .select('id')
+        .eq('bucket_path', soporte.bucketPath);
+      if (errorOtras) {
+        console.error('Error revisando si el archivo está compartido:', errorOtras);
+        alert('❌ No se pudo eliminar: ' + errorOtras.message);
+        return;
+      }
+      const esCompartido = (otras || []).some(o => o.id !== soporte.id);
+      if (!esCompartido) {
+        await supabase.storage.from('soportes').remove([soporte.bucketPath]);
+      }
+      const { error: errorDelete } = await supabase.from('soportes').delete().eq('id', soporte.id);
+      if (errorDelete) {
+        console.error('Error eliminando soporte:', errorDelete);
+        alert('❌ No se pudo eliminar: ' + errorDelete.message);
+        return;
+      }
+      setVerSoportes(prev => (prev || []).filter(s => s.id !== soporte.id));
+      if (verSoportesContexto?.entidadTipo === 'solicitud') {
+        const nuevoConteo = await contarSoportesPorEntidad('solicitud', [verSoportesContexto.entidadId]);
+        const n = nuevoConteo[verSoportesContexto.entidadId] || 0;
+        setSolicitudes(prev => prev.map(s => s.id === verSoportesContexto.entidadId ? { ...s, cantidadSoportes: n } : s));
+      }
+    } finally {
+      setEliminandoSoporteId(null);
     }
   };
 
@@ -3131,7 +3179,7 @@ const App = () => {
   const handleVerSoportesSolicitud = async (s) => {
     const { data, error } = await supabase
       .from('soportes')
-      .select('bucket_path, nombre_original, tamano_kb')
+      .select('id, bucket_path, nombre_original, tamano_kb')
       .eq('entidad_tipo', 'solicitud')
       .eq('entidad_id', s.id)
       .order('created_at');
@@ -3143,10 +3191,14 @@ const App = () => {
     }
 
     setVerSoportes((data || []).map(r => ({
+      id: r.id,
       nombre: r.nombre_original,
       tamaño: (r.tamano_kb || 0) * 1024,
       bucketPath: r.bucket_path
     })));
+    // Mismo criterio que ya decide si esta solicitud se puede editar — si puede editarla,
+    // también puede borrar un soporte que haya subido por error.
+    setVerSoportesContexto({ entidadTipo: 'solicitud', entidadId: s.id, puedeEliminar: puedeEditarSolicitud(s) });
   };
 
   // Generar Excel con el mismo formato del control de pagos (Fecha, Pagado a, NIT, Concepto, Valor, Tipo de Soporte)
@@ -9751,13 +9803,18 @@ const App = () => {
                       <button onClick={() => handleDownloadSoporte(soporte)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>
                         ⬇️ Descargar
                       </button>
+                      {verSoportesContexto?.puedeEliminar && soporte.id && (
+                        <button onClick={() => handleEliminarUnSoporte(soporte)} disabled={eliminandoSoporteId === soporte.id} title="Eliminar este soporte" style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #CC4B4B', color: '#CC4B4B', borderRadius: '4px', fontWeight: 'bold', cursor: eliminandoSoporteId === soporte.id ? 'default' : 'pointer', fontSize: '0.85rem' }}>
+                          {eliminandoSoporteId === soporte.id ? '⏳' : '🗑️'}
+                        </button>
+                      )}
                     </div>
                   </div>
                   );
                 })
               )}
-              
-              <button onClick={() => setVerSoportes(null)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>
+
+              <button onClick={() => { setVerSoportes(null); setVerSoportesContexto(null); }} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>
                 Cerrar
               </button>
             </div>
