@@ -840,6 +840,83 @@ const App = () => {
     }
   };
 
+  // Fusiona TODOS los soportes ya guardados de una solicitud (el PDF consolidado original y/o
+  // cualquier suelto que hubiera quedado de una edición anterior) con los soportes nuevos que se
+  // acaban de agregar en esta edición, en UN SOLO PDF — y reemplaza los anteriores por éste.
+  // Antes, un soporte agregado al editar quedaba suelto aparte del PDF original (para no tocar
+  // lo ya subido); el usuario pidió explícitamente que al editar también quede todo fusionado en
+  // un solo documento, igual que al crear la solicitud.
+  const fusionarSoportesEdicion = async (solicitudId, soportesNuevos, portada) => {
+    const { data: existentes, error: errorExistentes } = await supabase
+      .from('soportes')
+      .select('id, bucket_path, nombre_original')
+      .eq('entidad_tipo', 'solicitud')
+      .eq('entidad_id', solicitudId);
+    if (errorExistentes) {
+      console.error('Error leyendo soportes existentes para fusionar:', errorExistentes);
+      alert('⚠️ No se pudieron leer los soportes ya guardados; los nuevos se subieron sueltos, sin fusionar.');
+      for (const soporte of soportesNuevos) await subirSoporteEntidad(soporte, 'solicitud', solicitudId);
+      return;
+    }
+
+    // Descarga cada soporte ya guardado (consolidado o suelto) y lo deja en memoria como dataURL,
+    // en el mismo formato que un archivo recién leído del disco, para poder unirlo de nuevo.
+    const existentesComoTemp = [];
+    for (const row of (existentes || [])) {
+      const { data: blob, error: errorDescarga } = await supabase.storage.from('soportes').download(row.bucket_path);
+      if (errorDescarga || !blob) {
+        console.warn('No se pudo descargar un soporte existente para fusionar:', row, errorDescarga);
+        continue;
+      }
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      existentesComoTemp.push({ nombre: row.nombre_original, tipo: inferirMimePorExtension(row.nombre_original), data: dataUrl });
+    }
+
+    const todos = [...existentesComoTemp, ...soportesNuevos];
+    let soportePDF;
+    try {
+      soportePDF = await mergeSoportesToPDF(todos, portada);
+    } catch (mergeError) {
+      console.error('Error fusionando soportes en un solo PDF:', mergeError);
+      alert('⚠️ No se pudieron fusionar los soportes en un solo PDF; los nuevos se subieron sueltos, sin tocar los que ya estaban.');
+      for (const soporte of soportesNuevos) await subirSoporteEntidad(soporte, 'solicitud', solicitudId);
+      return;
+    }
+
+    await subirSoporteEntidad(soportePDF, 'solicitud', solicitudId);
+    if (soportePDF.omitidos && soportePDF.omitidos.length > 0) {
+      for (const soporteOmitido of soportePDF.omitidos) {
+        await subirSoporteEntidad(soporteOmitido, 'solicitud', solicitudId);
+      }
+      alert(`⚠️ ${soportePDF.omitidos.length} archivo(s) no se pudieron unir al PDF consolidado (formato no compatible, ej. HEIC) — se guardaron sueltos: ${soportePDF.omitidos.map(s => s.nombre).join(', ')}`);
+    }
+
+    // Borra los soportes VIEJOS (los que ya estaban antes de esta edición) — nunca el que se
+    // acaba de subir arriba, que quedó con un bucket_path nuevo. Mismo cuidado que
+    // eliminarSoportesDeEntidad: un bucket_path solo se borra de Storage si ninguna otra fila
+    // (ej. el Gasto que esta misma solicitud generó en Finanzas, que reutiliza el mismo archivo)
+    // sigue apuntándole.
+    const idsViejos = (existentes || []).map(r => r.id);
+    if (idsViejos.length > 0) {
+      const rutasViejas = [...new Set((existentes || []).map(r => r.bucket_path))];
+      const rutasSeguras = [];
+      for (const ruta of rutasViejas) {
+        const { data: otras } = await supabase.from('soportes').select('id').eq('bucket_path', ruta);
+        const quedanOtras = (otras || []).some(o => !idsViejos.includes(o.id));
+        if (!quedanOtras) rutasSeguras.push(ruta);
+      }
+      if (rutasSeguras.length > 0) {
+        await supabase.storage.from('soportes').remove(rutasSeguras);
+      }
+      await supabase.from('soportes').delete().in('id', idsViejos);
+    }
+  };
+
   // Descarga un soporte guardado en Storage (bucket "soportes") como archivo local.
   const handleDescargarSoporteStorage = async (soporte) => {
     const { data, error } = await supabase.storage.from('soportes').download(soporte.bucketPath);
@@ -2299,12 +2376,20 @@ const App = () => {
         solicitudId = inserted.id;
       }
 
-      // Soportes sueltos agregados durante una EDICIÓN (ej. la factura que faltó subir al crear
-      // la solicitud) — cada uno queda como su propia fila en public.soportes, sin tocar el PDF
-      // consolidado ni ninguna ficha que ya se hubiera generado al crearla.
+      // Soportes agregados durante una EDICIÓN (ej. los recibos de los ítems nuevos, o algo que
+      // faltó subir al crear la solicitud) — se fusionan con TODO lo que ya estaba subido en un
+      // solo PDF consolidado, que reemplaza a los anteriores (ver fusionarSoportesEdicion).
       if (editingSolicitudId && soportesAdicionalesEdicion.length > 0) {
-        for (const soporte of soportesAdicionalesEdicion) {
-          await subirSoporteEntidad(soporte, 'solicitud', solicitudId);
+        try {
+          await fusionarSoportesEdicion(solicitudId, soportesAdicionalesEdicion, {
+            empresa: empresaNombre,
+            tipo: newSolicitud.tipo,
+            responsableNombre: colaboradoresPublico.find(c => c.id === solicitudOriginalEnEdicion?.responsableId)?.nombre || solicitudOriginalEnEdicion?.responsableNombre || '',
+            fecha: newSolicitud.fecha
+          });
+        } catch (fusionError) {
+          console.error('Error fusionando soportes en la edición:', fusionError);
+          alert('⚠️ La solicitud se guardó, pero hubo un error fusionando los soportes en un solo PDF.');
         }
       }
 
@@ -6981,7 +7066,7 @@ const App = () => {
                 {editingSolicitudId && (
                   <div style={{ marginBottom: '1rem', backgroundColor: '#F8F6F1', padding: '1rem', borderRadius: '4px', border: '1px solid #E6E0D2' }}>
                     <h3 style={{ color: '#6C63D1', margin: '0 0 0.5rem 0', fontSize: '0.95rem' }}>📎 Agregar soporte(s) de los ítems nuevos / faltante</h3>
-                    <p style={{ color: '#6B6458', fontSize: '0.8rem', margin: '0 0 0.75rem 0' }}>Sube aquí los soportes de los ítems que agregaste arriba (o algún soporte que haya faltado al crear la solicitud). Quedan junto a los demás soportes de esta solicitud — no reemplazan ni reorganizan el PDF que ya se había consolidado al crearla.</p>
+                    <p style={{ color: '#6B6458', fontSize: '0.8rem', margin: '0 0 0.75rem 0' }}>Sube aquí los soportes de los ítems que agregaste arriba (o algún soporte que haya faltado al crear la solicitud). Al guardar se fusionan con el PDF ya consolidado en uno solo nuevo — no quedan sueltos.</p>
                     <input type="file" accept="application/pdf,image/*" multiple onChange={handleSeleccionarSoporteAdicionalEdicion} style={{ width: '100%', padding: '0.6rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', boxSizing: 'border-box', cursor: 'pointer' }} />
                     {soportesAdicionalesEdicion.length > 0 && (
                       <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
