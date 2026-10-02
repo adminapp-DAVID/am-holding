@@ -155,6 +155,14 @@ const getSaldoPendienteEnMes = (deduccion, anio, mes) => {
 // campo "Tipo" a "Pago a Tercero".
 const CECO_PAGO_TERCERO = 'CECO-015-PT';
 
+// Valor centinela para newGasto.cuentaDestino cuando un Traslado va hacia una cuenta que NO es
+// de ninguna empresa de la holding (ej. pagarle a un banco/entidad externa desde la cuenta de
+// una de nuestras empresas) — en vez de elegir una cuenta del desplegable normal, se digitan
+// Número de cuenta y Detalle a mano. No lleva "empresa: cuenta" (sin ": ") a propósito, para
+// que getEmpresaDestinoTraslado() lo trate como "misma empresa que el origen" y no dispare la
+// lógica de comparación de monedas entre dos empresas de la holding (aquí no aplica).
+const CUENTA_DESTINO_EXTERNA = 'Empresa Externa';
+
 // Texto exacto de "observaciones" que se guarda en el Gasto cuando lo genera automáticamente el
 // batch "Marcar Pagado" de Presupuesto (Mensual). Se usa también en Historial de Finanzas para
 // mostrar "🔗 Generado desde Presupuesto" (mismo patrón que solicitudOrigenId para Solicitudes,
@@ -486,7 +494,7 @@ const App = () => {
   const [cargandoIngresos, setCargandoIngresos] = useState(true);
   const [guardandoGasto, setGuardandoGasto] = useState(false);
   const [guardandoIngreso, setGuardandoIngreso] = useState(false);
-  const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', valorDestino: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', soportes: [], presupuestoItemId: '', aplicarDeduccion: true, moneda: 'COP', terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false });
+  const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', valorDestino: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', cuentaDestinoExternaNumero: '', cuentaDestinoExternaDetalle: '', soportes: [], presupuestoItemId: '', aplicarDeduccion: true, moneda: 'COP', terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false });
   const [newIngreso, setNewIngreso] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Ingreso', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CEIN-001-ING', detalle: '', valor: '', categoria: '', estado: 'Pagado', observaciones: '', linkSoporte: '', cuenta: '', soportes: [] });
   // Subir un soporte sobreviniente (o varios) a un Gasto/Ingreso YA guardado, directo desde la
   // fila del Historial — sin reabrir el formulario ni tocar el resto del registro. `id` guarda
@@ -4111,6 +4119,10 @@ const App = () => {
         alert('CECO es obligatorio para traslados');
         return;
       }
+      if (newGasto.cuentaDestino === CUENTA_DESTINO_EXTERNA && (!newGasto.cuentaDestinoExternaNumero || !newGasto.cuentaDestinoExternaDetalle)) {
+        alert('Número de cuenta y Detalle son obligatorios para un traslado a Empresa Externa');
+        return;
+      }
       // Traslado entre monedas distintas (hoy en la práctica: ARKO en USD hacia/desde el resto
       // de la holding en COP) — el valor que sale (campo "Valor") y el valor que entra a la
       // cuenta destino ("Valor en Cuenta Destino") son montos distintos en monedas distintas,
@@ -4235,6 +4247,13 @@ const App = () => {
       const [empresaId, cecoId] = await Promise.all([resolverEmpresaId(newGasto.empresa), resolverCecoId(cecoFinal)]);
       const responsableId = personasFinanzas.find(r => r.nombre === newGasto.responsable)?.id || null;
 
+      // "cuenta_destino" es solo texto en la base de datos — para un traslado a Empresa Externa
+      // no hay una cuenta propia que elegir, así que se guarda el Número de cuenta y el Detalle
+      // digitados, en un texto legible (en vez del valor centinela CUENTA_DESTINO_EXTERNA solo).
+      const cuentaDestinoFinal = newGasto.cuentaDestino === CUENTA_DESTINO_EXTERNA
+        ? `Empresa Externa — Cta: ${newGasto.cuentaDestinoExternaNumero} — ${newGasto.cuentaDestinoExternaDetalle}`
+        : (newGasto.cuentaDestino || null);
+
       const payloadGasto = {
         fecha: newGasto.fecha,
         tipo: newGasto.tipo,
@@ -4243,7 +4262,7 @@ const App = () => {
         ceco_id: cecoId,
         cuenta: newGasto.cuenta || null,
         cuenta_salida: newGasto.cuentaSalida || null,
-        cuenta_destino: newGasto.cuentaDestino || null,
+        cuenta_destino: cuentaDestinoFinal,
         detalle: newGasto.detalle,
         valor: valorFinal,
         valor_destino: valorDestinoFinal,
@@ -4317,6 +4336,8 @@ const App = () => {
         linkSoporte: '',
         cuentaSalida: '',
         cuentaDestino: '',
+        cuentaDestinoExternaNumero: '',
+        cuentaDestinoExternaDetalle: '',
         soportes: [],
         presupuestoItemId: '',
         aplicarDeduccion: true,
@@ -7759,14 +7780,24 @@ const App = () => {
                     </div>
                     <div>
                       <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta Destino</label>
-                      <select value={newGasto.cuentaDestino} onChange={(e) => setNewGasto({...newGasto, cuentaDestino: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                      <select value={newGasto.cuentaDestino} onChange={(e) => setNewGasto({...newGasto, cuentaDestino: e.target.value, cuentaDestinoExternaNumero: '', cuentaDestinoExternaDetalle: ''})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
                         <option value="">Seleccionar</option>
+                        <option value={CUENTA_DESTINO_EXTERNA}>🏢 Empresa Externa</option>
                         {empresas.map(emp => (
                           <optgroup key={emp} label={emp}>
                             {(cuentasPorEmpresa[emp] || []).map(cuenta => <option key={`${emp}-${cuenta}`} value={`${emp}: ${cuenta}`}>{cuenta}</option>)}
                           </optgroup>
                         ))}
                       </select>
+                      {/* Traslado hacia una cuenta que no es de ninguna empresa de la holding
+                          (ej. pagarle directo a un banco/entidad externa) — se digitan a mano
+                          en vez de elegir de la lista de cuentas propias. */}
+                      {newGasto.cuentaDestino === CUENTA_DESTINO_EXTERNA && (
+                        <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <input type="text" placeholder="Número de cuenta" value={newGasto.cuentaDestinoExternaNumero} onChange={(e) => setNewGasto({...newGasto, cuentaDestinoExternaNumero: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
+                          <input type="text" placeholder="Detalle (banco, titular, etc.)" value={newGasto.cuentaDestinoExternaDetalle} onChange={(e) => setNewGasto({...newGasto, cuentaDestinoExternaDetalle: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
+                        </div>
+                      )}
                     </div>
                   </>
                 ) : (
