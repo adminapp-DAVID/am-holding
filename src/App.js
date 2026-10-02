@@ -3204,9 +3204,13 @@ const App = () => {
       tamaño: (r.tamano_kb || 0) * 1024,
       bucketPath: r.bucket_path
     })));
-    // Mismo criterio que ya decide si esta solicitud se puede editar — si puede editarla,
-    // también puede borrar un soporte que haya subido por error.
-    setVerSoportesContexto({ entidadTipo: 'solicitud', entidadId: s.id, puedeEliminar: puedeEditarSolicitud(s) });
+    // Borrar un soporte mal subido no toca ningún dato financiero de la solicitud, así que no
+    // debe depender de puedeEditarSolicitud (que solo permite editar en Pendiente/Devuelto, o
+    // Legalizado si es Legalización T. Pro) — eso dejaba a Coordinadora Administrativa sin el
+    // botón en solicitudes ya Aprobadas/Pagadas, aunque tiene el mismo rol de gestión que
+    // Administrador. Administrador y Coordinadora pueden eliminar soportes en cualquier estado;
+    // el responsable dueño de la solicitud también puede, mientras siga en un estado editable.
+    setVerSoportesContexto({ entidadTipo: 'solicitud', entidadId: s.id, puedeEliminar: canApprove || puedeEditarSolicitud(s) });
   };
 
   // Generar Excel con el mismo formato del control de pagos (Fecha, Pagado a, NIT, Concepto, Valor, Tipo de Soporte)
