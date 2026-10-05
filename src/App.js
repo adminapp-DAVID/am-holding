@@ -5465,6 +5465,36 @@ const App = () => {
           }
         }
 
+        // Anti-duplicados: si una fila ya existe en la BD (misma fecha, empresa, tipo, valor y
+        // detalle) casi seguro es el mismo archivo importado dos veces. No se bloquea del todo
+        // — dos cobros iguales el mismo día pueden ser reales — pero se avisa y hay que confirmar.
+        const claveMovimiento = (r) => [r.fecha, r.empresa_id, r.tipo, Number(r.valor), String(r.detalle || '').trim().toUpperCase()].join('|');
+        const fechasImportadas = filasValidas.map(f => f.fecha).sort();
+        const buscarExistentes = async (tabla) => {
+          const { data, error } = await supabase
+            .from(tabla)
+            .select('fecha, empresa_id, tipo, valor, detalle')
+            .gte('fecha', fechasImportadas[0])
+            .lte('fecha', fechasImportadas[fechasImportadas.length - 1]);
+          if (error) throw new Error(`No se pudo revisar duplicados en ${tabla}: ${error.message}`);
+          return new Set((data || []).map(claveMovimiento));
+        };
+        const [existentesGastos, existentesIngresos] = await Promise.all([
+          filasGastos.length > 0 ? buscarExistentes('gastos') : new Set(),
+          filasIngresos.length > 0 ? buscarExistentes('ingresos') : new Set()
+        ]);
+        const repetidas = [
+          ...filasGastos.filter(r => existentesGastos.has(claveMovimiento(r))),
+          ...filasIngresos.filter(r => existentesIngresos.has(claveMovimiento(r)))
+        ];
+        if (repetidas.length > 0) {
+          const lista = repetidas.slice(0, 15).map(r => `• ${r.fecha} · ${r.tipo} · ${r.detalle} · ${Number(r.valor).toLocaleString('es-CO')}`).join('\n');
+          const seguir = window.confirm(
+            `⚠️ ${repetidas.length} fila(s) de este archivo YA EXISTEN en Finanzas (misma fecha, empresa, tipo, valor y detalle) — probablemente este archivo ya se importó:\n\n${lista}${repetidas.length > 15 ? `\n… y ${repetidas.length - 15} más.` : ''}\n\nAceptar = importar TODO de todos modos (quedarán duplicadas).\nCancelar = no importar nada.`
+          );
+          if (!seguir) return;
+        }
+
         if (filasGastos.length > 0) {
           const { error } = await supabase.from('gastos').insert(filasGastos);
           if (error) {
