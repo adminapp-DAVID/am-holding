@@ -5324,11 +5324,11 @@ const App = () => {
   // quien vaya a convertir un extracto bancario (a mano, o pidiéndole a Claude que lo haga) para
   // que sepa exactamente en qué formato dejar el resultado antes de subirlo.
   const handleDescargarPlantillaImportacion = () => {
-    const encabezados = ['Movimiento', 'Fecha', 'Empresa', 'Responsable', 'CECO', 'Cuenta', 'Cuenta Salida', 'Cuenta Destino', 'Detalle', 'Valor', 'Valor Destino', 'Categoria', 'Estado', 'Observaciones'];
+    const encabezados = ['Movimiento', 'Fecha', 'Empresa', 'Responsable', 'CECO', 'Cuenta', 'Cuenta Salida', 'Cuenta Destino', 'Detalle', 'Valor', 'Valor Destino', 'Categoria', 'Estado', 'Observaciones', 'Soporte (link)'];
     const ejemplos = [
-      ['Gasto', '2026-01-15', 'AM SPORTS GROUP SAS', '', '', 'Bancolombia Ahorros', '', '', 'Pago proveedor X', 350000, '', 'Operativo', 'Pendiente', ''],
-      ['Ingreso', '2026-01-16', 'AM SPORTS GROUP SAS', '', '', 'Bancolombia Ahorros', '', '', 'Pago cliente Y', 1200000, '', 'Ventas', 'Pendiente', ''],
-      ['Traslado', '2026-01-17', 'ARKO', '', '', '', 'Cuenta USD ARKO', 'AM SPORTS GROUP SAS: Bancolombia Ahorros', 'Traslado de fondos', 500, 2000000, '', 'Pendiente', '']
+      ['Gasto', '2026-01-15', 'AM SPORTS GROUP SAS', '', '', 'Bancolombia Ahorros', '', '', 'Pago proveedor X', 350000, '', 'Operativo', 'Pendiente', '', 'https://drive.google.com/file/d/EJEMPLO/view'],
+      ['Ingreso', '2026-01-16', 'AM SPORTS GROUP SAS', '', '', 'Bancolombia Ahorros', '', '', 'Pago cliente Y', 1200000, '', 'Ventas', 'Pendiente', '', ''],
+      ['Traslado', '2026-01-17', 'ARKO', '', '', '', 'Cuenta USD ARKO', 'AM SPORTS GROUP SAS: Bancolombia Ahorros', 'Traslado de fondos', 500, 2000000, '', 'Pendiente', '', '']
     ];
     const ws = XLSX.utils.aoa_to_sheet([encabezados, ...ejemplos]);
     ws['!cols'] = encabezados.map(() => ({ wch: 20 }));
@@ -5399,6 +5399,13 @@ const App = () => {
           if (responsableNombre && !personasFinanzas.some(r => r.nombre === responsableNombre)) {
             errores.push(`Fila ${numFila}: el Responsable "${responsableNombre}" no existe en el sistema — déjalo vacío o corrige el nombre exacto`);
           }
+          // Soporte histórico que vive en Drive: se guarda el link tal cual (el botón 📎 del
+          // historial lo abre). Solo https — cualquier otra cosa (p. ej. "javascript:") se
+          // rechaza, porque ese valor termina en un window.open.
+          const soporteLink = String(fila['Soporte (link)'] || '').trim();
+          if (soporteLink && !/^https:\/\/\S+$/i.test(soporteLink)) {
+            errores.push(`Fila ${numFila}: "Soporte (link)" debe ser un link que empiece por https:// (llegó "${soporteLink.slice(0, 60)}")`);
+          }
           const cecoCodigo = String(fila['CECO'] || '').trim();
           if (cecoCodigo && !cecosDB.some(c => c.codigo === cecoCodigo)) {
             errores.push(`Fila ${numFila}: el CECO "${cecoCodigo}" no existe en el catálogo — déjalo vacío o corrige el código exacto`);
@@ -5414,7 +5421,8 @@ const App = () => {
             valorDestino: fila['Valor Destino'] ? parseFloat(fila['Valor Destino']) : null,
             categoria: String(fila['Categoria'] || '').trim() || null,
             estado: String(fila['Estado'] || '').trim() || 'Pendiente',
-            observaciones: String(fila['Observaciones'] || '').trim() || null
+            observaciones: String(fila['Observaciones'] || '').trim() || null,
+            soporteLink: soporteLink || null
           };
         });
 
@@ -5443,7 +5451,8 @@ const App = () => {
             filasIngresos.push({
               fecha: f.fecha, tipo: 'Ingreso', empresa_id: empresaId, responsable_id: responsableId,
               ceco_id: cecoId, cuenta: f.cuenta, detalle: f.detalle, valor: f.valor,
-              categoria: f.categoria, estado: f.estado, observaciones: f.observaciones
+              categoria: f.categoria, estado: f.estado, observaciones: f.observaciones,
+              soporte_drive_link: f.soporteLink
             });
           } else {
             filasGastos.push({
@@ -5451,7 +5460,7 @@ const App = () => {
               ceco_id: cecoId, cuenta: f.cuenta, cuenta_salida: f.cuentaSalida, cuenta_destino: f.cuentaDestino,
               detalle: f.detalle, valor: f.valor, valor_destino: f.valorDestino, valor_bruto: null,
               deduccion_aplicada: null, categoria: f.categoria, estado: f.estado,
-              observaciones: f.observaciones, presupuesto_item_id: null, soporte_drive_link: null
+              observaciones: f.observaciones, presupuesto_item_id: null, soporte_drive_link: f.soporteLink
             });
           }
         }
