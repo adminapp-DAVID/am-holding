@@ -5324,11 +5324,11 @@ const App = () => {
   // quien vaya a convertir un extracto bancario (a mano, o pidiéndole a Claude que lo haga) para
   // que sepa exactamente en qué formato dejar el resultado antes de subirlo.
   const handleDescargarPlantillaImportacion = () => {
-    const encabezados = ['Movimiento', 'Fecha', 'Empresa', 'Responsable', 'CECO', 'Cuenta', 'Cuenta Salida', 'Cuenta Destino', 'Detalle', 'Valor', 'Valor Destino', 'Categoria', 'Estado', 'Observaciones'];
+    const encabezados = ['Movimiento', 'Fecha', 'Empresa', 'Responsable', 'CECO', 'Cuenta', 'Cuenta Salida', 'Cuenta Destino', 'Detalle', 'Valor', 'Valor Destino', 'Categoria', 'Estado', 'Observaciones', 'Soporte (link)'];
     const ejemplos = [
-      ['Gasto', '2026-01-15', 'AM SPORTS GROUP SAS', '', '', 'Bancolombia Ahorros', '', '', 'Pago proveedor X', 350000, '', 'Operativo', 'Pendiente', ''],
-      ['Ingreso', '2026-01-16', 'AM SPORTS GROUP SAS', '', '', 'Bancolombia Ahorros', '', '', 'Pago cliente Y', 1200000, '', 'Ventas', 'Pendiente', ''],
-      ['Traslado', '2026-01-17', 'ARKO', '', '', '', 'Cuenta USD ARKO', 'AM SPORTS GROUP SAS: Bancolombia Ahorros', 'Traslado de fondos', 500, 2000000, '', 'Pendiente', '']
+      ['Gasto', '2026-01-15', 'AM SPORTS GROUP SAS', '', '', 'Bancolombia Ahorros', '', '', 'Pago proveedor X', 350000, '', 'Operativo', 'Pendiente', '', 'https://drive.google.com/file/d/EJEMPLO/view'],
+      ['Ingreso', '2026-01-16', 'AM SPORTS GROUP SAS', '', '', 'Bancolombia Ahorros', '', '', 'Pago cliente Y', 1200000, '', 'Ventas', 'Pendiente', '', ''],
+      ['Traslado', '2026-01-17', 'ARKO', '', '', '', 'Cuenta USD ARKO', 'AM SPORTS GROUP SAS: Bancolombia Ahorros', 'Traslado de fondos', 500, 2000000, '', 'Pendiente', '', '']
     ];
     const ws = XLSX.utils.aoa_to_sheet([encabezados, ...ejemplos]);
     ws['!cols'] = encabezados.map(() => ({ wch: 20 }));
@@ -5399,6 +5399,13 @@ const App = () => {
           if (responsableNombre && !personasFinanzas.some(r => r.nombre === responsableNombre)) {
             errores.push(`Fila ${numFila}: el Responsable "${responsableNombre}" no existe en el sistema — déjalo vacío o corrige el nombre exacto`);
           }
+          // Soporte histórico que vive en Drive: se guarda el link tal cual (el botón 📎 del
+          // historial lo abre). Solo https — cualquier otra cosa (p. ej. "javascript:") se
+          // rechaza, porque ese valor termina en un window.open.
+          const soporteLink = String(fila['Soporte (link)'] || '').trim();
+          if (soporteLink && !/^https:\/\/\S+$/i.test(soporteLink)) {
+            errores.push(`Fila ${numFila}: "Soporte (link)" debe ser un link que empiece por https:// (llegó "${soporteLink.slice(0, 60)}")`);
+          }
           const cecoCodigo = String(fila['CECO'] || '').trim();
           if (cecoCodigo && !cecosDB.some(c => c.codigo === cecoCodigo)) {
             errores.push(`Fila ${numFila}: el CECO "${cecoCodigo}" no existe en el catálogo — déjalo vacío o corrige el código exacto`);
@@ -5414,7 +5421,8 @@ const App = () => {
             valorDestino: fila['Valor Destino'] ? parseFloat(fila['Valor Destino']) : null,
             categoria: String(fila['Categoria'] || '').trim() || null,
             estado: String(fila['Estado'] || '').trim() || 'Pendiente',
-            observaciones: String(fila['Observaciones'] || '').trim() || null
+            observaciones: String(fila['Observaciones'] || '').trim() || null,
+            soporteLink: soporteLink || null
           };
         });
 
@@ -5443,7 +5451,8 @@ const App = () => {
             filasIngresos.push({
               fecha: f.fecha, tipo: 'Ingreso', empresa_id: empresaId, responsable_id: responsableId,
               ceco_id: cecoId, cuenta: f.cuenta, detalle: f.detalle, valor: f.valor,
-              categoria: f.categoria, estado: f.estado, observaciones: f.observaciones
+              categoria: f.categoria, estado: f.estado, observaciones: f.observaciones,
+              soporte_drive_link: f.soporteLink
             });
           } else {
             filasGastos.push({
@@ -5451,9 +5460,39 @@ const App = () => {
               ceco_id: cecoId, cuenta: f.cuenta, cuenta_salida: f.cuentaSalida, cuenta_destino: f.cuentaDestino,
               detalle: f.detalle, valor: f.valor, valor_destino: f.valorDestino, valor_bruto: null,
               deduccion_aplicada: null, categoria: f.categoria, estado: f.estado,
-              observaciones: f.observaciones, presupuesto_item_id: null, soporte_drive_link: null
+              observaciones: f.observaciones, presupuesto_item_id: null, soporte_drive_link: f.soporteLink
             });
           }
+        }
+
+        // Anti-duplicados: si una fila ya existe en la BD (misma fecha, empresa, tipo, valor y
+        // detalle) casi seguro es el mismo archivo importado dos veces. No se bloquea del todo
+        // — dos cobros iguales el mismo día pueden ser reales — pero se avisa y hay que confirmar.
+        const claveMovimiento = (r) => [r.fecha, r.empresa_id, r.tipo, Number(r.valor), String(r.detalle || '').trim().toUpperCase()].join('|');
+        const fechasImportadas = filasValidas.map(f => f.fecha).sort();
+        const buscarExistentes = async (tabla) => {
+          const { data, error } = await supabase
+            .from(tabla)
+            .select('fecha, empresa_id, tipo, valor, detalle')
+            .gte('fecha', fechasImportadas[0])
+            .lte('fecha', fechasImportadas[fechasImportadas.length - 1]);
+          if (error) throw new Error(`No se pudo revisar duplicados en ${tabla}: ${error.message}`);
+          return new Set((data || []).map(claveMovimiento));
+        };
+        const [existentesGastos, existentesIngresos] = await Promise.all([
+          filasGastos.length > 0 ? buscarExistentes('gastos') : new Set(),
+          filasIngresos.length > 0 ? buscarExistentes('ingresos') : new Set()
+        ]);
+        const repetidas = [
+          ...filasGastos.filter(r => existentesGastos.has(claveMovimiento(r))),
+          ...filasIngresos.filter(r => existentesIngresos.has(claveMovimiento(r)))
+        ];
+        if (repetidas.length > 0) {
+          const lista = repetidas.slice(0, 15).map(r => `• ${r.fecha} · ${r.tipo} · ${r.detalle} · ${Number(r.valor).toLocaleString('es-CO')}`).join('\n');
+          const seguir = window.confirm(
+            `⚠️ ${repetidas.length} fila(s) de este archivo YA EXISTEN en Finanzas (misma fecha, empresa, tipo, valor y detalle) — probablemente este archivo ya se importó:\n\n${lista}${repetidas.length > 15 ? `\n… y ${repetidas.length - 15} más.` : ''}\n\nAceptar = importar TODO de todos modos (quedarán duplicadas).\nCancelar = no importar nada.`
+          );
+          if (!seguir) return;
         }
 
         if (filasGastos.length > 0) {
