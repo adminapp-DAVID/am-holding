@@ -2655,9 +2655,10 @@ const App = () => {
       }
       if (solActual.gasto_generado_id || solActual.ingreso_generado_id) return; // ya se generó antes, no duplicar
 
-      // Pago a Tercero sigue usando su CECO fijo por defecto (CECO-015-PT); Anticipo, Reembolso
-      // y Legalización usan el CECO que el usuario eligió en el modal "Confirmar Pago".
-      const cecoId = await resolverCecoId(solicitud.tipo === 'Pago a Tercero' ? CECO_PAGO_TERCERO : cecoCodigo);
+      // Todos los tipos (incluido Pago a Tercero) usan el CECO que se eligió en el modal
+      // "Confirmar Pago". Antes Pago a Tercero quedaba fijo en CECO-015-PT, que no dice en qué
+      // se gastó la plata y obligaba a corregirlo a mano después.
+      const cecoId = await resolverCecoId(cecoCodigo);
 
       const tabla = accion === 'ingreso' ? 'ingresos' : 'gastos';
       const columnaVinculo = accion === 'ingreso' ? 'ingreso_generado_id' : 'gasto_generado_id';
@@ -2797,7 +2798,7 @@ const App = () => {
       alert('Elige con qué cuenta de la empresa se hizo el pago');
       return;
     }
-    if (solicitud.tipo !== 'Pago a Tercero' && !ceco) {
+    if (!ceco) {
       alert('Elige el CECO para este movimiento');
       return;
     }
@@ -2859,14 +2860,12 @@ const App = () => {
     if (!confirmarPagoLoteReembolsos) return;
     const { items, cuenta, ceco, comprobantes } = confirmarPagoLoteReembolsos;
     if (!items || items.length === 0) return;
-    // Pago a Tercero siempre usa su CECO fijo (CECO_PAGO_TERCERO, ver generarMovimientoDesdeSolicitud)
-    // — no se pide en el modal para ese tipo, igual que en el pago individual.
     const esLoteTercero = items[0]?.tipo === 'Pago a Tercero';
     if (!cuenta) {
       alert('Elige con qué cuenta de la empresa se hizo el pago');
       return;
     }
-    if (!esLoteTercero && !ceco) {
+    if (!ceco) {
       alert('Elige el CECO para este lote de pago');
       return;
     }
@@ -9403,7 +9402,7 @@ const App = () => {
                 {(cuentasPorEmpresa[solicitud.empresa] || []).map(cuenta => <option key={cuenta} value={cuenta}>{cuenta}</option>)}
               </select>
 
-              {!esTercero && (
+              {(
                 <>
                   <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>CECO *</label>
                   <select value={confirmarPagoSolicitud.ceco} onChange={(e) => setConfirmarPagoSolicitud({...confirmarPagoSolicitud, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', marginBottom: '1rem' }}>
@@ -9578,9 +9577,8 @@ const App = () => {
                 {(cuentasPorEmpresa[empresaLote] || []).map(c => <option key={c} value={c}>{c}</option>)}
               </select>
 
-              {/* Pago a Tercero siempre usa su CECO fijo (CECO-015-PT) — no se pide acá, igual que
-                  en el pago individual de un solo Pago a Tercero. */}
-              {!esLoteTerceroModal && (
+              {/* El CECO se pide para todos los tipos, incluido Pago a Tercero. */}
+              {(
                 <>
                   <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>CECO del lote *</label>
                   <select value={ceco} onChange={(e) => setConfirmarPagoLoteReembolsos({...confirmarPagoLoteReembolsos, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', marginBottom: '1rem' }}>
