@@ -15,6 +15,9 @@ import logoProGlobal from './assets/logos/logo-pro-global.png';
 import logoForSeven from './assets/logos/logo-for-seven.png';
 import logoPronova from './assets/logos/logo-pronova.png';
 import { supabase } from './supabaseClient';
+import { SelectBanco, SelectTipoDocumento, CampoBanco, textoBancoPara } from './CamposBancarios';
+import DatosBancariosView from './DatosBancariosView';
+import { CODIGO_BANCO_EXTERIOR, inferirCodigoBanco, limpiarNumeroCuenta, limpiarDocumento } from './datosBancarios';
 
 // Logo por empresa. Para sumar ARKO, sube el archivo a src/assets/logos/,
 // agrega su import arriba y una línea aquí con el nombre exacto de la empresa.
@@ -394,7 +397,8 @@ const App = () => {
   // para poder reactivarlos, igual que ya pasa con Gestión de CECOs.
   const [todosTerceros, setTodosTerceros] = useState([]);
   const [mostrarGestionTerceros, setMostrarGestionTerceros] = useState(false);
-  const [nuevoTercero, setNuevoTercero] = useState({ nombre: '', dni: '', paisOrigen: '', banco: '', tipoCuenta: '', numeroCuenta: '' });
+  const terceroVacio = { nombre: '', dni: '', tipoDocumento: '', paisOrigen: '', banco: '', codigoBanco: '', tipoCuenta: '', numeroCuenta: '' };
+  const [nuevoTercero, setNuevoTercero] = useState(terceroVacio);
   const [guardandoTercero, setGuardandoTercero] = useState(false);
   const responsables = usuariosDB.filter(u => u.rol === 'Responsable');
   const usuariosAdmin = usuariosDB.filter(u => u.rol !== 'Responsable');
@@ -440,7 +444,7 @@ const App = () => {
   // exponer cédula, banco ni documentos de nadie (eso solo lo ve Admin/Coordinadora o el dueño).
   const [colaboradoresPublico, setColaboradoresPublico] = useState([]);
   const [editingResponsableOrigen, setEditingResponsableOrigen] = useState('responsables'); // 'responsables' | 'admin' — de qué lista viene el registro que se está editando
-  const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', valorAnticipoOriginal: '', anticipoIds: [], detalle: '', empresa: 'AM SPORTS GROUP SAS', documentos: [], moneda: 'COP', terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false });
+  const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', valorAnticipoOriginal: '', anticipoIds: [], detalle: '', empresa: 'AM SPORTS GROUP SAS', documentos: [], moneda: 'COP', terceroId: '', terceroNombre: '', terceroDni: '', terceroTipoDocumento: '', terceroPaisOrigen: '', terceroBanco: '', terceroCodigoBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false });
   // Edición de una Solicitud ya guardada — solo se permite mientras está en estado Pendiente
   // (quien la creó, o Administrador/Coordinadora Administrativa). Reutiliza el mismo formulario
   // "Nueva Solicitud" de arriba: al editar, se precarga newSolicitud con los datos existentes y
@@ -465,7 +469,7 @@ const App = () => {
   const [filtroSolicitudesFechaInicio, setFiltroSolicitudesFechaInicio] = useState('');
   const [filtroSolicitudesFechaFin, setFiltroSolicitudesFechaFin] = useState('');
   const [editingResponsableId, setEditingResponsableId] = useState(null);
-  const responsableVacio = { nombre: '', email: '', empresa: 'AM SPORTS GROUP SAS', foto: '', cedula: '', telefono: '', fechaNacimiento: '', cargo: '', fechaIngreso: '', tipoVinculacion: '', contactoEmergenciaNombre: '', contactoEmergenciaTelefono: '', eps: '', arl: '', funciones: '', banco: '', tipoCuentaBancaria: '', numeroCuenta: '', titularCuenta: '', documentoCedula: null, documentoPasaporte: null };
+  const responsableVacio = { nombre: '', email: '', empresa: 'AM SPORTS GROUP SAS', foto: '', cedula: '', telefono: '', fechaNacimiento: '', cargo: '', fechaIngreso: '', tipoVinculacion: '', contactoEmergenciaNombre: '', contactoEmergenciaTelefono: '', eps: '', arl: '', funciones: '', banco: '', codigoBanco: '', tipoDocumento: '', tipoCuentaBancaria: '', numeroCuenta: '', titularCuenta: '', documentoCedula: null, documentoPasaporte: null };
   const [newResponsable, setNewResponsable] = useState(responsableVacio);
   const [newUserType, setNewUserType] = useState('Colaborador');
   // Cuentas de Cobro — conectado a Supabase (tabla public.cuentas_cobro). Cada archivo de
@@ -494,7 +498,7 @@ const App = () => {
   const [cargandoIngresos, setCargandoIngresos] = useState(true);
   const [guardandoGasto, setGuardandoGasto] = useState(false);
   const [guardandoIngreso, setGuardandoIngreso] = useState(false);
-  const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', valorDestino: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', cuentaDestinoExternaNumero: '', cuentaDestinoExternaDetalle: '', soportes: [], presupuestoItemId: '', aplicarDeduccion: true, moneda: 'COP', terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false });
+  const [newGasto, setNewGasto] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Gasto', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CECO-001-GF', cuenta: '', detalle: '', valor: '', valorDestino: '', categoria: '', estado: 'Pendiente', observaciones: '', linkSoporte: '', cuentaSalida: '', cuentaDestino: '', cuentaDestinoExternaNumero: '', cuentaDestinoExternaDetalle: '', soportes: [], presupuestoItemId: '', aplicarDeduccion: true, moneda: 'COP', terceroId: '', terceroNombre: '', terceroDni: '', terceroTipoDocumento: '', terceroPaisOrigen: '', terceroBanco: '', terceroCodigoBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false });
   const [newIngreso, setNewIngreso] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: 'Ingreso', empresa: 'AM SPORTS GROUP SAS', responsable: '', ceco: 'CEIN-001-ING', detalle: '', valor: '', categoria: '', estado: 'Pagado', observaciones: '', linkSoporte: '', cuenta: '', soportes: [] });
   // Subir un soporte sobreviniente (o varios) a un Gasto/Ingreso YA guardado, directo desde la
   // fila del Historial — sin reabrir el formulario ni tocar el resto del registro. `id` guarda
@@ -1199,6 +1203,8 @@ const App = () => {
     arl: row.arl || '',
     funciones: row.funciones || '',
     banco: row.banco || '',
+    codigoBanco: row.codigo_banco || '',
+    tipoDocumento: row.tipo_documento || '',
     tipoCuentaBancaria: row.tipo_cuenta_bancaria || '',
     numeroCuenta: row.numero_cuenta || '',
     titularCuenta: row.titular_cuenta || '',
@@ -1210,7 +1216,7 @@ const App = () => {
     setCargandoUsuarios(true);
     const { data, error } = await supabase
       .from('usuarios')
-      .select('id, nombre, email, rol, cargo, foto_url, cedula, telefono, fecha_nacimiento, fecha_ingreso, tipo_vinculacion, contacto_emergencia_nombre, contacto_emergencia_telefono, eps, arl, funciones, banco, tipo_cuenta_bancaria, numero_cuenta, titular_cuenta, documento_cedula_path, documento_pasaporte_path, empresas ( nombre )')
+      .select('id, nombre, email, rol, cargo, foto_url, cedula, telefono, fecha_nacimiento, fecha_ingreso, tipo_vinculacion, contacto_emergencia_nombre, contacto_emergencia_telefono, eps, arl, funciones, banco, codigo_banco, tipo_documento, tipo_cuenta_bancaria, numero_cuenta, titular_cuenta, documento_cedula_path, documento_pasaporte_path, empresas ( nombre )')
       .order('nombre');
 
     if (error) {
@@ -1368,7 +1374,9 @@ const App = () => {
     responsableNombre: row.usuarios?.nombre || '',
     responsableCedula: row.responsable_cedula || '',
     responsableCargo: row.responsable_cargo || '',
+    tipoDocumento: row.tipo_documento || '',
     banco: row.banco || '',
+    codigoBanco: row.codigo_banco || '',
     tipoCuentaBancaria: row.tipo_cuenta_bancaria || '',
     numeroCuenta: row.numero_cuenta || '',
     titularCuenta: row.titular_cuenta || '',
@@ -1379,7 +1387,7 @@ const App = () => {
     setCargandoCuentasCobro(true);
     const { data, error } = await supabase
       .from('cuentas_cobro')
-      .select('id, fecha, numero, vencimiento, ciudad, mes, anio, monto, funciones, estado, empresa_nit, responsable_id, responsable_cedula, responsable_cargo, banco, tipo_cuenta_bancaria, numero_cuenta, titular_cuenta, empresas ( nombre ), usuarios ( nombre )')
+      .select('id, fecha, numero, vencimiento, ciudad, mes, anio, monto, funciones, estado, empresa_nit, responsable_id, responsable_cedula, responsable_cargo, tipo_documento, banco, codigo_banco, tipo_cuenta_bancaria, numero_cuenta, titular_cuenta, empresas ( nombre ), usuarios ( nombre )')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -1667,7 +1675,7 @@ const App = () => {
   const cargarTerceros = async () => {
     const { data, error } = await supabase
       .from('terceros')
-      .select('id, nombre, dni, pais_origen, banco, tipo_cuenta, numero_cuenta, activo')
+      .select('id, nombre, dni, tipo_documento, pais_origen, banco, codigo_banco, tipo_cuenta, numero_cuenta, activo')
       .eq('activo', true)
       .order('nombre');
     if (error) {
@@ -1683,7 +1691,7 @@ const App = () => {
   const cargarTodosTerceros = async () => {
     const { data, error } = await supabase
       .from('terceros')
-      .select('id, nombre, dni, pais_origen, banco, tipo_cuenta, numero_cuenta, activo')
+      .select('id, nombre, dni, tipo_documento, pais_origen, banco, codigo_banco, tipo_cuenta, numero_cuenta, activo')
       .order('nombre');
     if (error) {
       console.error('Error cargando el catálogo completo de terceros:', error);
@@ -1708,12 +1716,12 @@ const App = () => {
     // Si era el que estaba elegido en el formulario, se limpia para no dejarlo "seleccionado"
     // apuntando a un tercero que ya no está en la lista.
     if (newSolicitud.terceroId === id) {
-      setNewSolicitud({...newSolicitud, terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false});
+      setNewSolicitud({...newSolicitud, terceroId: '', terceroNombre: '', terceroDni: '', terceroTipoDocumento: '', terceroPaisOrigen: '', terceroBanco: '', terceroCodigoBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false});
     }
     // Mismo cuidado si el tercero eliminado era el elegido en el formulario de Finanzas
     // (Nuevo Gasto/Ingreso -> Pago a Tercero), que usa su propio juego de campos en newGasto.
     if (newGasto.terceroId === id) {
-      setNewGasto({...newGasto, terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false});
+      setNewGasto({...newGasto, terceroId: '', terceroNombre: '', terceroDni: '', terceroTipoDocumento: '', terceroPaisOrigen: '', terceroBanco: '', terceroCodigoBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false});
     }
     await Promise.all([cargarTerceros(), cargarTodosTerceros()]);
   };
@@ -1730,11 +1738,13 @@ const App = () => {
     try {
       const { error } = await supabase.from('terceros').insert({
         nombre: nuevoTercero.nombre.trim(),
-        dni: nuevoTercero.dni.trim(),
+        dni: limpiarDocumento(nuevoTercero.dni.trim(), nuevoTercero.tipoDocumento),
+        tipo_documento: nuevoTercero.tipoDocumento ? Number(nuevoTercero.tipoDocumento) : null,
         pais_origen: nuevoTercero.paisOrigen || null,
         banco: nuevoTercero.banco || null,
+        codigo_banco: nuevoTercero.codigoBanco || null,
         tipo_cuenta: nuevoTercero.tipoCuenta || null,
-        numero_cuenta: nuevoTercero.numeroCuenta || null,
+        numero_cuenta: limpiarNumeroCuenta(nuevoTercero.numeroCuenta) || null,
         activo: true,
         creado_por: user.id
       });
@@ -1744,7 +1754,7 @@ const App = () => {
         return;
       }
       await Promise.all([cargarTerceros(), cargarTodosTerceros()]);
-      setNuevoTercero({ nombre: '', dni: '', paisOrigen: '', banco: '', tipoCuenta: '', numeroCuenta: '' });
+      setNuevoTercero(terceroVacio);
     } finally {
       setGuardandoTercero(false);
     }
@@ -1753,13 +1763,19 @@ const App = () => {
   // Edición en línea de un tercero desde "Gestión de Terceros" (incluye reactivar/desactivar
   // con el checkbox "Activo") — mismo patrón que handleUpdateCeco.
   const handleUpdateTercero = async (id, campoUI, valor) => {
-    const columnaDB = { paisOrigen: 'pais_origen', tipoCuenta: 'tipo_cuenta', numeroCuenta: 'numero_cuenta' }[campoUI] || campoUI;
+    const columnaDB = { paisOrigen: 'pais_origen', tipoCuenta: 'tipo_cuenta', numeroCuenta: 'numero_cuenta', tipoDocumento: 'tipo_documento', codigoBanco: 'codigo_banco' }[campoUI] || campoUI;
+    // El banco se guarda como código ACH (para el PAB) + su nombre en texto (para PDFs y
+    // reportes que ya leen "banco"), siempre los dos juntos.
+    const patch = columnaDB === 'codigo_banco'
+      ? { codigo_banco: valor || null, banco: textoBancoPara(valor, todosTerceros.find(t => t.id === id)?.banco) || null }
+      : { [columnaDB]: valor };
     const anteriores = todosTerceros;
-    setTodosTerceros(todosTerceros.map(t => t.id === id ? { ...t, [columnaDB]: valor } : t));
-    const { error } = await supabase.from('terceros').update({ [columnaDB]: valor }).eq('id', id);
-    if (error) {
+    setTodosTerceros(todosTerceros.map(t => t.id === id ? { ...t, ...patch } : t));
+    // .select('id'): si la RLS bloquea el UPDATE, Supabase devuelve error null con 0 filas.
+    const { data, error } = await supabase.from('terceros').update(patch).eq('id', id).select('id');
+    if (error || !data || data.length === 0) {
       console.error('Error actualizando tercero:', error);
-      alert('❌ No se pudo actualizar el tercero: ' + error.message);
+      alert('❌ No se pudo actualizar el tercero' + (error ? ': ' + error.message : ' (sin permiso)'));
       setTodosTerceros(anteriores);
       return;
     }
@@ -1861,6 +1877,7 @@ const App = () => {
     if (currentView === 'finanzas' || currentView === 'dashboardFinanciero') { cargarGastos(); cargarIngresos(); }
     if (currentView === 'presupuesto') { cargarPresupuestoItems(); cargarPresupuestoAnual(); cargarPresupuestoOverrides(); }
     if (currentView === 'responsables') { cargarUsuarios(); cargarColaboradoresPublico(); }
+    if (currentView === 'datosBancarios') { cargarUsuarios(); cargarTodosTerceros(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentView]);
 
@@ -2168,8 +2185,10 @@ const App = () => {
       terceroId: s.terceroId || '',
       terceroNombre: s.terceroInfo?.nombre || '',
       terceroDni: s.terceroInfo?.dni || '',
+      terceroTipoDocumento: s.terceroInfo?.tipoDocumento || '',
       terceroPaisOrigen: s.terceroInfo?.paisOrigen || '',
       terceroBanco: s.terceroInfo?.banco || '',
+      terceroCodigoBanco: s.terceroInfo?.codigoBanco || inferirCodigoBanco(s.terceroInfo?.banco),
       terceroTipoCuenta: s.terceroInfo?.tipoCuenta || '',
       terceroNumeroCuenta: s.terceroInfo?.numeroCuenta || '',
       guardarTercero: false,
@@ -2199,8 +2218,10 @@ const App = () => {
       terceroId: '',
       terceroNombre: '',
       terceroDni: '',
+      terceroTipoDocumento: '',
       terceroPaisOrigen: '',
       terceroBanco: '',
+      terceroCodigoBanco: '',
       terceroTipoCuenta: '',
       terceroNumeroCuenta: '',
       guardarTercero: true,
@@ -2304,11 +2325,13 @@ const App = () => {
       // y los datos del tercero van en un solo JSONB para no sumar media docena de columnas.
       const terceroInfoFinal = newSolicitud.tipo === 'Pago a Tercero' ? {
         nombre: newSolicitud.terceroNombre,
-        dni: newSolicitud.terceroDni,
+        dni: limpiarDocumento(newSolicitud.terceroDni, newSolicitud.terceroTipoDocumento),
+        tipoDocumento: newSolicitud.terceroTipoDocumento ? Number(newSolicitud.terceroTipoDocumento) : null,
         paisOrigen: newSolicitud.terceroPaisOrigen || null,
         banco: newSolicitud.terceroBanco || null,
+        codigoBanco: newSolicitud.terceroCodigoBanco || null,
         tipoCuenta: newSolicitud.terceroTipoCuenta || null,
-        numeroCuenta: newSolicitud.terceroNumeroCuenta || null,
+        numeroCuenta: limpiarNumeroCuenta(newSolicitud.terceroNumeroCuenta) || null,
       } : null;
 
       // Catálogo reutilizable de terceros (public.terceros): si se eligió "Nuevo tercero" y
@@ -2324,11 +2347,13 @@ const App = () => {
             .from('terceros')
             .insert({
               nombre: newSolicitud.terceroNombre,
-              dni: newSolicitud.terceroDni,
+              dni: limpiarDocumento(newSolicitud.terceroDni, newSolicitud.terceroTipoDocumento),
+              tipo_documento: newSolicitud.terceroTipoDocumento ? Number(newSolicitud.terceroTipoDocumento) : null,
               pais_origen: newSolicitud.terceroPaisOrigen || null,
               banco: newSolicitud.terceroBanco || null,
+              codigo_banco: newSolicitud.terceroCodigoBanco || null,
               tipo_cuenta: newSolicitud.terceroTipoCuenta || null,
-              numero_cuenta: newSolicitud.terceroNumeroCuenta || null,
+              numero_cuenta: limpiarNumeroCuenta(newSolicitud.terceroNumeroCuenta) || null,
               // Explícito y no solo confiado al DEFAULT de la columna: si esta fila queda con
               // activo = null (p. ej. porque la tabla se creó sin default en esa columna),
               // cargarTerceros() la filtra con .eq('activo', true) y el tercero nunca aparece
@@ -2349,11 +2374,13 @@ const App = () => {
             .from('terceros')
             .update({
               nombre: newSolicitud.terceroNombre,
-              dni: newSolicitud.terceroDni,
+              dni: limpiarDocumento(newSolicitud.terceroDni, newSolicitud.terceroTipoDocumento),
+              tipo_documento: newSolicitud.terceroTipoDocumento ? Number(newSolicitud.terceroTipoDocumento) : null,
               pais_origen: newSolicitud.terceroPaisOrigen || null,
               banco: newSolicitud.terceroBanco || null,
+              codigo_banco: newSolicitud.terceroCodigoBanco || null,
               tipo_cuenta: newSolicitud.terceroTipoCuenta || null,
-              numero_cuenta: newSolicitud.terceroNumeroCuenta || null,
+              numero_cuenta: limpiarNumeroCuenta(newSolicitud.terceroNumeroCuenta) || null,
             })
             .eq('id', terceroIdFinal);
           if (updateError) {
@@ -3338,14 +3365,15 @@ const App = () => {
       empresaId = empresaRow?.id || null;
     }
 
-    const { error } = await supabase
+    const { data: guardados, error } = await supabase
       .from('usuarios')
       .update({
         nombre: newResponsable.nombre,
         cargo: newResponsable.cargo || null,
         empresa_id: empresaId,
         foto_url: newResponsable.foto || null,
-        cedula: newResponsable.cedula || null,
+        cedula: limpiarDocumento(newResponsable.cedula, newResponsable.tipoDocumento) || null,
+        tipo_documento: newResponsable.tipoDocumento ? Number(newResponsable.tipoDocumento) : null,
         telefono: newResponsable.telefono || null,
         fecha_nacimiento: newResponsable.fechaNacimiento || null,
         fecha_ingreso: newResponsable.fechaIngreso || null,
@@ -3356,15 +3384,17 @@ const App = () => {
         arl: newResponsable.arl || null,
         funciones: newResponsable.funciones || null,
         banco: newResponsable.banco || null,
+        codigo_banco: newResponsable.codigoBanco || null,
         tipo_cuenta_bancaria: newResponsable.tipoCuentaBancaria || null,
-        numero_cuenta: newResponsable.numeroCuenta || null,
+        numero_cuenta: limpiarNumeroCuenta(newResponsable.numeroCuenta) || null,
         titular_cuenta: newResponsable.titularCuenta || null
       })
-      .eq('id', editingResponsableId);
+      .eq('id', editingResponsableId)
+      .select('id');
 
-    if (error) {
+    if (error || !guardados || guardados.length === 0) {
       console.error('Error guardando usuario:', error);
-      alert('❌ No se pudo guardar: ' + error.message);
+      alert('❌ No se pudo guardar' + (error ? ': ' + error.message : ' (sin permiso o usuario no encontrado)'));
       return;
     }
 
@@ -3515,7 +3545,7 @@ const App = () => {
     const { error } = await supabase.rpc('actualizar_mi_perfil', {
       p_telefono: miPerfilForm.telefono || null,
       p_fecha_nacimiento: miPerfilForm.fechaNacimiento || null,
-      p_cedula: miPerfilForm.cedula || null,
+      p_cedula: limpiarDocumento(miPerfilForm.cedula, miPerfilForm.tipoDocumento) || null,
       p_contacto_emergencia_nombre: miPerfilForm.contactoEmergenciaNombre || null,
       p_contacto_emergencia_telefono: miPerfilForm.contactoEmergenciaTelefono || null,
       p_eps: miPerfilForm.eps || null,
@@ -3523,13 +3553,19 @@ const App = () => {
       p_funciones: miPerfilForm.funciones || null,
       p_banco: miPerfilForm.banco || null,
       p_tipo_cuenta_bancaria: miPerfilForm.tipoCuentaBancaria || null,
-      p_numero_cuenta: miPerfilForm.numeroCuenta || null,
+      p_numero_cuenta: limpiarNumeroCuenta(miPerfilForm.numeroCuenta) || null,
       p_titular_cuenta: miPerfilForm.titularCuenta || null
     });
+    // Tipo de documento y código de banco (para el pago PAB) van en una RPC aparte con el
+    // mismo blindaje: solo toca la fila propia y solo esas dos columnas.
+    const { error: errorBancario } = error ? { error: null } : await supabase.rpc('actualizar_mi_perfil_bancario', {
+      p_tipo_documento: miPerfilForm.tipoDocumento ? Number(miPerfilForm.tipoDocumento) : null,
+      p_codigo_banco: miPerfilForm.codigoBanco || null
+    });
     setGuardandoMiPerfil(false);
-    if (error) {
-      console.error('Error guardando mi perfil:', error);
-      alert('❌ No se pudo guardar: ' + error.message);
+    if (error || errorBancario) {
+      console.error('Error guardando mi perfil:', error || errorBancario);
+      alert('❌ No se pudo guardar: ' + (error || errorBancario).message);
       return;
     }
     await cargarUsuarios();
@@ -3722,6 +3758,9 @@ const App = () => {
 
       // Snapshot de los datos bancarios al momento de crear la cuenta — si el colaborador
       // los actualiza después en su perfil, esta cuenta ya emitida no cambia retroactivamente.
+      // Se toman de miPerfil (recargado desde la BD) y no de "user" (armado al iniciar sesión),
+      // para que un cambio hecho en Mi Perfil durante la misma sesión sí quede en la cuenta.
+      const perfilPago = miPerfil || user;
       const { data: inserted, error } = await supabase
         .from('cuentas_cobro')
         .insert({
@@ -3737,12 +3776,14 @@ const App = () => {
           empresa_id: empresaId,
           empresa_nit: NIT_EMPRESAS[empresaCuenta] || '(pendiente)',
           responsable_id: user.id,
-          responsable_cedula: user.cedula,
+          responsable_cedula: perfilPago.cedula,
           responsable_cargo: user.cargo,
-          banco: user.banco || '',
-          tipo_cuenta_bancaria: user.tipoCuentaBancaria || '',
-          numero_cuenta: user.numeroCuenta || '',
-          titular_cuenta: user.titularCuenta || user.nombre
+          tipo_documento: perfilPago.tipoDocumento ? Number(perfilPago.tipoDocumento) : null,
+          banco: perfilPago.banco || '',
+          codigo_banco: perfilPago.codigoBanco || null,
+          tipo_cuenta_bancaria: perfilPago.tipoCuentaBancaria || '',
+          numero_cuenta: perfilPago.numeroCuenta || '',
+          titular_cuenta: perfilPago.titularCuenta || user.nombre
         })
         .select('id')
         .single();
@@ -3774,12 +3815,12 @@ const App = () => {
         empresa: empresaCuenta,
         empresaNit: NIT_EMPRESAS[empresaCuenta] || '(pendiente)',
         responsableNombre: user.nombre,
-        responsableCedula: user.cedula,
+        responsableCedula: perfilPago.cedula,
         responsableCargo: user.cargo,
-        banco: user.banco || '',
-        tipoCuentaBancaria: user.tipoCuentaBancaria || '',
-        numeroCuenta: user.numeroCuenta || '',
-        titularCuenta: user.titularCuenta || user.nombre
+        banco: perfilPago.banco || '',
+        tipoCuentaBancaria: perfilPago.tipoCuentaBancaria || '',
+        numeroCuenta: perfilPago.numeroCuenta || '',
+        titularCuenta: perfilPago.titularCuenta || user.nombre
       });
 
       setNewCuentaCobro({ mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), ciudad: 'Medellín', monto: '', funciones: '', estado: 'Pendiente', empresa: empresaCuenta });
@@ -4157,11 +4198,13 @@ const App = () => {
       // según lo que se marcó, sin bloquear el guardado del gasto si esto falla.
       const terceroInfoFinal = esPagoTerceroFinanzas ? {
         nombre: newGasto.terceroNombre,
-        dni: newGasto.terceroDni,
+        dni: limpiarDocumento(newGasto.terceroDni, newGasto.terceroTipoDocumento),
+        tipoDocumento: newGasto.terceroTipoDocumento ? Number(newGasto.terceroTipoDocumento) : null,
         paisOrigen: newGasto.terceroPaisOrigen || null,
         banco: newGasto.terceroBanco || null,
+        codigoBanco: newGasto.terceroCodigoBanco || null,
         tipoCuenta: newGasto.terceroTipoCuenta || null,
-        numeroCuenta: newGasto.terceroNumeroCuenta || null,
+        numeroCuenta: limpiarNumeroCuenta(newGasto.terceroNumeroCuenta) || null,
       } : null;
 
       let terceroIdFinal = newGasto.terceroId || null;
@@ -4171,11 +4214,13 @@ const App = () => {
             .from('terceros')
             .insert({
               nombre: newGasto.terceroNombre,
-              dni: newGasto.terceroDni,
+              dni: limpiarDocumento(newGasto.terceroDni, newGasto.terceroTipoDocumento),
+              tipo_documento: newGasto.terceroTipoDocumento ? Number(newGasto.terceroTipoDocumento) : null,
               pais_origen: newGasto.terceroPaisOrigen || null,
               banco: newGasto.terceroBanco || null,
+              codigo_banco: newGasto.terceroCodigoBanco || null,
               tipo_cuenta: newGasto.terceroTipoCuenta || null,
-              numero_cuenta: newGasto.terceroNumeroCuenta || null,
+              numero_cuenta: limpiarNumeroCuenta(newGasto.terceroNumeroCuenta) || null,
               activo: true,
               creado_por: user.id
             })
@@ -4192,11 +4237,13 @@ const App = () => {
             .from('terceros')
             .update({
               nombre: newGasto.terceroNombre,
-              dni: newGasto.terceroDni,
+              dni: limpiarDocumento(newGasto.terceroDni, newGasto.terceroTipoDocumento),
+              tipo_documento: newGasto.terceroTipoDocumento ? Number(newGasto.terceroTipoDocumento) : null,
               pais_origen: newGasto.terceroPaisOrigen || null,
               banco: newGasto.terceroBanco || null,
+              codigo_banco: newGasto.terceroCodigoBanco || null,
               tipo_cuenta: newGasto.terceroTipoCuenta || null,
-              numero_cuenta: newGasto.terceroNumeroCuenta || null,
+              numero_cuenta: limpiarNumeroCuenta(newGasto.terceroNumeroCuenta) || null,
             })
             .eq('id', terceroIdFinal);
           if (updateError) {
@@ -4349,8 +4396,10 @@ const App = () => {
         terceroId: '',
         terceroNombre: '',
         terceroDni: '',
+        terceroTipoDocumento: '',
         terceroPaisOrigen: '',
         terceroBanco: '',
+        terceroCodigoBanco: '',
         terceroTipoCuenta: '',
         terceroNumeroCuenta: '',
         guardarTercero: true,
@@ -6402,13 +6451,28 @@ const App = () => {
           )}
           
           {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
-            <button onClick={() => setCurrentView('responsables')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'responsables' ? '#C4A747' : '#E6E0D2', color: currentView === 'responsables' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>👥 Colaboradores</button>
+            <>
+              <button onClick={() => setCurrentView('responsables')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'responsables' ? '#C4A747' : '#E6E0D2', color: currentView === 'responsables' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>👥 Colaboradores</button>
+              <button onClick={() => setCurrentView('datosBancarios')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'datosBancarios' ? '#C4A747' : '#E6E0D2', color: currentView === 'datosBancarios' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>🏦 Datos Bancarios</button>
+            </>
           )}
         </div>
         </nav>
       </div>
 
       <main style={{ maxWidth: '1400px', margin: '2rem auto', padding: '0 1rem' }}>
+        {currentView === 'datosBancarios' && (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
+          <DatosBancariosView
+            user={user}
+            usuarios={usuariosDB}
+            terceros={todosTerceros}
+            cuentasPorEmpresa={cuentasPorEmpresa}
+            nitEmpresas={NIT_EMPRESAS}
+            onUsuariosCambiaron={cargarUsuarios}
+            onActualizarTercero={handleUpdateTercero}
+          />
+        )}
+
         {currentView === 'dashboard' && (
           <div>
             <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📊 Dashboard</h2>
@@ -6605,8 +6669,12 @@ const App = () => {
                     {subiendoMiArchivo === 'foto' && <p style={{ color: '#8F8877', fontSize: '0.75rem', margin: '0.35rem 0 0 0' }}>Subiendo...</p>}
                   </div>
                   <div>
-                    <label style={labelStyle}>Cédula</label>
-                    <input type="text" placeholder="Número de cédula" value={miPerfilForm.cedula} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, cedula: e.target.value })} style={inputStyle} />
+                    <label style={labelStyle}>Tipo de Documento</label>
+                    <SelectTipoDocumento value={miPerfilForm.tipoDocumento} placeholder="Seleccionar" onChange={(v) => setMiPerfilForm({ ...miPerfilForm, tipoDocumento: v })} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Número de Documento</label>
+                    <input type="text" placeholder="Solo números" value={miPerfilForm.cedula} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, cedula: e.target.value })} style={inputStyle} />
                   </div>
                   <div>
                     <label style={labelStyle}>Teléfono</label>
@@ -6629,7 +6697,8 @@ const App = () => {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
                   <div>
                     <label style={labelStyle}>Banco</label>
-                    <input type="text" placeholder="Ej: Bancolombia" value={miPerfilForm.banco} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, banco: e.target.value })} style={inputStyle} />
+                    <CampoBanco codigo={miPerfilForm.codigoBanco} texto={miPerfilForm.banco} onChange={({ codigo, texto }) => setMiPerfilForm({ ...miPerfilForm, codigoBanco: codigo, banco: texto })} style={inputStyle} />
+                    {!miPerfilForm.codigoBanco && miPerfilForm.banco && <p style={{ color: '#C4622D', fontSize: '0.75rem', margin: '0.35rem 0 0 0' }}>Antes: "{miPerfilForm.banco}" — elige el banco de la lista</p>}
                   </div>
                   <div>
                     <label style={labelStyle}>Tipo de Cuenta</label>
@@ -7002,14 +7071,14 @@ const App = () => {
                         <select value={newSolicitud.terceroId} onChange={(e) => {
                           const id = e.target.value;
                           if (!id) {
-                            setNewSolicitud({...newSolicitud, terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false});
+                            setNewSolicitud({...newSolicitud, terceroId: '', terceroNombre: '', terceroDni: '', terceroTipoDocumento: '', terceroPaisOrigen: '', terceroBanco: '', terceroCodigoBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false});
                             return;
                           }
                           const t = tercerosDB.find(x => x.id === id);
                           // "Actualizar" queda marcada por defecto al elegir un tercero guardado: si se
                           // edita Nombre/DNI/banco/etc. abajo, el catálogo compartido se sincroniza solo
                           // al guardar (se puede desmarcar si esta vez NO se quiere tocar el catálogo).
-                          setNewSolicitud({...newSolicitud, terceroId: id, terceroNombre: t?.nombre || '', terceroDni: t?.dni || '', terceroPaisOrigen: t?.pais_origen || '', terceroBanco: t?.banco || '', terceroTipoCuenta: t?.tipo_cuenta || '', terceroNumeroCuenta: t?.numero_cuenta || '', guardarTercero: false, actualizarTercero: true});
+                          setNewSolicitud({...newSolicitud, terceroId: id, terceroNombre: t?.nombre || '', terceroDni: t?.dni || '', terceroTipoDocumento: t?.tipo_documento || '', terceroPaisOrigen: t?.pais_origen || '', terceroBanco: t?.banco || '', terceroCodigoBanco: t?.codigo_banco || inferirCodigoBanco(t?.banco), terceroTipoCuenta: t?.tipo_cuenta || '', terceroNumeroCuenta: t?.numero_cuenta || '', guardarTercero: false, actualizarTercero: true});
                         }} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }}>
                           <option value="">➕ Nuevo tercero</option>
                           {tercerosDB.map(t => <option key={t.id} value={t.id}>{t.nombre} — {t.dni}</option>)}
@@ -7027,11 +7096,12 @@ const App = () => {
 
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
                         <input type="text" placeholder="Nombre completo *" value={newSolicitud.terceroNombre} onChange={(e) => setNewSolicitud({...newSolicitud, terceroNombre: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
-                        <input type="text" placeholder="DNI / Documento *" value={newSolicitud.terceroDni} onChange={(e) => setNewSolicitud({...newSolicitud, terceroDni: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
+                        <SelectTipoDocumento value={newSolicitud.terceroTipoDocumento} onChange={(v) => setNewSolicitud({...newSolicitud, terceroTipoDocumento: v})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
+                        <input type="text" placeholder="Documento (NIT sin DV) *" value={newSolicitud.terceroDni} onChange={(e) => setNewSolicitud({...newSolicitud, terceroDni: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
                         <input type="text" placeholder="País de origen" value={newSolicitud.terceroPaisOrigen} onChange={(e) => setNewSolicitud({...newSolicitud, terceroPaisOrigen: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                        <input type="text" placeholder="Banco" value={newSolicitud.terceroBanco} onChange={(e) => setNewSolicitud({...newSolicitud, terceroBanco: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
+                        <CampoBanco codigo={newSolicitud.terceroCodigoBanco} texto={newSolicitud.terceroBanco} onChange={({ codigo, texto }) => setNewSolicitud({...newSolicitud, terceroCodigoBanco: codigo, terceroBanco: texto})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
                         <select value={newSolicitud.terceroTipoCuenta} onChange={(e) => setNewSolicitud({...newSolicitud, terceroTipoCuenta: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }}>
                           <option value="">Tipo de cuenta</option>
                           <option value="Ahorros">Ahorros</option>
@@ -7536,8 +7606,12 @@ const App = () => {
                         {newResponsable.foto && <button type="button" onClick={() => handleColaboradorRemoveArchivo('foto')} style={{ display: 'block', margin: '0.35rem auto 0', background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '0.75rem' }}>Quitar foto</button>}
                       </div>
                       <div>
-                        <label style={labelStyle}>Cédula</label>
-                        <input type="text" placeholder="Número de cédula" value={newResponsable.cedula} onChange={(e) => setNewResponsable({...newResponsable, cedula: e.target.value})} style={inputStyle} />
+                        <label style={labelStyle}>Tipo de Documento</label>
+                        <SelectTipoDocumento value={newResponsable.tipoDocumento} placeholder="Seleccionar" onChange={(v) => setNewResponsable({ ...newResponsable, tipoDocumento: v })} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Número de Documento</label>
+                        <input type="text" placeholder="Solo números" value={newResponsable.cedula} onChange={(e) => setNewResponsable({ ...newResponsable, cedula: e.target.value })} style={inputStyle} />
                       </div>
                       <div>
                         <label style={labelStyle}>Teléfono</label>
@@ -7578,7 +7652,8 @@ const App = () => {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
                       <div>
                         <label style={labelStyle}>Banco</label>
-                        <input type="text" placeholder="Ej: Bancolombia" value={newResponsable.banco} onChange={(e) => setNewResponsable({...newResponsable, banco: e.target.value})} style={inputStyle} />
+                        <CampoBanco codigo={newResponsable.codigoBanco} texto={newResponsable.banco} onChange={({ codigo, texto }) => setNewResponsable({ ...newResponsable, codigoBanco: codigo, banco: texto })} style={inputStyle} />
+                        {!newResponsable.codigoBanco && newResponsable.banco && <p style={{ color: '#C4622D', fontSize: '0.75rem', margin: '0.35rem 0 0 0' }}>Antes: "{newResponsable.banco}" — elige el banco de la lista</p>}
                       </div>
                       <div>
                         <label style={labelStyle}>Tipo de Cuenta</label>
@@ -7872,11 +7947,11 @@ const App = () => {
                     <select value={newGasto.terceroId} onChange={(e) => {
                       const id = e.target.value;
                       if (!id) {
-                        setNewGasto({...newGasto, terceroId: '', terceroNombre: '', terceroDni: '', terceroPaisOrigen: '', terceroBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false});
+                        setNewGasto({...newGasto, terceroId: '', terceroNombre: '', terceroDni: '', terceroTipoDocumento: '', terceroPaisOrigen: '', terceroBanco: '', terceroCodigoBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false});
                         return;
                       }
                       const t = tercerosDB.find(x => x.id === id);
-                      setNewGasto({...newGasto, terceroId: id, terceroNombre: t?.nombre || '', terceroDni: t?.dni || '', terceroPaisOrigen: t?.pais_origen || '', terceroBanco: t?.banco || '', terceroTipoCuenta: t?.tipo_cuenta || '', terceroNumeroCuenta: t?.numero_cuenta || '', guardarTercero: false, actualizarTercero: true});
+                      setNewGasto({...newGasto, terceroId: id, terceroNombre: t?.nombre || '', terceroDni: t?.dni || '', terceroTipoDocumento: t?.tipo_documento || '', terceroPaisOrigen: t?.pais_origen || '', terceroBanco: t?.banco || '', terceroCodigoBanco: t?.codigo_banco || inferirCodigoBanco(t?.banco), terceroTipoCuenta: t?.tipo_cuenta || '', terceroNumeroCuenta: t?.numero_cuenta || '', guardarTercero: false, actualizarTercero: true});
                     }} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }}>
                       <option value="">➕ Nuevo tercero</option>
                       {tercerosDB.map(t => <option key={t.id} value={t.id}>{t.nombre} — {t.dni}</option>)}
@@ -7890,11 +7965,12 @@ const App = () => {
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
                     <input type="text" placeholder="Nombre completo *" value={newGasto.terceroNombre} onChange={(e) => setNewGasto({...newGasto, terceroNombre: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
-                    <input type="text" placeholder="DNI / Documento *" value={newGasto.terceroDni} onChange={(e) => setNewGasto({...newGasto, terceroDni: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
+                    <SelectTipoDocumento value={newGasto.terceroTipoDocumento} onChange={(v) => setNewGasto({...newGasto, terceroTipoDocumento: v})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
+                    <input type="text" placeholder="Documento (NIT sin DV) *" value={newGasto.terceroDni} onChange={(e) => setNewGasto({...newGasto, terceroDni: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
                     <input type="text" placeholder="País de origen" value={newGasto.terceroPaisOrigen} onChange={(e) => setNewGasto({...newGasto, terceroPaisOrigen: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                    <input type="text" placeholder="Banco" value={newGasto.terceroBanco} onChange={(e) => setNewGasto({...newGasto, terceroBanco: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
+                    <CampoBanco codigo={newGasto.terceroCodigoBanco} texto={newGasto.terceroBanco} onChange={({ codigo, texto }) => setNewGasto({...newGasto, terceroCodigoBanco: codigo, terceroBanco: texto})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
                     <select value={newGasto.terceroTipoCuenta} onChange={(e) => setNewGasto({...newGasto, terceroTipoCuenta: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }}>
                       <option value="">Tipo de cuenta</option>
                       <option value="Ahorros">Ahorros</option>
@@ -8119,9 +8195,10 @@ const App = () => {
                 <div style={{ marginTop: '1.5rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
                     <input type="text" placeholder="Nombre completo *" value={nuevoTercero.nombre} onChange={(e) => setNuevoTercero({...nuevoTercero, nombre: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                    <input type="text" placeholder="DNI / Documento *" value={nuevoTercero.dni} onChange={(e) => setNuevoTercero({...nuevoTercero, dni: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
+                    <SelectTipoDocumento value={nuevoTercero.tipoDocumento} onChange={(v) => setNuevoTercero({...nuevoTercero, tipoDocumento: v})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
+                    <input type="text" placeholder="Documento (sin DV) *" value={nuevoTercero.dni} onChange={(e) => setNuevoTercero({...nuevoTercero, dni: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
                     <input type="text" placeholder="País de origen" value={nuevoTercero.paisOrigen} onChange={(e) => setNuevoTercero({...nuevoTercero, paisOrigen: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                    <input type="text" placeholder="Banco" value={nuevoTercero.banco} onChange={(e) => setNuevoTercero({...nuevoTercero, banco: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
+                    <CampoBanco codigo={nuevoTercero.codigoBanco} texto={nuevoTercero.banco} onChange={({ codigo, texto }) => setNuevoTercero({...nuevoTercero, codigoBanco: codigo, banco: texto})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
                     <select value={nuevoTercero.tipoCuenta} onChange={(e) => setNuevoTercero({...nuevoTercero, tipoCuenta: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }}>
                       <option value="">Tipo de cuenta</option>
                       <option value="Ahorros">Ahorros</option>
@@ -8135,7 +8212,8 @@ const App = () => {
                       <thead style={{ backgroundColor: '#F8F6F1' }}>
                         <tr style={{ borderBottom: '2px solid #C4A747' }}>
                           <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Nombre</th>
-                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>DNI</th>
+                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo Doc.</th>
+                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Documento</th>
                           <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Banco</th>
                           <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo Cuenta</th>
                           <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Número de Cuenta</th>
@@ -8144,17 +8222,22 @@ const App = () => {
                       </thead>
                       <tbody>
                         {todosTerceros.length === 0 ? (
-                          <tr><td colSpan={6} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin terceros guardados todavía.</td></tr>
+                          <tr><td colSpan={7} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin terceros guardados todavía.</td></tr>
                         ) : [...todosTerceros].sort((a, b) => a.nombre.localeCompare(b.nombre)).map(t => (
                           <tr key={t.id} style={{ borderBottom: '1px solid #E6E0D2', opacity: t.activo === false ? 0.5 : 1 }}>
                             <td style={{ padding: '0.75rem' }}>
                               <input type="text" defaultValue={t.nombre} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== t.nombre) handleUpdateTercero(t.id, 'nombre', v); }} style={{ width: '100%', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box' }} />
                             </td>
                             <td style={{ padding: '0.75rem' }}>
-                              <input type="text" defaultValue={t.dni} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== t.dni) handleUpdateTercero(t.id, 'dni', v); }} style={{ width: '100%', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box' }} />
+                              <SelectTipoDocumento value={t.tipo_documento} placeholder="—" onChange={(v) => handleUpdateTercero(t.id, 'tipoDocumento', v || null)} style={{ width: '100%', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box' }} />
                             </td>
                             <td style={{ padding: '0.75rem' }}>
-                              <input type="text" defaultValue={t.banco || ''} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (t.banco || '')) handleUpdateTercero(t.id, 'banco', v); }} style={{ width: '100%', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box' }} />
+                              <input type="text" defaultValue={t.dni} onBlur={(e) => { const v = limpiarDocumento(e.target.value.trim(), t.tipo_documento); e.target.value = v; if (v && v !== t.dni) handleUpdateTercero(t.id, 'dni', v); }} style={{ width: '100%', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box' }} />
+                            </td>
+                            <td style={{ padding: '0.75rem' }}>
+                              <SelectBanco value={t.codigo_banco} placeholder="—" onChange={(v) => handleUpdateTercero(t.id, 'codigoBanco', v)} style={{ width: '100%', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box' }} />
+                              {!t.codigo_banco && t.banco && <div style={{ fontSize: '0.7rem', color: '#C4622D', marginTop: '0.2rem' }}>Antes: "{t.banco}" — elige el banco de la lista</div>}
+                              {t.codigo_banco === CODIGO_BANCO_EXTERIOR && <input type="text" placeholder="Nombre del banco del exterior" defaultValue={t.banco || ''} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (t.banco || '')) handleUpdateTercero(t.id, 'banco', v); }} style={{ width: '100%', marginTop: '0.3rem', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box' }} />}
                             </td>
                             <td style={{ padding: '0.75rem' }}>
                               <select value={t.tipo_cuenta || ''} onChange={(e) => handleUpdateTercero(t.id, 'tipoCuenta', e.target.value)} style={{ padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E' }}>
@@ -8164,7 +8247,7 @@ const App = () => {
                               </select>
                             </td>
                             <td style={{ padding: '0.75rem' }}>
-                              <input type="text" defaultValue={t.numero_cuenta || ''} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (t.numero_cuenta || '')) handleUpdateTercero(t.id, 'numeroCuenta', v); }} style={{ width: '100%', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box' }} />
+                              <input type="text" defaultValue={t.numero_cuenta || ''} onBlur={(e) => { const v = limpiarNumeroCuenta(e.target.value.trim()); e.target.value = v; if (v !== (t.numero_cuenta || '')) handleUpdateTercero(t.id, 'numeroCuenta', v); }} style={{ width: '100%', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box' }} />
                             </td>
                             <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                               <input type="checkbox" checked={t.activo !== false} onChange={(e) => handleUpdateTercero(t.id, 'activo', e.target.checked)} />
