@@ -7547,7 +7547,7 @@ const App = () => {
                 return (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FBF3DC', border: '1px solid #C4A747', borderRadius: '8px', padding: '0.85rem 1.25rem', marginBottom: '1rem' }}>
                     <span style={{ color: '#6B5A1E', fontSize: '0.85rem' }}>
-                      <strong>{seleccionados.length}</strong> {etiquetaTipoLote(seleccionados.map(x => x.tipo), seleccionados.length !== 1)} de <strong>{empresaSeleccion}</strong> seleccionado{seleccionados.length !== 1 ? 's' : ''} — total <strong>{totalFormateado}</strong>
+                      <strong>{seleccionados.length}</strong> {etiquetaTipoLote(seleccionados.map(x => x.tipo), seleccionados.length !== 1)} {!esTerceroSeleccion && <>de <strong>{colaboradoresPublico.find(c => c.id === seleccionados[0]?.responsableId)?.nombre || seleccionados[0]?.responsableNombre || 'colaborador'}</strong> </>}— <strong>{empresaSeleccion}</strong> seleccionado{seleccionados.length !== 1 ? 's' : ''} — total <strong>{totalFormateado}</strong>
                     </span>
                     <div style={{ display: 'flex', gap: '0.6rem' }}>
                       <button onClick={() => setSeleccionReembolsosPago([])} style={{ padding: '0.6rem 1rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>Cancelar selección</button>
@@ -7600,6 +7600,8 @@ const App = () => {
                       const monedaSolicitud = s.tipo === 'Pago a Tercero' ? (s.moneda || getMoneda(s.empresa)) : null;
                       const deshabilitadoPorEmpresa = elegibleParaLote && !!tipoLoteActual && (
                         grupoPagoLote(s.tipo) !== grupoPagoLote(tipoLoteActual) ||
+                        // Reembolsos/Anticipos: un lote = UN colaborador (una sola cuenta destino).
+                        (grupoPagoLote(tipoLoteActual) === 'colaboradores' && s.responsableId !== primeraSeleccionada?.responsableId) ||
                         s.empresa !== empresaLoteActual ||
                         (tipoLoteActual === 'Pago a Tercero' && monedaSolicitud !== monedaLoteActual)
                       );
@@ -7613,7 +7615,7 @@ const App = () => {
                                 checked={seleccionReembolsosPago.includes(s.id)}
                                 disabled={deshabilitadoPorEmpresa}
                                 onChange={() => handleToggleSeleccionReembolso(s.id)}
-                                title={deshabilitadoPorEmpresa ? `Ya elegiste ${grupoPagoLote(tipoLoteActual) === 'terceros' ? 'pagos a tercero' : 'reembolsos/anticipos'} de ${empresaLoteActual}${monedaLoteActual ? ` en ${monedaLoteActual}` : ''} — solo se puede pagar en lote un mismo tipo, empresa${tipoLoteActual === 'Pago a Tercero' ? ' y moneda' : ''} a la vez` : 'Elegir para pago en lote'}
+                                title={deshabilitadoPorEmpresa ? (grupoPagoLote(tipoLoteActual) === 'colaboradores' && grupoPagoLote(s.tipo) === 'colaboradores' && s.responsableId !== primeraSeleccionada?.responsableId && s.empresa === empresaLoteActual ? `Ya elegiste reembolsos/anticipos de ${colaboradoresPublico.find(c => c.id === primeraSeleccionada?.responsableId)?.nombre || primeraSeleccionada?.responsableNombre || 'otro colaborador'} — un lote es de un solo colaborador (una sola cuenta destino)` : `Ya elegiste ${grupoPagoLote(tipoLoteActual) === 'terceros' ? 'pagos a tercero' : 'reembolsos/anticipos'} de ${empresaLoteActual}${monedaLoteActual ? ` en ${monedaLoteActual}` : ''} — un lote es de una sola empresa${tipoLoteActual === 'Pago a Tercero' ? ', moneda y solo pagos a tercero' : ', un solo colaborador y sin mezclar con pagos a tercero'}`) : 'Elegir para pago en lote'}
                                 style={{ cursor: deshabilitadoPorEmpresa ? 'not-allowed' : 'pointer', width: '16px', height: '16px' }}
                               />
                             )}
