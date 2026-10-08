@@ -6658,12 +6658,14 @@ const App = () => {
           
           <button onClick={() => setCurrentView('solicitudes')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'solicitudes' ? '#C4A747' : '#E6E0D2', color: currentView === 'solicitudes' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📋 Solicitudes</button>
           <button onClick={() => setCurrentView('cuentasCobro')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'cuentasCobro' ? '#C4A747' : '#E6E0D2', color: currentView === 'cuentasCobro' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💳 Cuentas de Cobro</button>
+          {user.rol !== 'Responsable' && (
+            <button onClick={() => setCurrentView('presupuesto')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'presupuesto' ? '#C4A747' : '#E6E0D2', color: currentView === 'presupuesto' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📅 Presupuesto</button>
+          )}
 
           {user.rol !== 'Responsable' && (
             <>
               <button onClick={() => setCurrentView('finanzas')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'finanzas' ? '#C4A747' : '#E6E0D2', color: currentView === 'finanzas' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💰 Finanzas</button>
               <button onClick={() => setCurrentView('dashboardFinanciero')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'dashboardFinanciero' ? '#C4A747' : '#E6E0D2', color: currentView === 'dashboardFinanciero' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📈 Dashboard Financiero</button>
-              <button onClick={() => setCurrentView('presupuesto')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'presupuesto' ? '#C4A747' : '#E6E0D2', color: currentView === 'presupuesto' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📅 Presupuesto</button>
             </>
           )}
           
