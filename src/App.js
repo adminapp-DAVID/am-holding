@@ -193,6 +193,13 @@ const RAZON_SOCIAL_LEGAL = {
 };
 const getRazonSocialLegal = (empresa) => RAZON_SOCIAL_LEGAL[empresa] || empresa;
 
+// Fecha de hoy en hora local (Colombia) como 'AAAA-MM-DD'. new Date().toISOString() da la fecha
+// en UTC, que después de las 7 p. m. ya es "mañana".
+const fechaHoyLocal = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 const MESES_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
 // Convierte un entero (parte de pesos, sin decimales) a su representación en letras en español.
@@ -2664,7 +2671,7 @@ const App = () => {
       if (solicitud && !solicitud.gastoGeneradoId && !solicitud.ingresoGeneradoId) {
         const { accion, monto } = calcularAccionFinanzasSolicitud(solicitud);
         if (accion !== 'ninguno') {
-          await generarMovimientoDesdeSolicitud(solicitud, { cuentaPago: opciones.cuentaPago || null, cecoCodigo: opciones.cecoCodigo || null, accion, monto, loteId: opciones.loteId || null });
+          await generarMovimientoDesdeSolicitud(solicitud, { cuentaPago: opciones.cuentaPago || null, cecoCodigo: opciones.cecoCodigo || null, accion, monto, loteId: opciones.loteId || null, fechaPago: opciones.fechaPago || null });
         }
       }
     }
@@ -2697,7 +2704,7 @@ const App = () => {
   // esto solo agrega una fila más al mismo Finanzas que ya ven Admin/Coordinadora. Anticipo y
   // Reembolso quedan vinculados al Responsable de la solicitud (no llevan Tercero); Pago a
   // Tercero sigue llevando también los datos del tercero.
-  const generarMovimientoDesdeSolicitud = async (solicitud, { cuentaPago = null, cecoCodigo = null, accion, monto, loteId = null } = {}) => {
+  const generarMovimientoDesdeSolicitud = async (solicitud, { cuentaPago = null, cecoCodigo = null, accion, monto, loteId = null, fechaPago = null } = {}) => {
     try {
       const { data: solActual, error: errorLectura } = await supabase
         .from('solicitudes')
@@ -2732,7 +2739,10 @@ const App = () => {
       };
 
       const payload = {
-        fecha: solicitud.fecha,
+        // En Finanzas manda la fecha en que se PAGÓ (la que se elige al confirmar el pago), no
+        // la fecha en que se creó la solicitud. Sin fecha elegida (p. ej. Legalización T. Pro,
+        // que no abre el modal), se usa la de hoy.
+        fecha: fechaPago || fechaHoyLocal(),
         tipo: solicitud.tipo === 'Pago a Tercero' ? 'Pago a Tercero' : (accion === 'ingreso' ? 'Ingreso' : 'Gasto'),
         empresa_id: solicitud.empresaId || null,
         responsable_id: solicitud.responsableId || null,
@@ -2853,7 +2863,11 @@ const App = () => {
 
   const handleConfirmarPagoSolicitud = async () => {
     if (!confirmarPagoSolicitud) return;
-    const { solicitud, cuenta, ceco, comprobantes } = confirmarPagoSolicitud;
+    const { solicitud, cuenta, ceco, comprobantes, fechaPago } = confirmarPagoSolicitud;
+    if (!fechaPago) {
+      alert('Indica la fecha en que se hizo el pago');
+      return;
+    }
     if (!cuenta) {
       alert('Elige con qué cuenta de la empresa se hizo el pago');
       return;
@@ -2872,7 +2886,7 @@ const App = () => {
         await subirSoporteEntidad(comprobante, 'solicitud', solicitud.id);
       }
       const nuevoEstadoFinal = solicitud.tipo === 'Legalización T. Pro' ? 'Legalizado' : 'Pagado';
-      await handleChangeEstado(solicitud.id, nuevoEstadoFinal, { cuentaPago: cuenta, cecoCodigo: ceco || null });
+      await handleChangeEstado(solicitud.id, nuevoEstadoFinal, { cuentaPago: cuenta, cecoCodigo: ceco || null, fechaPago });
       setConfirmarPagoSolicitud(null);
     } finally {
       setGuardandoConfirmarPago(false);
@@ -2891,7 +2905,7 @@ const App = () => {
   const handleAbrirPagoLoteReembolsos = () => {
     const items = solicitudesUsuario.filter(s => seleccionReembolsosPago.includes(s.id));
     if (items.length === 0) return;
-    setConfirmarPagoLoteReembolsos({ items, cuenta: '', ceco: '', comprobantes: [] });
+    setConfirmarPagoLoteReembolsos({ items, cuenta: '', ceco: '', comprobantes: [], fechaPago: fechaHoyLocal() });
   };
 
   const handleSeleccionarComprobantePagoLoteReembolsos = (e) => {
@@ -2918,7 +2932,11 @@ const App = () => {
   // cada Gasto generado queda con el comprobante sin ningún paso extra.
   const handleConfirmarPagoLoteReembolsos = async () => {
     if (!confirmarPagoLoteReembolsos) return;
-    const { items, cuenta, ceco, comprobantes } = confirmarPagoLoteReembolsos;
+    const { items, cuenta, ceco, comprobantes, fechaPago } = confirmarPagoLoteReembolsos;
+    if (!fechaPago) {
+      alert('Indica la fecha en que se hizo el pago');
+      return;
+    }
     if (!items || items.length === 0) return;
     const esLoteTercero = items[0]?.tipo === 'Pago a Tercero';
     if (!cuenta) {
@@ -2970,7 +2988,7 @@ const App = () => {
             fallidos.push(`${solicitud.responsableNombre || solicitud.detalle || solicitud.id} (ya no estaba en Aprobado)`);
             continue;
           }
-          await handleChangeEstado(solicitud.id, 'Pagado', { cuentaPago: cuenta, cecoCodigo: ceco, loteId });
+          await handleChangeEstado(solicitud.id, 'Pagado', { cuentaPago: cuenta, cecoCodigo: ceco, loteId, fechaPago });
           pagados++;
         } catch (errorItem) {
           console.error('Error pagando un reembolso del lote:', solicitud.id, errorItem);
@@ -7630,7 +7648,7 @@ const App = () => {
                               // CECO ni Comprobante) — el Gasto en Finanzas se genera solo, directo,
                               // igual que cualquier otra transición (ver handleChangeEstado).
                               if (nuevoEstado === 'Pagado' && !s.gastoGeneradoId && !s.ingresoGeneradoId && calcularAccionFinanzasSolicitud(s).accion !== 'ninguno') {
-                                setConfirmarPagoSolicitud({ solicitud: s, cuenta: '', ceco: '', comprobantes: [], ...calcularAccionFinanzasSolicitud(s) });
+                                setConfirmarPagoSolicitud({ solicitud: s, cuenta: '', ceco: '', comprobantes: [], fechaPago: fechaHoyLocal(), ...calcularAccionFinanzasSolicitud(s) });
                               } else if (nuevoEstado === 'Devuelto') {
                                 // Pide el motivo antes de guardar nada — sin él, el colaborador no
                                 // sabría qué corregir (ver modal "Devolver Solicitud").
@@ -9745,6 +9763,9 @@ const App = () => {
                 {(cuentasPorEmpresa[solicitud.empresa] || []).map(cuenta => <option key={cuenta} value={cuenta}>{cuenta}</option>)}
               </select>
 
+              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Fecha {accion === 'ingreso' ? 'en que se recibió el dinero' : 'del pago'} * <span style={{ fontWeight: 'normal', color: '#6B6458' }}>(es la fecha que queda en Finanzas)</span></label>
+              <input type="date" value={confirmarPagoSolicitud.fechaPago || ''} onChange={(e) => setConfirmarPagoSolicitud({...confirmarPagoSolicitud, fechaPago: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', marginBottom: '1rem' }} />
+
               {(
                 <>
                   <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>CECO *</label>
@@ -9919,6 +9940,9 @@ const App = () => {
                 <option value="">Seleccionar</option>
                 {(cuentasPorEmpresa[empresaLote] || []).map(c => <option key={c} value={c}>{c}</option>)}
               </select>
+
+              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Fecha del pago * <span style={{ fontWeight: 'normal', color: '#6B6458' }}>(es la fecha que queda en Finanzas para todo el lote)</span></label>
+              <input type="date" value={confirmarPagoLoteReembolsos.fechaPago || ''} onChange={(e) => setConfirmarPagoLoteReembolsos({...confirmarPagoLoteReembolsos, fechaPago: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', marginBottom: '1rem' }} />
 
               {/* El CECO se pide para todos los tipos, incluido Pago a Tercero. */}
               {(
