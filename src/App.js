@@ -521,6 +521,10 @@ const App = () => {
   const [filtroFinanzasCeco, setFiltroFinanzasCeco] = useState('Todos');
   const [filtroFinanzasFechaInicio, setFiltroFinanzasFechaInicio] = useState('');
   const [filtroFinanzasFechaFin, setFiltroFinanzasFechaFin] = useState('');
+  // Rango de valor (mínimo/máximo) del historial — mismo patrón que el rango de fechas. Se
+  // guarda como texto para aceptar lo que la gente escribe ("1.500.000", "1500000", "70,88").
+  const [filtroFinanzasValorMin, setFiltroFinanzasValorMin] = useState('');
+  const [filtroFinanzasValorMax, setFiltroFinanzasValorMax] = useState('');
   // FACTURAS DE UN TERCERO EN LOTE (ej. Caelum manda varias facturas de distintos colaboradores
   // y se paga todo junto con un solo comprobante del banco): un único modal — se elige el Tipo
   // "🧾 Pago a Tercero en Lote" en el formulario de Nuevo Gasto/Ingreso — pide Empresa/Cuenta/
@@ -613,6 +617,8 @@ const App = () => {
   const [cargandoPreviewSoporte, setCargandoPreviewSoporte] = useState(false);
   const [filtroFechaInicio, setFiltroFechaInicio] = useState('2026-01-01');
   const [filtroFechaFin, setFiltroFechaFin] = useState(new Date().toISOString().split('T')[0]);
+  // Progreso de "Descargar Soportes (ZIP)": null = inactivo; { hechos, total } mientras descarga.
+  const [progresoZip, setProgresoZip] = useState(null);
 
   // PRESUPUESTO — conectado a Supabase (public.presupuesto_items, public.presupuesto_anual,
   // public.presupuesto_overrides, public.deducciones). Los `id` ahora son uuid (texto) de Postgres, ya no
@@ -2682,9 +2688,10 @@ const App = () => {
       }
       if (solActual.gasto_generado_id || solActual.ingreso_generado_id) return; // ya se generó antes, no duplicar
 
-      // Pago a Tercero sigue usando su CECO fijo por defecto (CECO-015-PT); Anticipo, Reembolso
-      // y Legalización usan el CECO que el usuario eligió en el modal "Confirmar Pago".
-      const cecoId = await resolverCecoId(solicitud.tipo === 'Pago a Tercero' ? CECO_PAGO_TERCERO : cecoCodigo);
+      // Todos los tipos (incluido Pago a Tercero) usan el CECO que se eligió en el modal
+      // "Confirmar Pago". Antes Pago a Tercero quedaba fijo en CECO-015-PT, que no dice en qué
+      // se gastó la plata y obligaba a corregirlo a mano después.
+      const cecoId = await resolverCecoId(cecoCodigo);
 
       const tabla = accion === 'ingreso' ? 'ingresos' : 'gastos';
       const columnaVinculo = accion === 'ingreso' ? 'ingreso_generado_id' : 'gasto_generado_id';
@@ -2824,7 +2831,7 @@ const App = () => {
       alert('Elige con qué cuenta de la empresa se hizo el pago');
       return;
     }
-    if (solicitud.tipo !== 'Pago a Tercero' && !ceco) {
+    if (!ceco) {
       alert('Elige el CECO para este movimiento');
       return;
     }
@@ -2886,14 +2893,12 @@ const App = () => {
     if (!confirmarPagoLoteReembolsos) return;
     const { items, cuenta, ceco, comprobantes } = confirmarPagoLoteReembolsos;
     if (!items || items.length === 0) return;
-    // Pago a Tercero siempre usa su CECO fijo (CECO_PAGO_TERCERO, ver generarMovimientoDesdeSolicitud)
-    // — no se pide en el modal para ese tipo, igual que en el pago individual.
     const esLoteTercero = items[0]?.tipo === 'Pago a Tercero';
     if (!cuenta) {
       alert('Elige con qué cuenta de la empresa se hizo el pago');
       return;
     }
-    if (!esLoteTercero && !ceco) {
+    if (!ceco) {
       alert('Elige el CECO para este lote de pago');
       return;
     }
@@ -3052,7 +3057,7 @@ const App = () => {
     .sort((a, b) => b.cantidad - a.cantidad)
     .slice(0, 5);
 
-  const ultimasSolicitudes = solicitudesUsuario.sort((a, b) => new Date(b.fecha) - new Date(a.fecha)).slice(0, 5);
+  const ultimasSolicitudes = [...solicitudesUsuario].sort((a, b) => new Date(b.fecha) - new Date(a.fecha)).slice(0, 5);
 
   // Generar PDF
   const handleGenerarPDF = async (s) => {
@@ -5373,11 +5378,11 @@ const App = () => {
   // quien vaya a convertir un extracto bancario (a mano, o pidiéndole a Claude que lo haga) para
   // que sepa exactamente en qué formato dejar el resultado antes de subirlo.
   const handleDescargarPlantillaImportacion = () => {
-    const encabezados = ['Movimiento', 'Fecha', 'Empresa', 'Responsable', 'CECO', 'Cuenta', 'Cuenta Salida', 'Cuenta Destino', 'Detalle', 'Valor', 'Valor Destino', 'Categoria', 'Estado', 'Observaciones'];
+    const encabezados = ['Movimiento', 'Fecha', 'Empresa', 'Responsable', 'CECO', 'Cuenta', 'Cuenta Salida', 'Cuenta Destino', 'Detalle', 'Valor', 'Valor Destino', 'Categoria', 'Estado', 'Observaciones', 'Soporte (link)'];
     const ejemplos = [
-      ['Gasto', '2026-01-15', 'AM SPORTS GROUP SAS', '', '', 'Bancolombia Ahorros', '', '', 'Pago proveedor X', 350000, '', 'Operativo', 'Pendiente', ''],
-      ['Ingreso', '2026-01-16', 'AM SPORTS GROUP SAS', '', '', 'Bancolombia Ahorros', '', '', 'Pago cliente Y', 1200000, '', 'Ventas', 'Pendiente', ''],
-      ['Traslado', '2026-01-17', 'ARKO', '', '', '', 'Cuenta USD ARKO', 'AM SPORTS GROUP SAS: Bancolombia Ahorros', 'Traslado de fondos', 500, 2000000, '', 'Pendiente', '']
+      ['Gasto', '2026-01-15', 'AM SPORTS GROUP SAS', '', '', 'Bancolombia Ahorros', '', '', 'Pago proveedor X', 350000, '', 'Operativo', 'Pendiente', '', 'https://drive.google.com/file/d/EJEMPLO/view'],
+      ['Ingreso', '2026-01-16', 'AM SPORTS GROUP SAS', '', '', 'Bancolombia Ahorros', '', '', 'Pago cliente Y', 1200000, '', 'Ventas', 'Pendiente', '', ''],
+      ['Traslado', '2026-01-17', 'ARKO', '', '', '', 'Cuenta USD ARKO', 'AM SPORTS GROUP SAS: Bancolombia Ahorros', 'Traslado de fondos', 500, 2000000, '', 'Pendiente', '', '']
     ];
     const ws = XLSX.utils.aoa_to_sheet([encabezados, ...ejemplos]);
     ws['!cols'] = encabezados.map(() => ({ wch: 20 }));
@@ -5448,6 +5453,13 @@ const App = () => {
           if (responsableNombre && !personasFinanzas.some(r => r.nombre === responsableNombre)) {
             errores.push(`Fila ${numFila}: el Responsable "${responsableNombre}" no existe en el sistema — déjalo vacío o corrige el nombre exacto`);
           }
+          // Soporte histórico que vive en Drive: se guarda el link tal cual (el botón 📎 del
+          // historial lo abre). Solo https — cualquier otra cosa (p. ej. "javascript:") se
+          // rechaza, porque ese valor termina en un window.open.
+          const soporteLink = String(fila['Soporte (link)'] || '').trim();
+          if (soporteLink && !/^https:\/\/\S+$/i.test(soporteLink)) {
+            errores.push(`Fila ${numFila}: "Soporte (link)" debe ser un link que empiece por https:// (llegó "${soporteLink.slice(0, 60)}")`);
+          }
           const cecoCodigo = String(fila['CECO'] || '').trim();
           if (cecoCodigo && !cecosDB.some(c => c.codigo === cecoCodigo)) {
             errores.push(`Fila ${numFila}: el CECO "${cecoCodigo}" no existe en el catálogo — déjalo vacío o corrige el código exacto`);
@@ -5463,7 +5475,8 @@ const App = () => {
             valorDestino: fila['Valor Destino'] ? parseFloat(fila['Valor Destino']) : null,
             categoria: String(fila['Categoria'] || '').trim() || null,
             estado: String(fila['Estado'] || '').trim() || 'Pendiente',
-            observaciones: String(fila['Observaciones'] || '').trim() || null
+            observaciones: String(fila['Observaciones'] || '').trim() || null,
+            soporteLink: soporteLink || null
           };
         });
 
@@ -5492,7 +5505,8 @@ const App = () => {
             filasIngresos.push({
               fecha: f.fecha, tipo: 'Ingreso', empresa_id: empresaId, responsable_id: responsableId,
               ceco_id: cecoId, cuenta: f.cuenta, detalle: f.detalle, valor: f.valor,
-              categoria: f.categoria, estado: f.estado, observaciones: f.observaciones
+              categoria: f.categoria, estado: f.estado, observaciones: f.observaciones,
+              soporte_drive_link: f.soporteLink
             });
           } else {
             filasGastos.push({
@@ -5500,9 +5514,39 @@ const App = () => {
               ceco_id: cecoId, cuenta: f.cuenta, cuenta_salida: f.cuentaSalida, cuenta_destino: f.cuentaDestino,
               detalle: f.detalle, valor: f.valor, valor_destino: f.valorDestino, valor_bruto: null,
               deduccion_aplicada: null, categoria: f.categoria, estado: f.estado,
-              observaciones: f.observaciones, presupuesto_item_id: null, soporte_drive_link: null
+              observaciones: f.observaciones, presupuesto_item_id: null, soporte_drive_link: f.soporteLink
             });
           }
+        }
+
+        // Anti-duplicados: si una fila ya existe en la BD (misma fecha, empresa, tipo, valor y
+        // detalle) casi seguro es el mismo archivo importado dos veces. No se bloquea del todo
+        // — dos cobros iguales el mismo día pueden ser reales — pero se avisa y hay que confirmar.
+        const claveMovimiento = (r) => [r.fecha, r.empresa_id, r.tipo, Number(r.valor), String(r.detalle || '').trim().toUpperCase()].join('|');
+        const fechasImportadas = filasValidas.map(f => f.fecha).sort();
+        const buscarExistentes = async (tabla) => {
+          const { data, error } = await supabase
+            .from(tabla)
+            .select('fecha, empresa_id, tipo, valor, detalle')
+            .gte('fecha', fechasImportadas[0])
+            .lte('fecha', fechasImportadas[fechasImportadas.length - 1]);
+          if (error) throw new Error(`No se pudo revisar duplicados en ${tabla}: ${error.message}`);
+          return new Set((data || []).map(claveMovimiento));
+        };
+        const [existentesGastos, existentesIngresos] = await Promise.all([
+          filasGastos.length > 0 ? buscarExistentes('gastos') : new Set(),
+          filasIngresos.length > 0 ? buscarExistentes('ingresos') : new Set()
+        ]);
+        const repetidas = [
+          ...filasGastos.filter(r => existentesGastos.has(claveMovimiento(r))),
+          ...filasIngresos.filter(r => existentesIngresos.has(claveMovimiento(r)))
+        ];
+        if (repetidas.length > 0) {
+          const lista = repetidas.slice(0, 15).map(r => `• ${r.fecha} · ${r.tipo} · ${r.detalle} · ${Number(r.valor).toLocaleString('es-CO')}`).join('\n');
+          const seguir = window.confirm(
+            `⚠️ ${repetidas.length} fila(s) de este archivo YA EXISTEN en Finanzas (misma fecha, empresa, tipo, valor y detalle) — probablemente este archivo ya se importó:\n\n${lista}${repetidas.length > 15 ? `\n… y ${repetidas.length - 15} más.` : ''}\n\nAceptar = importar TODO de todos modos (quedarán duplicadas).\nCancelar = no importar nada.`
+          );
+          if (!seguir) return;
         }
 
         if (filasGastos.length > 0) {
@@ -5605,6 +5649,17 @@ const App = () => {
     ...ingresosUsuario.map(i => ({ ...i, tipo: 'Ingreso', _origen: 'ingreso' })),
   ].sort((a, b) => new Date(b.fecha) - new Date(a.fecha) || (b.id || 0) - (a.id || 0));
 
+  // "1.500.000" / "1500000" / "70,88" → número (formato colombiano: punto de miles, coma
+  // decimal). Vacío o inválido → null (= sin límite).
+  const parseValorFiltro = (texto) => {
+    const limpio = String(texto || '').replace(/[^\d,]/g, '').replace(',', '.');
+    if (!limpio) return null;
+    const n = parseFloat(limpio);
+    return isNaN(n) ? null : n;
+  };
+  const valorMinFinanzas = parseValorFiltro(filtroFinanzasValorMin);
+  const valorMaxFinanzas = parseValorFiltro(filtroFinanzasValorMax);
+
   const registrosFinanzas = registrosFinanzasTodos.filter(r => {
     // El filtro "🤝 Pago a Tercero" también debe traer los Gastos normales que quedaron con
     // datos de tercero adjuntos (Tipo "Gasto" + CECO "Pago a Terceros", ver esPagoTerceroFinanzas
@@ -5619,6 +5674,11 @@ const App = () => {
     if (filtroFinanzasCeco !== 'Todos' && r.ceco !== filtroFinanzasCeco) return false;
     if (filtroFinanzasFechaInicio && r.fecha < filtroFinanzasFechaInicio) return false;
     if (filtroFinanzasFechaFin && r.fecha > filtroFinanzasFechaFin) return false;
+    // Se compara contra el valor que muestra la fila (en un Traslado, el lado "entrada" usa
+    // el valor destino), en la moneda de esa fila.
+    const valorFila = parseFloat(r.valor) || 0;
+    if (valorMinFinanzas !== null && valorFila < valorMinFinanzas) return false;
+    if (valorMaxFinanzas !== null && valorFila > valorMaxFinanzas) return false;
     if (busquedaFinanzas.trim()) {
       const q = busquedaFinanzas.trim().toLowerCase();
       // El nombre del colaborador se busca también por colaboradores_publico, no solo por
@@ -5772,6 +5832,7 @@ const App = () => {
       `Empresa: ${filtroFinanzasEmpresa}`,
       `CECO: ${filtroFinanzasCeco}`,
       `Tipo: ${filtroTipoFinanzas}`,
+      ...((valorMinFinanzas !== null || valorMaxFinanzas !== null) ? [`Valor: ${valorMinFinanzas !== null ? valorMinFinanzas.toLocaleString('es-CO') : '…'} a ${valorMaxFinanzas !== null ? valorMaxFinanzas.toLocaleString('es-CO') : '…'}`] : []),
       ...(busquedaFinanzas.trim() ? [`Búsqueda: "${busquedaFinanzas.trim()}"`] : [])
     ];
 
@@ -6018,43 +6079,37 @@ const App = () => {
   const gastosBase = user?.rol === 'Responsable' ? gastosUsuario : gastos;
   const ingresosBase = user?.rol === 'Responsable' ? ingresosUsuario : ingresos;
 
-  const totalGastosCOP = gastosBase.filter(g => getMoneda(g.empresa) === 'COP').reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
-  const totalGastosUSD = gastosBase.filter(g => getMoneda(g.empresa) === 'USD').reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
+  // Moneda REAL de un movimiento: un Pago a Tercero guarda su propia moneda (moneda_pago),
+  // que puede no ser la de la empresa que paga (empresa en COP pagando en USD, o ARKO pagando
+  // en COP). Sin moneda propia, se usa la de la empresa.
+  const monedaMovimiento = (m) => m.moneda || getMoneda(m.empresa);
 
-  const totalIngresosCOP = ingresosBase.filter(i => getMoneda(i.empresa) === 'COP').reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0);
-  const totalIngresosUSD = ingresosBase.filter(i => getMoneda(i.empresa) === 'USD').reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0);
-
-  const balanceCOP = totalIngresosCOP - totalGastosCOP;
-  const balanceUSD = totalIngresosUSD - totalGastosUSD;
-
-  const gastosPorCECO = cecos.map(ceco => ({
-    ceco: ceco.nombre,
-    valor: gastosBase
-      .filter(g => g.ceco === ceco.codigo && getMoneda(g.empresa) === 'COP')
-      .reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0)
-  })).filter(g => g.valor > 0);
-
-  const gastosPorEmpresa = empresas.map(emp => ({
-    empresa: emp,
-    valor: gastosBase
-      .filter(g => g.empresa === emp)
-      .reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0)
-  })).filter(g => g.valor > 0);
-
-  // FUNCIONES PARA DASHBOARD AVANZADO
-  const gastosFiltradomat = gastosBase.filter(g =>
-    g.fecha >= filtroFechaInicio && g.fecha <= filtroFechaFin
-  );
-
-  const ingresosFiltradomat = ingresosBase.filter(i =>
-    i.fecha >= filtroFechaInicio && i.fecha <= filtroFechaFin
-  );
+  // Los Traslados viven en la tabla de gastos pero NO son gastos: mueven plata entre cuentas
+  // (propias o de otra empresa de la holding). Se excluyen de Gastos/Balance/CECOs y se
+  // resumen aparte en la tarjeta "Traslados".
+  const enRangoDashboard = (m) => m.fecha >= filtroFechaInicio && m.fecha <= filtroFechaFin;
+  const gastosFiltradomat = gastosBase.filter(g => g.tipo !== 'Traslado' && enRangoDashboard(g));
+  const ingresosFiltradomat = ingresosBase.filter(enRangoDashboard);
+  const trasladosFiltrados = gastosBase.filter(g => g.tipo === 'Traslado' && enRangoDashboard(g));
 
   // Vistas filtradas por moneda — para tarjetas y gráficos que comparan varias empresas a la vez
-  const gastosFiltradomatCOP = gastosFiltradomat.filter(g => getMoneda(g.empresa) === 'COP');
-  const gastosFiltradomatUSD = gastosFiltradomat.filter(g => getMoneda(g.empresa) === 'USD');
-  const ingresosFiltradomatCOP = ingresosFiltradomat.filter(i => getMoneda(i.empresa) === 'COP');
-  const ingresosFiltradomatUSD = ingresosFiltradomat.filter(i => getMoneda(i.empresa) === 'USD');
+  const gastosFiltradomatCOP = gastosFiltradomat.filter(g => monedaMovimiento(g) === 'COP');
+  const gastosFiltradomatUSD = gastosFiltradomat.filter(g => monedaMovimiento(g) === 'USD');
+  const ingresosFiltradomatCOP = ingresosFiltradomat.filter(i => monedaMovimiento(i) === 'COP');
+  const ingresosFiltradomatUSD = ingresosFiltradomat.filter(i => monedaMovimiento(i) === 'USD');
+
+  // Traslados agrupados por ruta (empresa origen → destino), en la moneda de SALIDA.
+  const trasladosPorRuta = Object.values(trasladosFiltrados.reduce((acc, t) => {
+    const destino = t.cuentaDestino === CUENTA_DESTINO_EXTERNA
+      ? 'Empresa externa'
+      : getEmpresaDestinoTraslado(t.cuentaDestino, t.empresa);
+    const moneda = getMoneda(t.empresa);
+    const clave = `${t.empresa}|${destino}|${moneda}`;
+    if (!acc[clave]) acc[clave] = { origen: t.empresa, destino, moneda, cantidad: 0, total: 0 };
+    acc[clave].cantidad += 1;
+    acc[clave].total += parseFloat(t.valor) || 0;
+    return acc;
+  }, {})).sort((a, b) => a.origen.localeCompare(b.origen) || b.total - a.total);
 
   // Datos por mes (solo empresas en COP — ARKO se muestra aparte en su propio resumen USD)
   const datosPorMes = (() => {
@@ -6095,14 +6150,14 @@ const App = () => {
   .slice(0, 5);
 
   // Ingresos, Gastos y Balance de cada empresa individual en COP (ARKO mantiene su propio resumen en USD, aparte)
-  const resumenPorEmpresaCOP = empresas.filter(emp => getMoneda(emp) === 'COP').map(emp => {
+  const resumenPorEmpresaCOP = empresas.map(emp => {
     const ingresosEmp = ingresosFiltradomatCOP.filter(i => i.empresa === emp).reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0);
     const gastosEmp = gastosFiltradomatCOP.filter(g => g.empresa === emp).reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
     return { empresa: emp, ingresos: ingresosEmp, gastos: gastosEmp, balance: ingresosEmp - gastosEmp };
-  });
+  }).filter(r => getMoneda(r.empresa) === 'COP' || r.ingresos || r.gastos);
 
   // Valor ejecutado (gastos) de cada CECO, cruzado por empresa (COP) — ARKO se muestra aparte en USD
-  const empresasCOP = empresas.filter(emp => getMoneda(emp) === 'COP');
+  const empresasCOP = empresas.filter(emp => getMoneda(emp) === 'COP' || gastosFiltradomatCOP.some(g => g.empresa === emp));
   const cecosPorEmpresaCOP = cecos.map(ceco => {
     const porEmpresa = {};
     let total = 0;
@@ -6116,7 +6171,7 @@ const App = () => {
     return { codigo: ceco.codigo, nombre: ceco.nombre, porEmpresa, total };
   }).filter(c => c.total > 0);
 
-  // Valor ejecutado por CECO en ARKO (USD)
+  // Valor ejecutado por CECO en dólares (ARKO + pagos en USD de cualquier empresa)
   const cecosArkoUSD = cecos.map(ceco => ({
     codigo: ceco.codigo,
     nombre: ceco.nombre,
@@ -6244,114 +6299,176 @@ const App = () => {
   };
 
   // DESCARGAS Y REPORTES
+  // ===== REPORTES Y DESCARGAS (Dashboard) =====
+  // Todos usan el rango "Desde/Hasta" del panel (el mismo del Dashboard Financiero) y solo lo
+  // que el rol ve en pantalla (solicitudesUsuario, gastosUsuario, etc.). Se exporta a .xlsx y
+  // no a CSV: un CSV con comas se abre mal en Excel en español (tildes rotas, todo en una
+  // columna) y cualquier comilla en un detalle rompía la fila.
+  const enRangoReportes = (fecha) => !!fecha && fecha >= filtroFechaInicio && fecha <= filtroFechaFin;
+  const sufijoRango = () => `${filtroFechaInicio}_a_${filtroFechaFin}`;
+  const nombreColaboradorReporte = (id, respaldo) => colaboradoresPublico.find(c => c.id === id)?.nombre || respaldo || '';
+
+  const descargarExcel = (nombreArchivo, nombreHoja, encabezados, filas) => {
+    const ws = XLSX.utils.aoa_to_sheet([encabezados, ...filas]);
+    ws['!cols'] = encabezados.map(h => ({ wch: Math.min(Math.max(h.length + 2, 12), 45) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
+    XLSX.writeFile(wb, nombreArchivo);
+  };
+
   const downloadReporteFinanzas = () => {
-    const headers = ['Fecha', 'Tipo', 'Empresa', 'CECO', 'Detalle', 'Valor', 'Moneda', 'Estado', 'Responsable'];
-    const datos = [...gastos, ...ingresos].map(item => [
-      item.fecha,
-      item.tipo,
-      item.empresa,
-      item.ceco || '-',
-      item.detalle,
-      item.valor,
-      getMoneda(item.empresa),
-      item.estado,
-      item.responsable
-    ]).sort((a, b) => new Date(b[0]) - new Date(a[0]));
-
-    let csv = headers.join(',') + '\n';
-    datos.forEach(row => {
-      csv += row.map(cell => `"${cell}"`).join(',') + '\n';
-    });
-
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.setAttribute('href', URL.createObjectURL(blob));
-    link.setAttribute('download', `Reporte_Finanzas_${new Date().toISOString().split('T')[0]}.csv`);
-    link.click();
+    const encabezados = ['Fecha', 'Movimiento', 'Empresa', 'Colaborador', 'CECO', 'Cuenta', 'Cuenta salida', 'Cuenta destino', 'Detalle', 'Valor', 'Moneda', 'Valor destino', 'Categoría', 'Estado', 'Tercero', 'Documento tercero', 'Observaciones', 'Soporte (link Drive)', 'Lote de pago'];
+    const filaGasto = (g) => [
+      g.fecha, g.tipo, g.empresa, nombreColaboradorReporte(g.responsableId, g.responsable), g.ceco || '',
+      g.cuenta || '', g.cuentaSalida || '', g.cuentaDestino || '', g.detalle || '',
+      parseFloat(g.valor) || 0,
+      // Traslado: el valor sale en la moneda de la empresa origen; el resto, en su moneda real.
+      g.tipo === 'Traslado' ? getMoneda(g.empresa) : (g.moneda || getMoneda(g.empresa)),
+      g.valorDestino !== null && g.valorDestino !== undefined && g.valorDestino !== '' ? parseFloat(g.valorDestino) || '' : '',
+      g.categoria || '', g.estado || '', g.terceroInfo?.nombre || '', g.terceroInfo?.dni || '',
+      g.observaciones || '', g.soporteDriveLink || '', g.lotePagoId || ''
+    ];
+    const filaIngreso = (i) => [
+      i.fecha, 'Ingreso', i.empresa, nombreColaboradorReporte(i.responsableId, i.responsable), i.ceco || '',
+      i.cuenta || '', '', '', i.detalle || '', parseFloat(i.valor) || 0, getMoneda(i.empresa), '',
+      i.categoria || '', i.estado || '', '', '', i.observaciones || '', i.soporteDriveLink || '', ''
+    ];
+    const filas = [
+      ...gastosUsuario.filter(g => enRangoReportes(g.fecha)).map(filaGasto),
+      ...ingresosUsuario.filter(i => enRangoReportes(i.fecha)).map(filaIngreso)
+    ].sort((a, b) => String(b[0]).localeCompare(String(a[0])));
+    if (filas.length === 0) {
+      alert('No hay movimientos de Finanzas en el rango de fechas elegido.');
+      return;
+    }
+    descargarExcel(`Reporte_Finanzas_${sufijoRango()}.xlsx`, 'Finanzas', encabezados, filas);
   };
 
   const downloadReporteSolicitudes = () => {
-    const headers = ['Fecha', 'Tipo', 'Empresa', 'Concepto', 'Valor', 'Moneda', 'Estado', 'Responsable', 'Tercero', 'DNI Tercero'];
-    const datos = solicitudes.map(s => [
-      s.fecha,
-      s.tipo,
-      s.empresa,
-      s.detalle,
-      (s.tipo === 'Pago a Tercero' ? parseFloat(s.valor) || 0 : (s.valor || s.totalCalculado)) || '-',
-      s.tipo === 'Pago a Tercero' ? (s.moneda || getMoneda(s.empresa)) : getMoneda(s.empresa),
-      s.estado,
-      s.responsableNombre || '-',
-      s.terceroInfo?.nombre || '',
-      s.terceroInfo?.dni || ''
-    ]).sort((a, b) => new Date(b[0]) - new Date(a[0]));
-
-    let csv = headers.join(',') + '\n';
-    datos.forEach(row => {
-      csv += row.map(cell => `"${cell}"`).join(',') + '\n';
-    });
-
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.setAttribute('href', URL.createObjectURL(blob));
-    link.setAttribute('download', `Reporte_Solicitudes_${new Date().toISOString().split('T')[0]}.csv`);
-    link.click();
+    const encabezados = ['Fecha', 'Tipo', 'Empresa', 'Colaborador', 'Detalle', 'Valor', 'Moneda', 'Estado', 'Tercero', 'Documento tercero', 'Motivo devolución', 'Lote de pago'];
+    const filas = solicitudesUsuario
+      .filter(s => enRangoReportes(s.fecha))
+      .map(s => [
+        s.fecha, s.tipo, s.empresa, nombreColaboradorReporte(s.responsableId, s.responsableNombre), s.detalle || '',
+        montoSolicitud(s), monedaSolicitud(s), s.estado,
+        s.terceroInfo?.nombre || '', s.terceroInfo?.dni || '', s.motivoDevolucion || '', s.lotePagoId || ''
+      ])
+      .sort((a, b) => String(b[0]).localeCompare(String(a[0])));
+    if (filas.length === 0) {
+      alert('No hay solicitudes en el rango de fechas elegido.');
+      return;
+    }
+    descargarExcel(`Reporte_Solicitudes_${sufijoRango()}.xlsx`, 'Solicitudes', encabezados, filas);
   };
 
+  // Soportes del rango elegido, de TODOS los módulos (Solicitudes, Finanzas, Cuentas de cobro),
+  // cada uno en su carpeta. Nombres únicos dentro de cada carpeta (antes dos archivos con el
+  // mismo nombre se pisaban en el ZIP sin aviso). Un mismo archivo compartido entre una
+  // Solicitud y su Gasto se descarga una sola vez y se copia a ambas carpetas. Los soportes que
+  // son links de Drive van listados en "Links de Drive.xlsx".
   const downloadSoportesZIP = async () => {
-    const zip = new JSZip();
-    let count = 0;
+    if (progresoZip) return;
+    const limpiarNombre = (t) => String(t || '').replace(/[\\/:*?"<>|]+/g, '_').trim();
+    const entidades = {};
+    solicitudesUsuario.filter(s => enRangoReportes(s.fecha)).forEach(s => { entidades[`solicitud:${s.id}`] = { carpeta: 'Solicitudes', fecha: s.fecha, etiqueta: s.tipo, registro: s }; });
+    gastosUsuario.filter(g => enRangoReportes(g.fecha)).forEach(g => { entidades[`gasto:${g.id}`] = { carpeta: 'Finanzas', fecha: g.fecha, etiqueta: g.tipo, registro: g }; });
+    ingresosUsuario.filter(i => enRangoReportes(i.fecha)).forEach(i => { entidades[`ingreso:${i.id}`] = { carpeta: 'Finanzas', fecha: i.fecha, etiqueta: 'Ingreso', registro: i }; });
+    cuentasCobroUsuario.filter(c => enRangoReportes(c.fecha)).forEach(c => { entidades[`cuenta_cobro:${c.id}`] = { carpeta: 'Cuentas de cobro', fecha: c.fecha, etiqueta: `CuentaCobro-${c.numero || ''}`, registro: c }; });
 
-    const { data: todosSoportes, error } = await supabase
-      .from('soportes')
-      .select('bucket_path, nombre_original, entidad_id')
-      .eq('entidad_tipo', 'solicitud');
-
-    if (error) {
-      console.error('Error cargando soportes para ZIP:', error);
-      alert('❌ No se pudieron cargar los soportes: ' + error.message);
+    const ids = [...new Set(Object.keys(entidades).map(k => k.split(':')[1]))];
+    if (ids.length === 0) {
+      alert('No hay registros en el rango de fechas elegido.');
       return;
     }
 
-    const solicitudPorId = {};
-    solicitudes.forEach(s => { solicitudPorId[s.id] = s; });
-
-    for (const soporte of todosSoportes || []) {
-      const sol = solicitudPorId[soporte.entidad_id];
-      const { data: blob, error: downloadError } = await supabase.storage.from('soportes').download(soporte.bucket_path);
-      if (downloadError || !blob) {
-        console.warn('No se pudo descargar', soporte.bucket_path, downloadError);
-        continue;
+    setProgresoZip({ hechos: 0, total: 0 });
+    try {
+      // Filas de public.soportes de esas entidades (en bloques, para no armar una URL gigante).
+      const filasSoportes = [];
+      for (let i = 0; i < ids.length; i += 150) {
+        const { data, error } = await supabase
+          .from('soportes')
+          .select('bucket_path, nombre_original, entidad_tipo, entidad_id')
+          .in('entidad_id', ids.slice(i, i + 150));
+        if (error) throw new Error('No se pudieron leer los soportes: ' + error.message);
+        filasSoportes.push(...(data || []).filter(sp => entidades[`${sp.entidad_tipo}:${sp.entidad_id}`]));
       }
-      const prefijo = sol ? `${sol.fecha}_${sol.tipo}_` : '';
-      zip.file(`${prefijo}${soporte.nombre_original}`, blob);
-      count++;
-    }
 
-    // Compatibilidad con solicitudes antiguas que aún tengan archivo por documento embebido
-    solicitudes.forEach((sol, idx) => {
-      if (sol.documentos && sol.documentos.length > 0) {
-        sol.documentos.forEach((doc, docIdx) => {
-          if (doc.archivo) {
-            const nombre = doc.archivoNombre || `documento_${idx}_${docIdx}`;
-            const data = doc.archivo.split(',')[1];
-            zip.file(`${sol.fecha}_${sol.tipo}_${nombre}`, data, { base64: true });
+      const zip = new JSZip();
+      const usados = {};
+      const nombreUnico = (carpeta, nombre) => {
+        const base = limpiarNombre(nombre) || 'archivo';
+        const punto = base.lastIndexOf('.');
+        const [raiz, ext] = punto > 0 ? [base.slice(0, punto), base.slice(punto)] : [base, ''];
+        let candidato = base;
+        for (let n = 2; usados[`${carpeta}/${candidato}`]; n++) candidato = `${raiz} (${n})${ext}`;
+        usados[`${carpeta}/${candidato}`] = true;
+        return `${carpeta}/${candidato}`;
+      };
+
+      // Descarga cada archivo una sola vez, 4 a la vez.
+      const rutas = [...new Set(filasSoportes.map(sp => sp.bucket_path))];
+      const blobs = {};
+      const fallidos = [];
+      const descargarRuta = async (ruta) => {
+        const { data: blob, error } = await supabase.storage.from('soportes').download(ruta);
+        if (error || !blob) fallidos.push(ruta); else blobs[ruta] = blob;
+      };
+      setProgresoZip({ hechos: 0, total: rutas.length });
+      for (let i = 0; i < rutas.length; i += 4) {
+        await Promise.all(rutas.slice(i, i + 4).map(descargarRuta));
+        setProgresoZip({ hechos: Math.min(i + 4, rutas.length), total: rutas.length });
+      }
+
+      let count = 0;
+      filasSoportes.forEach(sp => {
+        const blob = blobs[sp.bucket_path];
+        if (!blob) return;
+        const ent = entidades[`${sp.entidad_tipo}:${sp.entidad_id}`];
+        zip.file(nombreUnico(ent.carpeta, `${ent.fecha}_${ent.etiqueta}_${sp.nombre_original}`), blob);
+        count++;
+      });
+
+      // Compatibilidad con solicitudes antiguas que aún tengan archivo por documento embebido.
+      Object.values(entidades).filter(e => e.carpeta === 'Solicitudes').forEach(({ registro: sol }) => {
+        (sol.documentos || []).forEach((doc, docIdx) => {
+          if (doc.archivo && String(doc.archivo).includes(',')) {
+            zip.file(nombreUnico('Solicitudes', `${sol.fecha}_${sol.tipo}_${doc.archivoNombre || `documento_${docIdx + 1}`}`), doc.archivo.split(',')[1], { base64: true });
             count++;
           }
         });
+      });
+
+      // Soportes que viven en Drive (registros históricos importados): se listan con su link.
+      const links = Object.values(entidades)
+        .filter(e => e.registro.soporteDriveLink)
+        .map(e => [e.fecha, e.carpeta, e.etiqueta, e.registro.empresa || '', e.registro.detalle || '', parseFloat(e.registro.valor) || 0, e.registro.soporteDriveLink]);
+      if (links.length > 0) {
+        const ws = XLSX.utils.aoa_to_sheet([['Fecha', 'Módulo', 'Tipo', 'Empresa', 'Detalle', 'Valor', 'Link Drive'], ...links]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Links Drive');
+        zip.file('Links de Drive.xlsx', XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
       }
-    });
 
-    if (count === 0) {
-      alert('No hay documentos para descargar');
-      return;
-    }
+      if (count === 0 && links.length === 0) {
+        alert('No hay soportes en el rango de fechas elegido.');
+        return;
+      }
 
-    zip.generateAsync({ type: 'blob' }).then(blob => {
+      const blobZip = await zip.generateAsync({ type: 'blob' });
       const link = document.createElement('a');
-      link.setAttribute('href', URL.createObjectURL(blob));
-      link.setAttribute('download', `Soportes_${new Date().toISOString().split('T')[0]}.zip`);
+      link.setAttribute('href', URL.createObjectURL(blobZip));
+      link.setAttribute('download', `Soportes_${sufijoRango()}.zip`);
       link.click();
-    });
+      if (fallidos.length > 0) {
+        alert(`⚠️ El ZIP se descargó, pero ${fallidos.length} archivo(s) no se pudieron bajar del almacenamiento y no quedaron incluidos.`);
+      }
+    } catch (error) {
+      console.error('Error armando el ZIP de soportes:', error);
+      alert('❌ ' + error.message);
+    } finally {
+      setProgresoZip(null);
+    }
   };
 
   // Mientras se revisa si ya hay una sesión de Supabase activa, no mostramos
@@ -6589,19 +6706,30 @@ const App = () => {
             {/* REPORTES Y DESCARGAS */}
             {(isReadOnly || user?.rol === 'Administrador' || user?.rol === 'Coordinadora Administrativa') && (
               <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginTop: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>📥 Reportes y Descargas</h3>
+                <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>📥 Reportes y Descargas</h3>
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: '1.25rem' }}>
+                  <div>
+                    <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.4rem' }}>Desde</label>
+                    <input type="date" value={filtroFechaInicio} onChange={(e) => setFiltroFechaInicio(e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458' }} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.4rem' }}>Hasta</label>
+                    <input type="date" value={filtroFechaFin} onChange={(e) => setFiltroFechaFin(e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458' }} />
+                  </div>
+                  <p style={{ color: '#8F8877', fontSize: '0.75rem', margin: 0, flex: '1 1 220px' }}>Las 3 descargas usan este rango de fechas (es el mismo del Dashboard Financiero) y solo incluyen lo que tu rol puede ver.</p>
+                </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem' }}>
                   <button onClick={downloadReporteFinanzas} style={{ padding: '1rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#C4A747', fontWeight: 'bold', cursor: 'pointer', textAlign: 'left' }}>
-                    📊 Descargar Reporte Finanzas (CSV)
-                    <p style={{ fontSize: '0.8rem', color: '#6B6458', margin: '0.5rem 0 0 0' }}>Gastos e Ingresos por período</p>
+                    📊 Descargar Reporte Finanzas (Excel)
+                    <p style={{ fontSize: '0.8rem', color: '#6B6458', margin: '0.5rem 0 0 0' }}>Gastos, Pagos a Tercero, Traslados e Ingresos del período</p>
                   </button>
                   <button onClick={downloadReporteSolicitudes} style={{ padding: '1rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#C4A747', fontWeight: 'bold', cursor: 'pointer', textAlign: 'left' }}>
-                    📋 Descargar Reporte Solicitudes (CSV)
-                    <p style={{ fontSize: '0.8rem', color: '#6B6458', margin: '0.5rem 0 0 0' }}>Todas las solicitudes y estados</p>
+                    📋 Descargar Reporte Solicitudes (Excel)
+                    <p style={{ fontSize: '0.8rem', color: '#6B6458', margin: '0.5rem 0 0 0' }}>Solicitudes del período con su estado</p>
                   </button>
-                  <button onClick={downloadSoportesZIP} style={{ padding: '1rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#C4A747', fontWeight: 'bold', cursor: 'pointer', textAlign: 'left' }}>
-                    📦 Descargar Soportes (ZIP)
-                    <p style={{ fontSize: '0.8rem', color: '#6B6458', margin: '0.5rem 0 0 0' }}>Todos los documentos adjuntos</p>
+                  <button onClick={downloadSoportesZIP} disabled={!!progresoZip} style={{ padding: '1rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#C4A747', fontWeight: 'bold', cursor: progresoZip ? 'wait' : 'pointer', textAlign: 'left', opacity: progresoZip ? 0.7 : 1 }}>
+                    {progresoZip ? `⏳ Descargando soportes… ${progresoZip.hechos}/${progresoZip.total || '?'}` : '📦 Descargar Soportes (ZIP)'}
+                    <p style={{ fontSize: '0.8rem', color: '#6B6458', margin: '0.5rem 0 0 0' }}>Soportes del período de Solicitudes, Finanzas y Cuentas de cobro, por carpetas</p>
                   </button>
                 </div>
               </div>
@@ -8310,7 +8438,15 @@ const App = () => {
                   <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Hasta</label>
                   <input type="date" value={filtroFinanzasFechaFin} onChange={(e) => setFiltroFinanzasFechaFin(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }} />
                 </div>
-                <button onClick={() => { setBusquedaFinanzas(''); setFiltroFinanzasEmpresa('Todas'); setFiltroFinanzasCeco('Todos'); setFiltroFinanzasFechaInicio(''); setFiltroFinanzasFechaFin(''); }} style={{ padding: '0.75rem 1.25rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>🔄 Reiniciar</button>
+                <div>
+                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Valor desde</label>
+                  <input type="text" inputMode="decimal" placeholder="Ej: 1.000.000" value={filtroFinanzasValorMin} onChange={(e) => setFiltroFinanzasValorMin(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', width: '140px' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Valor hasta</label>
+                  <input type="text" inputMode="decimal" placeholder="Ej: 5.000.000" value={filtroFinanzasValorMax} onChange={(e) => setFiltroFinanzasValorMax(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', width: '140px' }} />
+                </div>
+                <button onClick={() => { setBusquedaFinanzas(''); setFiltroFinanzasEmpresa('Todas'); setFiltroFinanzasCeco('Todos'); setFiltroFinanzasFechaInicio(''); setFiltroFinanzasFechaFin(''); setFiltroFinanzasValorMin(''); setFiltroFinanzasValorMax(''); }} style={{ padding: '0.75rem 1.25rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>🔄 Reiniciar</button>
               </div>
 
               {(cargandoGastos || cargandoIngresos) && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando...</p>}
@@ -8508,7 +8644,7 @@ const App = () => {
                 const balanceUSDFiltrado = ingresosUSDFiltrado - gastosUSDFiltrado;
                 return (
                   <>
-                    <h3 style={{ color: '#6B6458', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>Resumen en Pesos (COP) — todas las empresas excepto ARKO</h3>
+                    <h3 style={{ color: '#6B6458', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>Resumen en Pesos (COP) — movimientos en pesos de todas las empresas (sin traslados)</h3>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
                       <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
                         <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💰 Ingresos</p>
@@ -8549,21 +8685,61 @@ const App = () => {
                       </table>
                     </div>
 
-                    {/* CARDS RESUMEN — USD (solo ARKO) */}
-                    <h3 style={{ color: '#6B6458', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>💵 Resumen ARKO (USD)</h3>
+                    {/* CARDS RESUMEN — USD (ARKO + pagos en USD de cualquier empresa) */}
+                    <h3 style={{ color: '#6B6458', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>💵 Resumen en Dólares (USD) — ARKO y pagos en USD (sin traslados)</h3>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
                       <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
-                        <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💰 Ingresos ARKO</p>
+                        <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💰 Ingresos USD</p>
                         <h3 style={{ color: '#2F9E52', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(ingresosUSDFiltrado, 'USD')}</h3>
                       </div>
                       <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
-                        <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💸 Gastos ARKO</p>
+                        <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💸 Gastos USD</p>
                         <h3 style={{ color: '#CC4B4B', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(gastosUSDFiltrado, 'USD')}</h3>
                       </div>
                       <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
-                        <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>📊 Balance ARKO</p>
+                        <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>📊 Balance USD</p>
                         <h3 style={{ color: balanceUSDFiltrado >= 0 ? '#2F9E52' : '#CC4B4B', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(balanceUSDFiltrado, 'USD')}</h3>
                       </div>
+                    </div>
+
+                    {/* TRASLADOS — movimientos entre cuentas/empresas, aparte de Gastos e Ingresos */}
+                    <h3 style={{ color: '#6B6458', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>🔄 Traslados del período <span style={{ fontWeight: 'normal' }}>— no cuentan como gasto ni ingreso</span></h3>
+                    <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem', marginBottom: '2rem' }}>
+                      {trasladosPorRuta.length === 0 ? (
+                        <p style={{ color: '#AFA897', margin: 0, fontSize: '0.85rem' }}>Sin traslados en este rango de fechas.</p>
+                      ) : (
+                        <>
+                          <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                            <div><p style={{ color: '#6B6458', margin: '0 0 0.25rem 0', fontSize: '0.8rem' }}>Cantidad</p><h3 style={{ color: '#3B72D9', margin: 0, fontSize: '1.5rem' }}>{trasladosFiltrados.length}</h3></div>
+                            {['COP', 'USD'].map(m => {
+                              const total = trasladosPorRuta.filter(r => r.moneda === m).reduce((sum, r) => sum + r.total, 0);
+                              return total > 0 ? <div key={m}><p style={{ color: '#6B6458', margin: '0 0 0.25rem 0', fontSize: '0.8rem' }}>Total movido ({m})</p><h3 style={{ color: '#3B72D9', margin: 0, fontSize: '1.5rem' }}>{formatMoneyByMoneda(total, m)}</h3></div> : null;
+                            })}
+                          </div>
+                          <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                              <thead>
+                                <tr style={{ borderBottom: '2px solid #C4A747' }}>
+                                  <th style={{ textAlign: 'left', padding: '0.6rem', color: '#C4A747' }}>Desde</th>
+                                  <th style={{ textAlign: 'left', padding: '0.6rem', color: '#C4A747' }}>Hacia</th>
+                                  <th style={{ textAlign: 'center', padding: '0.6rem', color: '#C4A747' }}>Cantidad</th>
+                                  <th style={{ textAlign: 'right', padding: '0.6rem', color: '#C4A747' }}>Total (moneda de salida)</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {trasladosPorRuta.map(r => (
+                                  <tr key={`${r.origen}-${r.destino}-${r.moneda}`} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                                    <td style={{ padding: '0.6rem', color: '#221E15' }}>{r.origen}</td>
+                                    <td style={{ padding: '0.6rem', color: '#221E15' }}>{r.destino === r.origen ? 'Entre cuentas propias' : r.destino}</td>
+                                    <td style={{ padding: '0.6rem', textAlign: 'center', color: '#6B6458' }}>{r.cantidad}</td>
+                                    <td style={{ padding: '0.6rem', textAlign: 'right', color: '#3B72D9', fontWeight: 'bold' }}>{formatMoneyByMoneda(r.total, r.moneda)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </>
                 );
@@ -8572,7 +8748,7 @@ const App = () => {
               {/* GRÁFICO GASTOS VS INGRESOS POR MES */}
               {datosPorMes.length > 0 && (
                 <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem', marginBottom: '2rem' }}>
-                  <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>Gastos vs Ingresos por Mes <span style={{ color: '#6B6458', fontSize: '0.8rem', fontWeight: 'normal' }}>(COP — excluye ARKO/USD)</span></h3>
+                  <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>Gastos vs Ingresos por Mes <span style={{ color: '#6B6458', fontSize: '0.8rem', fontWeight: 'normal' }}>(COP — sin USD ni traslados)</span></h3>
                   <svg width="100%" height="300" viewBox="0 0 800 300" style={{ backgroundColor: 'transparent' }}>
                     {/* Grid */}
                     {[0, 1, 2, 3, 4].map(i => (
@@ -8614,7 +8790,7 @@ const App = () => {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem' }}>
                 {topCecos.length > 0 && (
                   <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
-                    <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🏆 Top 5 CECOs <span style={{ color: '#6B6458', fontSize: '0.8rem', fontWeight: 'normal' }}>(COP — excluye ARKO/USD)</span></h3>
+                    <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🏆 Top 5 CECOs <span style={{ color: '#6B6458', fontSize: '0.8rem', fontWeight: 'normal' }}>(COP — sin USD ni traslados)</span></h3>
                     <svg width="100%" height="250" viewBox="0 0 200 200" style={{ backgroundColor: 'transparent' }}>
                       {(() => {
                         const total = topCecos.reduce((sum, c) => sum + c.value, 0);
@@ -8654,7 +8830,7 @@ const App = () => {
 
                 {topEmpresas.length > 0 && (
                   <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
-                    <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🏢 Top 5 Empresas <span style={{ color: '#6B6458', fontSize: '0.8rem', fontWeight: 'normal' }}>(COP — excluye ARKO/USD)</span></h3>
+                    <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🏢 Top 5 Empresas <span style={{ color: '#6B6458', fontSize: '0.8rem', fontWeight: 'normal' }}>(COP — sin USD ni traslados)</span></h3>
                     <svg width="100%" height="250" viewBox="0 0 200 200" style={{ backgroundColor: 'transparent' }}>
                       {(() => {
                         const total = topEmpresas.reduce((sum, e) => sum + e.value, 0);
@@ -8696,7 +8872,7 @@ const App = () => {
               {/* CECOs POR EMPRESA — VALOR EJECUTADO TOTAL */}
               {cecosPorEmpresaCOP.length > 0 && (
                 <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem', marginTop: '2rem' }}>
-                  <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>📁 CECOs por Empresa <span style={{ color: '#6B6458', fontSize: '0.8rem', fontWeight: 'normal' }}>— Valor Ejecutado (COP — excluye ARKO/USD)</span></h3>
+                  <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>📁 CECOs por Empresa <span style={{ color: '#6B6458', fontSize: '0.8rem', fontWeight: 'normal' }}>— Valor Ejecutado (COP — sin USD ni traslados)</span></h3>
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                       <thead style={{ backgroundColor: '#FFFFFF' }}>
@@ -8729,7 +8905,7 @@ const App = () => {
 
                   {cecosArkoUSD.length > 0 && (
                     <>
-                      <h3 style={{ color: '#C4A747', margin: '2rem 0 1rem 0' }}>📁 CECOs ARKO <span style={{ color: '#6B6458', fontSize: '0.8rem', fontWeight: 'normal' }}>— Valor Ejecutado (USD)</span></h3>
+                      <h3 style={{ color: '#C4A747', margin: '2rem 0 1rem 0' }}>📁 CECOs en USD <span style={{ color: '#6B6458', fontSize: '0.8rem', fontWeight: 'normal' }}>— Valor Ejecutado (USD)</span></h3>
                       <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                           <thead style={{ backgroundColor: '#FFFFFF' }}>
@@ -9447,7 +9623,7 @@ const App = () => {
                 {(cuentasPorEmpresa[solicitud.empresa] || []).map(cuenta => <option key={cuenta} value={cuenta}>{cuenta}</option>)}
               </select>
 
-              {!esTercero && (
+              {(
                 <>
                   <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>CECO *</label>
                   <select value={confirmarPagoSolicitud.ceco} onChange={(e) => setConfirmarPagoSolicitud({...confirmarPagoSolicitud, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', marginBottom: '1rem' }}>
@@ -9622,9 +9798,8 @@ const App = () => {
                 {(cuentasPorEmpresa[empresaLote] || []).map(c => <option key={c} value={c}>{c}</option>)}
               </select>
 
-              {/* Pago a Tercero siempre usa su CECO fijo (CECO-015-PT) — no se pide acá, igual que
-                  en el pago individual de un solo Pago a Tercero. */}
-              {!esLoteTerceroModal && (
+              {/* El CECO se pide para todos los tipos, incluido Pago a Tercero. */}
+              {(
                 <>
                   <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>CECO del lote *</label>
                   <select value={ceco} onChange={(e) => setConfirmarPagoLoteReembolsos({...confirmarPagoLoteReembolsos, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', marginBottom: '1rem' }}>
