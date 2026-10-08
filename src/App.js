@@ -5055,12 +5055,19 @@ const App = () => {
   // Aprueba uno o varios conceptos del mes filtrado guardando el NETO a pagar de hoy. Un upsert
   // por (concepto, año, mes): reaprobar un concepto "desactualizado" reemplaza la aprobación vieja.
   const handleAprobarPresupuesto = async (items) => {
-    const aAprobar = items.filter(i => !i.pagado && i.netoAPagar > 0);
-    if (aAprobar.length === 0) return;
+    const bloqueados = items.filter(i => !i.pagado && i.netoAPagar > 0 && !i.requisitoCuentaCobro?.ok);
+    const aAprobar = items.filter(i => !i.pagado && i.netoAPagar > 0 && i.requisitoCuentaCobro?.ok !== false);
+    if (aAprobar.length === 0) {
+      if (bloqueados.length > 0) alert(`No se puede aprobar: ${bloqueados.map(i => `${i.nombre} — ${i.requisitoCuentaCobro.motivo}`).join('\n')}`);
+      return;
+    }
     const { mes, anio } = filtroPresupuesto;
     if (aAprobar.length > 1) {
       const total = aAprobar.reduce((sum, i) => sum + i.netoAPagar, 0);
-      if (!window.confirm(`¿Aprobar ${aAprobar.length} concepto(s) de ${MESES_ES[mes - 1]} ${anio} por un neto total de ${formatMoney(total, filtroPresupuesto.empresa)}?`)) return;
+      const avisoBloqueados = bloqueados.length > 0
+        ? `\n\n⚠️ ${bloqueados.length} de honorarios NO se aprobarán porque su cuenta de cobro del mes no está aprobada:\n${bloqueados.slice(0, 10).map(i => `• ${i.nombre} — ${i.requisitoCuentaCobro.motivo}`).join('\n')}`
+        : '';
+      if (!window.confirm(`¿Aprobar ${aAprobar.length} concepto(s) de ${MESES_ES[mes - 1]} ${anio} por un neto total de ${formatMoney(total, filtroPresupuesto.empresa)}?${avisoBloqueados}`)) return;
     }
     setGuardandoAprobacionPresupuesto(true);
     try {
@@ -6280,6 +6287,20 @@ const App = () => {
     return { aprobacion, aprobado: vigente, aprobacionDesactualizada: !!aprobacion && !vigente };
   };
 
+  // Honorarios ("Prestación de Servicio"): antes de aprobar el pago en Presupuesto, el
+  // colaborador debe tener su Cuenta de Cobro de ESE mes/año y empresa en estado Aprobado (o ya
+  // Pagado). Los demás tipos de concepto (Nómina, servicios, etc.) no tienen este requisito.
+  const TIPO_HONORARIOS = 'Prestación de Servicio';
+  const requisitoCuentaCobro = (item, anio, mes) => {
+    if (item.tipo !== TIPO_HONORARIOS) return { ok: true };
+    if (!item.responsableId) return { ok: false, motivo: 'Concepto sin colaborador vinculado (asígnalo en Gestión de Conceptos)' };
+    const delMes = cuentasDeCobro.filter(c => c.responsableId === item.responsableId && Number(c.mes) === Number(mes) && Number(c.anio) === Number(anio) && c.empresa === item.empresa);
+    if (delMes.length === 0) return { ok: false, motivo: 'Sin cuenta de cobro del mes' };
+    const aprobada = delMes.find(c => ['Aprobado', 'Pagado'].includes(c.estado));
+    if (!aprobada) return { ok: false, motivo: `Cuenta de cobro N° ${delMes[0].numero || '—'} en estado ${delMes[0].estado}` };
+    return { ok: true, cuentaCobro: aprobada };
+  };
+
   const presupuestoMensualDetalle = (() => {
     const { empresa, mes, anio } = filtroPresupuesto;
     const mesStr = `${anio}-${String(mes).padStart(2, '0')}`;
@@ -6316,7 +6337,18 @@ const App = () => {
           pagado: !!gastoVinculado,
           valorPagadoReal: gastoVinculado ? (parseFloat(gastoVinculado.valor) || 0) : 0,
           gastoId: gastoVinculado ? gastoVinculado.id : null,
-          ...estadoAprobacionPresupuesto(item.id, anio, mes, netoAPagar)
+          ...(() => {
+            const est = estadoAprobacionPresupuesto(item.id, anio, mes, netoAPagar);
+            const requisito = requisitoCuentaCobro(item, anio, mes);
+            // Una aprobación solo vale mientras se siga cumpliendo el requisito de la cuenta de
+            // cobro (si alguien la devuelve a Pendiente después, el concepto deja de estar aprobado).
+            return {
+              ...est,
+              aprobado: est.aprobado && requisito.ok,
+              aprobacionDesactualizada: est.aprobacionDesactualizada || (est.aprobado && !requisito.ok),
+              requisitoCuentaCobro: requisito
+            };
+          })()
         };
       })
       // Pagados primero, Pendientes al final; dentro de cada grupo, alfabético por Concepto (más
@@ -9113,6 +9145,8 @@ const App = () => {
                       )}
                       {(() => {
                         const sinAprobar = presupuestoMensualDetalle.filter(i => !i.pagado && !i.aprobado && i.netoAPagar > 0);
+                        const bloqueadosCC = sinAprobar.filter(i => !i.requisitoCuentaCobro?.ok).length;
+                        const aprobables = sinAprobar.filter(i => i.requisitoCuentaCobro?.ok);
                         const aprobados = presupuestoMensualDetalle.filter(i => !i.pagado && i.aprobado).length;
                         const pendientesTotales = presupuestoMensualDetalle.filter(i => !i.pagado).length;
                         if (pendientesTotales === 0) return null;
@@ -9120,11 +9154,12 @@ const App = () => {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '0.75rem 1rem' }}>
                             <span style={{ color: '#221E15', fontSize: '0.85rem' }}>
                               👍 Aprobación del mes: <strong>{aprobados}</strong> de <strong>{pendientesTotales}</strong> pendientes aprobados
-                              {sinAprobar.some(i => i.aprobacionDesactualizada) && <span style={{ color: '#C4622D' }}> · ⚠️ {sinAprobar.filter(i => i.aprobacionDesactualizada).length} cambiaron de valor</span>}
+                              {sinAprobar.some(i => i.aprobacionDesactualizada) && <span style={{ color: '#C4622D' }}> · ⚠️ {sinAprobar.filter(i => i.aprobacionDesactualizada).length} requieren reaprobar</span>}
+                              {bloqueadosCC > 0 && <span style={{ color: '#8F8877' }}> · 🔒 {bloqueadosCC} honorario(s) esperan su cuenta de cobro aprobada</span>}
                             </span>
-                            {puedeEditarPresupuesto && sinAprobar.length > 0 && (
+                            {puedeEditarPresupuesto && aprobables.length > 0 && (
                               <button disabled={guardandoAprobacionPresupuesto} onClick={() => handleAprobarPresupuesto(sinAprobar)} style={{ padding: '0.5rem 1rem', backgroundColor: '#2F9E52', color: '#FFFFFF', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoAprobacionPresupuesto ? 'wait' : 'pointer', opacity: guardandoAprobacionPresupuesto ? 0.6 : 1 }}>
-                                👍 Aprobar {sinAprobar.length === 1 ? 'el pendiente' : `los ${sinAprobar.length} pendientes`} del mes
+                                👍 Aprobar {aprobables.length === 1 ? 'el pendiente' : `los ${aprobables.length} pendientes`} del mes
                               </button>
                             )}
                             <span style={{ color: '#8F8877', fontSize: '0.75rem' }}>Solo lo aprobado se podrá exportar al banco. Si cambia el valor o una deducción, hay que volver a aprobar.</span>
@@ -9200,6 +9235,10 @@ const App = () => {
                                     <span title={item.aprobacion?.aprobadoAt ? `Aprobado el ${new Date(item.aprobacion.aprobadoAt).toLocaleDateString('es-CO')}` : ''} style={{ color: '#2F9E52', fontSize: '0.8rem', fontWeight: 'bold' }}>
                                       👍 Aprobado
                                       {puedeEditarPresupuesto && <button onClick={() => handleQuitarAprobacionPresupuesto(item)} title="Quitar aprobación" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#AFA897', marginLeft: '0.3rem' }}>✕</button>}
+                                    </span>
+                                  ) : !item.requisitoCuentaCobro?.ok ? (
+                                    <span style={{ color: '#8F8877', fontSize: '0.75rem' }} title="Los honorarios se aprueban solo cuando la Cuenta de Cobro del mes está Aprobada">
+                                      🔒 {item.requisitoCuentaCobro.motivo}
                                     </span>
                                   ) : item.aprobacionDesactualizada ? (
                                     <span style={{ color: '#C4622D', fontSize: '0.75rem' }} title={`Aprobado por ${formatMoney(item.aprobacion.valorNeto, filtroPresupuesto.empresa)}; el neto actual es otro`}>
