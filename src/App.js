@@ -517,6 +517,10 @@ const App = () => {
   const [filtroFinanzasCeco, setFiltroFinanzasCeco] = useState('Todos');
   const [filtroFinanzasFechaInicio, setFiltroFinanzasFechaInicio] = useState('');
   const [filtroFinanzasFechaFin, setFiltroFinanzasFechaFin] = useState('');
+  // Rango de valor (mínimo/máximo) del historial — mismo patrón que el rango de fechas. Se
+  // guarda como texto para aceptar lo que la gente escribe ("1.500.000", "1500000", "70,88").
+  const [filtroFinanzasValorMin, setFiltroFinanzasValorMin] = useState('');
+  const [filtroFinanzasValorMax, setFiltroFinanzasValorMax] = useState('');
   // FACTURAS DE UN TERCERO EN LOTE (ej. Caelum manda varias facturas de distintos colaboradores
   // y se paga todo junto con un solo comprobante del banco): un único modal — se elige el Tipo
   // "🧾 Pago a Tercero en Lote" en el formulario de Nuevo Gasto/Ingreso — pide Empresa/Cuenta/
@@ -5596,6 +5600,17 @@ const App = () => {
     ...ingresosUsuario.map(i => ({ ...i, tipo: 'Ingreso', _origen: 'ingreso' })),
   ].sort((a, b) => new Date(b.fecha) - new Date(a.fecha) || (b.id || 0) - (a.id || 0));
 
+  // "1.500.000" / "1500000" / "70,88" → número (formato colombiano: punto de miles, coma
+  // decimal). Vacío o inválido → null (= sin límite).
+  const parseValorFiltro = (texto) => {
+    const limpio = String(texto || '').replace(/[^\d,]/g, '').replace(',', '.');
+    if (!limpio) return null;
+    const n = parseFloat(limpio);
+    return isNaN(n) ? null : n;
+  };
+  const valorMinFinanzas = parseValorFiltro(filtroFinanzasValorMin);
+  const valorMaxFinanzas = parseValorFiltro(filtroFinanzasValorMax);
+
   const registrosFinanzas = registrosFinanzasTodos.filter(r => {
     // El filtro "🤝 Pago a Tercero" también debe traer los Gastos normales que quedaron con
     // datos de tercero adjuntos (Tipo "Gasto" + CECO "Pago a Terceros", ver esPagoTerceroFinanzas
@@ -5610,6 +5625,11 @@ const App = () => {
     if (filtroFinanzasCeco !== 'Todos' && r.ceco !== filtroFinanzasCeco) return false;
     if (filtroFinanzasFechaInicio && r.fecha < filtroFinanzasFechaInicio) return false;
     if (filtroFinanzasFechaFin && r.fecha > filtroFinanzasFechaFin) return false;
+    // Se compara contra el valor que muestra la fila (en un Traslado, el lado "entrada" usa
+    // el valor destino), en la moneda de esa fila.
+    const valorFila = parseFloat(r.valor) || 0;
+    if (valorMinFinanzas !== null && valorFila < valorMinFinanzas) return false;
+    if (valorMaxFinanzas !== null && valorFila > valorMaxFinanzas) return false;
     if (busquedaFinanzas.trim()) {
       const q = busquedaFinanzas.trim().toLowerCase();
       // El nombre del colaborador se busca también por colaboradores_publico, no solo por
@@ -5763,6 +5783,7 @@ const App = () => {
       `Empresa: ${filtroFinanzasEmpresa}`,
       `CECO: ${filtroFinanzasCeco}`,
       `Tipo: ${filtroTipoFinanzas}`,
+      ...((valorMinFinanzas !== null || valorMaxFinanzas !== null) ? [`Valor: ${valorMinFinanzas !== null ? valorMinFinanzas.toLocaleString('es-CO') : '…'} a ${valorMaxFinanzas !== null ? valorMaxFinanzas.toLocaleString('es-CO') : '…'}`] : []),
       ...(busquedaFinanzas.trim() ? [`Búsqueda: "${busquedaFinanzas.trim()}"`] : [])
     ];
 
@@ -8334,7 +8355,15 @@ const App = () => {
                   <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Hasta</label>
                   <input type="date" value={filtroFinanzasFechaFin} onChange={(e) => setFiltroFinanzasFechaFin(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }} />
                 </div>
-                <button onClick={() => { setBusquedaFinanzas(''); setFiltroFinanzasEmpresa('Todas'); setFiltroFinanzasCeco('Todos'); setFiltroFinanzasFechaInicio(''); setFiltroFinanzasFechaFin(''); }} style={{ padding: '0.75rem 1.25rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>🔄 Reiniciar</button>
+                <div>
+                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Valor desde</label>
+                  <input type="text" inputMode="decimal" placeholder="Ej: 1.000.000" value={filtroFinanzasValorMin} onChange={(e) => setFiltroFinanzasValorMin(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', width: '140px' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Valor hasta</label>
+                  <input type="text" inputMode="decimal" placeholder="Ej: 5.000.000" value={filtroFinanzasValorMax} onChange={(e) => setFiltroFinanzasValorMax(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', width: '140px' }} />
+                </div>
+                <button onClick={() => { setBusquedaFinanzas(''); setFiltroFinanzasEmpresa('Todas'); setFiltroFinanzasCeco('Todos'); setFiltroFinanzasFechaInicio(''); setFiltroFinanzasFechaFin(''); setFiltroFinanzasValorMin(''); setFiltroFinanzasValorMax(''); }} style={{ padding: '0.75rem 1.25rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>🔄 Reiniciar</button>
               </div>
 
               {(cargandoGastos || cargandoIngresos) && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando...</p>}
