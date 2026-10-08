@@ -629,6 +629,12 @@ const App = () => {
   // Ajustes al valor esperado de UN mes puntual (no cambia el valor base recurrente del concepto).
   // Cada registro: { id, presupuestoItemId, anio, mes, valor }.
   const [presupuestoOverrides, setPresupuestoOverrides] = useState([]);
+  // Aprobaciones mensuales de conceptos de Presupuesto (public.presupuesto_aprobaciones): un
+  // concepto del mes solo se puede exportar al banco (PAB) si está aprobado y el neto aprobado
+  // sigue siendo el neto actual — si alguien cambia el valor o una deducción después, la
+  // aprobación queda "desactualizada" y hay que volver a aprobar.
+  const [presupuestoAprobaciones, setPresupuestoAprobaciones] = useState([]);
+  const [guardandoAprobacionPresupuesto, setGuardandoAprobacionPresupuesto] = useState(false);
   // Deducciones (préstamos u otros descuentos) aplicadas al valor mensual de un concepto de Nómina/Prestación
   // de Servicio. 'Préstamo' calcula su propio saldo pendiente mes a mes (sin tabla de historial, de forma
   // determinística a partir de fechaInicio/valorCuota/saldoTotal — ver mesesTranscurridos/getCuotaAplicada
@@ -1497,6 +1503,25 @@ const App = () => {
     setPresupuestoOverrides((data || []).map(presupuestoOverrideDBToLocal));
   };
 
+  const cargarPresupuestoAprobaciones = async () => {
+    const { data, error } = await supabase
+      .from('presupuesto_aprobaciones')
+      .select('id, presupuesto_item_id, anio, mes, valor_neto, aprobado_por, aprobado_at');
+    if (error) {
+      console.error('Error cargando presupuesto_aprobaciones:', error);
+      return;
+    }
+    setPresupuestoAprobaciones((data || []).map(row => ({
+      id: row.id,
+      presupuestoItemId: row.presupuesto_item_id,
+      anio: row.anio,
+      mes: row.mes,
+      valorNeto: parseFloat(row.valor_neto) || 0,
+      aprobadoPor: row.aprobado_por,
+      aprobadoAt: row.aprobado_at
+    })));
+  };
+
   const deduccionDBToLocal = (row) => ({
     id: row.id,
     presupuestoItemId: row.presupuesto_item_id,
@@ -1522,7 +1547,7 @@ const App = () => {
 
   const cargarPresupuesto = async () => {
     setCargandoPresupuesto(true);
-    await Promise.all([cargarPresupuestoItems(), cargarPresupuestoAnual(), cargarPresupuestoOverrides(), cargarDeducciones()]);
+    await Promise.all([cargarPresupuestoItems(), cargarPresupuestoAnual(), cargarPresupuestoOverrides(), cargarPresupuestoAprobaciones(), cargarDeducciones()]);
     setCargandoPresupuesto(false);
   };
 
@@ -1839,6 +1864,7 @@ const App = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'presupuesto_items' }, () => cargarPresupuestoItems())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'presupuesto_anual' }, () => cargarPresupuestoAnual())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'presupuesto_overrides' }, () => cargarPresupuestoOverrides())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'presupuesto_aprobaciones' }, () => cargarPresupuestoAprobaciones())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'deducciones' }, () => cargarDeducciones())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'soportes_pendientes' }, () => cargarSoportesPendientes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cecos' }, () => cargarCecos())
@@ -1857,6 +1883,7 @@ const App = () => {
           cargarPresupuestoItems();
           cargarPresupuestoAnual();
           cargarPresupuestoOverrides();
+          cargarPresupuestoAprobaciones();
           cargarDeducciones();
           cargarSoportesPendientes();
           cargarCecos();
@@ -1881,7 +1908,7 @@ const App = () => {
     if (currentView === 'solicitudes') cargarSolicitudes();
     if (currentView === 'cuentasCobro') cargarCuentasCobro();
     if (currentView === 'finanzas' || currentView === 'dashboardFinanciero') { cargarGastos(); cargarIngresos(); }
-    if (currentView === 'presupuesto') { cargarPresupuestoItems(); cargarPresupuestoAnual(); cargarPresupuestoOverrides(); }
+    if (currentView === 'presupuesto') { cargarPresupuestoItems(); cargarPresupuestoAnual(); cargarPresupuestoOverrides(); cargarPresupuestoAprobaciones(); }
     if (currentView === 'responsables') { cargarUsuarios(); cargarColaboradoresPublico(); }
     if (currentView === 'datosBancarios') { cargarUsuarios(); cargarTodosTerceros(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5025,6 +5052,52 @@ const App = () => {
   // Ajustar el valor esperado de UN concepto para el mes que se está viendo en el filtro (sin tocar
   // el valor base recurrente). Dejar el campo vacío quita el ajuste y vuelve a usar el valor base.
   // Se guarda contra public.presupuesto_overrides, que tiene unique(presupuesto_item_id, anio, mes).
+  // Aprueba uno o varios conceptos del mes filtrado guardando el NETO a pagar de hoy. Un upsert
+  // por (concepto, año, mes): reaprobar un concepto "desactualizado" reemplaza la aprobación vieja.
+  const handleAprobarPresupuesto = async (items) => {
+    const aAprobar = items.filter(i => !i.pagado && i.netoAPagar > 0);
+    if (aAprobar.length === 0) return;
+    const { mes, anio } = filtroPresupuesto;
+    if (aAprobar.length > 1) {
+      const total = aAprobar.reduce((sum, i) => sum + i.netoAPagar, 0);
+      if (!window.confirm(`¿Aprobar ${aAprobar.length} concepto(s) de ${MESES_ES[mes - 1]} ${anio} por un neto total de ${formatMoney(total, filtroPresupuesto.empresa)}?`)) return;
+    }
+    setGuardandoAprobacionPresupuesto(true);
+    try {
+      const filas = aAprobar.map(i => ({
+        presupuesto_item_id: i.id,
+        anio,
+        mes,
+        valor_neto: i.netoAPagar,
+        aprobado_por: user.id,
+        aprobado_at: new Date().toISOString()
+      }));
+      const { data, error } = await supabase
+        .from('presupuesto_aprobaciones')
+        .upsert(filas, { onConflict: 'presupuesto_item_id,anio,mes' })
+        .select('id');
+      if (error || !data || data.length !== filas.length) {
+        console.error('Error aprobando presupuesto:', error);
+        alert('❌ No se pudo aprobar' + (error ? ': ' + error.message : ' (sin permiso)'));
+        return;
+      }
+      await cargarPresupuestoAprobaciones();
+    } finally {
+      setGuardandoAprobacionPresupuesto(false);
+    }
+  };
+
+  const handleQuitarAprobacionPresupuesto = async (item) => {
+    if (!item.aprobacion) return;
+    if (!window.confirm(`¿Quitar la aprobación de "${item.nombre}"? No se podrá exportar al banco hasta aprobarlo de nuevo.`)) return;
+    const { data, error } = await supabase.from('presupuesto_aprobaciones').delete().eq('id', item.aprobacion.id).select('id');
+    if (error || !data || data.length === 0) {
+      alert('❌ No se pudo quitar la aprobación' + (error ? ': ' + error.message : ' (sin permiso)'));
+      return;
+    }
+    await cargarPresupuestoAprobaciones();
+  };
+
   const handleEditarValorMes = async (item) => {
     const { anio, mes } = filtroPresupuesto;
     const actual = getValorEsperado(item.id, anio, mes);
@@ -6199,6 +6272,14 @@ const App = () => {
   // no tiene sentido mantener los dos sincronizados a mano cuando el valor real ya quedó registrado.
   // El valor base/ajuste manual (getValorEsperado) solo sigue sirviendo de ESTIMADO mientras el concepto
   // sigue Pendiente ese mes (útil para saber cuánto esperar antes de pagar).
+  // Estado de aprobación de un concepto en un mes: aprobado solo si el neto aprobado coincide
+  // con el neto actual (al peso, tolerando centavos de redondeo).
+  const estadoAprobacionPresupuesto = (presupuestoItemId, anio, mes, netoActual) => {
+    const aprobacion = presupuestoAprobaciones.find(a => a.presupuestoItemId === presupuestoItemId && a.anio === anio && a.mes === mes) || null;
+    const vigente = !!aprobacion && Math.abs(aprobacion.valorNeto - netoActual) < 0.5;
+    return { aprobacion, aprobado: vigente, aprobacionDesactualizada: !!aprobacion && !vigente };
+  };
+
   const presupuestoMensualDetalle = (() => {
     const { empresa, mes, anio } = filtroPresupuesto;
     const mesStr = `${anio}-${String(mes).padStart(2, '0')}`;
@@ -6234,7 +6315,8 @@ const App = () => {
           netoAPagar,
           pagado: !!gastoVinculado,
           valorPagadoReal: gastoVinculado ? (parseFloat(gastoVinculado.valor) || 0) : 0,
-          gastoId: gastoVinculado ? gastoVinculado.id : null
+          gastoId: gastoVinculado ? gastoVinculado.id : null,
+          ...estadoAprobacionPresupuesto(item.id, anio, mes, netoAPagar)
         };
       })
       // Pagados primero, Pendientes al final; dentro de cada grupo, alfabético por Concepto (más
@@ -9029,6 +9111,26 @@ const App = () => {
                           <span style={{ color: '#8F8877', fontSize: '0.8rem' }}>Marca las casillas de los conceptos que ya pagaste para registrarlos juntos en Finanzas.</span>
                         </div>
                       )}
+                      {(() => {
+                        const sinAprobar = presupuestoMensualDetalle.filter(i => !i.pagado && !i.aprobado && i.netoAPagar > 0);
+                        const aprobados = presupuestoMensualDetalle.filter(i => !i.pagado && i.aprobado).length;
+                        const pendientesTotales = presupuestoMensualDetalle.filter(i => !i.pagado).length;
+                        if (pendientesTotales === 0) return null;
+                        return (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '0.75rem 1rem' }}>
+                            <span style={{ color: '#221E15', fontSize: '0.85rem' }}>
+                              👍 Aprobación del mes: <strong>{aprobados}</strong> de <strong>{pendientesTotales}</strong> pendientes aprobados
+                              {sinAprobar.some(i => i.aprobacionDesactualizada) && <span style={{ color: '#C4622D' }}> · ⚠️ {sinAprobar.filter(i => i.aprobacionDesactualizada).length} cambiaron de valor</span>}
+                            </span>
+                            {puedeEditarPresupuesto && sinAprobar.length > 0 && (
+                              <button disabled={guardandoAprobacionPresupuesto} onClick={() => handleAprobarPresupuesto(sinAprobar)} style={{ padding: '0.5rem 1rem', backgroundColor: '#2F9E52', color: '#FFFFFF', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoAprobacionPresupuesto ? 'wait' : 'pointer', opacity: guardandoAprobacionPresupuesto ? 0.6 : 1 }}>
+                                👍 Aprobar {sinAprobar.length === 1 ? 'el pendiente' : `los ${sinAprobar.length} pendientes`} del mes
+                              </button>
+                            )}
+                            <span style={{ color: '#8F8877', fontSize: '0.75rem' }}>Solo lo aprobado se podrá exportar al banco. Si cambia el valor o una deducción, hay que volver a aprobar.</span>
+                          </div>
+                        );
+                      })()}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
                         <label style={{ color: '#6B6458', fontSize: '0.8rem' }}>Mostrar:</label>
                         <select value={filtroEstadoMensual} onChange={(e) => setFiltroEstadoMensual(e.target.value)} style={{ padding: '0.5rem 0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', fontSize: '0.85rem' }}>
@@ -9050,6 +9152,7 @@ const App = () => {
                               <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Neto a Pagar</th>
                               <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Día Límite</th>
                               <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
+                              <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Aprobación</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -9090,10 +9193,29 @@ const App = () => {
                                     {item.pagado ? '✅ Pagado' : '⏳ Pendiente'}
                                   </span>
                                 </td>
+                                <td style={{ padding: '0.75rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                  {item.pagado ? (
+                                    <span style={{ color: '#AFA897' }}>—</span>
+                                  ) : item.aprobado ? (
+                                    <span title={item.aprobacion?.aprobadoAt ? `Aprobado el ${new Date(item.aprobacion.aprobadoAt).toLocaleDateString('es-CO')}` : ''} style={{ color: '#2F9E52', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                                      👍 Aprobado
+                                      {puedeEditarPresupuesto && <button onClick={() => handleQuitarAprobacionPresupuesto(item)} title="Quitar aprobación" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#AFA897', marginLeft: '0.3rem' }}>✕</button>}
+                                    </span>
+                                  ) : item.aprobacionDesactualizada ? (
+                                    <span style={{ color: '#C4622D', fontSize: '0.75rem' }} title={`Aprobado por ${formatMoney(item.aprobacion.valorNeto, filtroPresupuesto.empresa)}; el neto actual es otro`}>
+                                      ⚠️ Cambió el valor
+                                      {puedeEditarPresupuesto && <button disabled={guardandoAprobacionPresupuesto} onClick={() => handleAprobarPresupuesto([item])} style={{ marginLeft: '0.4rem', padding: '0.2rem 0.5rem', backgroundColor: '#C4622D', color: '#FFFFFF', border: 'none', borderRadius: '3px', fontSize: '0.7rem', cursor: 'pointer' }}>Reaprobar</button>}
+                                    </span>
+                                  ) : puedeEditarPresupuesto && item.netoAPagar > 0 ? (
+                                    <button disabled={guardandoAprobacionPresupuesto} onClick={() => handleAprobarPresupuesto([item])} style={{ padding: '0.25rem 0.6rem', backgroundColor: '#FFFFFF', color: '#2F9E52', border: '1px solid #2F9E52', borderRadius: '3px', fontSize: '0.75rem', cursor: 'pointer' }}>Aprobar</button>
+                                  ) : (
+                                    <span style={{ color: '#8F8877', fontSize: '0.75rem' }}>Sin aprobar</span>
+                                  )}
+                                </td>
                               </tr>
                             ))}
                             {presupuestoMensualFiltrado.length === 0 && (
-                              <tr><td colSpan={puedeEditarPresupuesto ? 9 : 8} style={{ padding: '1.5rem', textAlign: 'center', color: '#8F8877', fontSize: '0.85rem' }}>No hay conceptos {filtroEstadoMensual === 'pagados' ? 'pagados' : 'pendientes'} este mes.</td></tr>
+                              <tr><td colSpan={puedeEditarPresupuesto ? 10 : 9} style={{ padding: '1.5rem', textAlign: 'center', color: '#8F8877', fontSize: '0.85rem' }}>No hay conceptos {filtroEstadoMensual === 'pagados' ? 'pagados' : 'pendientes'} este mes.</td></tr>
                             )}
                           </tbody>
                         </table>
