@@ -117,6 +117,9 @@ begin
 end $$;
 
 alter table public.config_bancaria_empresa enable row level security;
+-- Permiso de tabla para los usuarios de la app (sin esto: "permission denied for table");
+-- quién puede leer/escribir lo siguen decidiendo las políticas RLS de abajo.
+grant select, insert, update, delete on public.config_bancaria_empresa to authenticated;
 
 drop policy if exists config_bancaria_empresa_select on public.config_bancaria_empresa;
 create policy config_bancaria_empresa_select on public.config_bancaria_empresa
