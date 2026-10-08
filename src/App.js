@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import jsPDF from 'jspdf';
 // Faltaba este import — doc.autoTable() (usado más abajo en handleGenerarPDF, para el PDF
 // individual de Legalización/Reembolso) es un plugin de jsPDF: sin esta línea, "autoTable"
@@ -17,6 +17,7 @@ import logoPronova from './assets/logos/logo-pronova.png';
 import { supabase } from './supabaseClient';
 import { SelectBanco, SelectTipoDocumento, CampoBanco, textoBancoPara } from './CamposBancarios';
 import DatosBancariosView from './DatosBancariosView';
+import ExportadorPABView from './ExportadorPABView';
 import { CODIGO_BANCO_EXTERIOR, inferirCodigoBanco, limpiarNumeroCuenta, limpiarDocumento } from './datosBancarios';
 
 // Logo por empresa. Para sumar ARKO, sube el archivo a src/assets/logos/,
@@ -642,6 +643,9 @@ const App = () => {
   // aprobación queda "desactualizada" y hay que volver a aprobar.
   const [presupuestoAprobaciones, setPresupuestoAprobaciones] = useState([]);
   const [guardandoAprobacionPresupuesto, setGuardandoAprobacionPresupuesto] = useState(false);
+  // Lotes de pago masivo PAB (public.lotes_pago_banco + ítems). Se cargan también fuera de la
+  // pantalla del exportador para marcar en Solicitudes/Presupuesto qué ya se exportó al banco.
+  const [lotesPago, setLotesPago] = useState([]);
   // Deducciones (préstamos u otros descuentos) aplicadas al valor mensual de un concepto de Nómina/Prestación
   // de Servicio. 'Préstamo' calcula su propio saldo pendiente mes a mes (sin tabla de historial, de forma
   // determinística a partir de fechaInicio/valorCuota/saldoTotal — ver mesesTranscurridos/getCuotaAplicada
@@ -1510,6 +1514,20 @@ const App = () => {
     setPresupuestoOverrides((data || []).map(presupuestoOverrideDBToLocal));
   };
 
+  const cargarLotesPago = async () => {
+    if (!['Administrador', 'Coordinadora Administrativa', 'Contadora'].includes(user?.rol)) return;
+    const { data, error } = await supabase
+      .from('lotes_pago_banco')
+      .select('id, numero, tipo_pago, secuencia, fecha_aplicacion, cantidad, total, encabezado, estado, created_at, motivo_anulacion, empresas ( nombre ), config_bancaria_empresa ( nombre_cuenta ), lotes_pago_banco_items ( entidad_clave, activo, orden, datos )')
+      .order('numero', { ascending: false })
+      .limit(200);
+    if (error) {
+      console.error('Error cargando lotes de pago:', error);
+      return;
+    }
+    setLotesPago(data || []);
+  };
+
   const cargarPresupuestoAprobaciones = async () => {
     const { data, error } = await supabase
       .from('presupuesto_aprobaciones')
@@ -1872,6 +1890,7 @@ const App = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'presupuesto_anual' }, () => cargarPresupuestoAnual())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'presupuesto_overrides' }, () => cargarPresupuestoOverrides())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'presupuesto_aprobaciones' }, () => cargarPresupuestoAprobaciones())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lotes_pago_banco' }, () => cargarLotesPago())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'deducciones' }, () => cargarDeducciones())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'soportes_pendientes' }, () => cargarSoportesPendientes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cecos' }, () => cargarCecos())
@@ -1891,6 +1910,7 @@ const App = () => {
           cargarPresupuestoAnual();
           cargarPresupuestoOverrides();
           cargarPresupuestoAprobaciones();
+          cargarLotesPago();
           cargarDeducciones();
           cargarSoportesPendientes();
           cargarCecos();
@@ -1918,6 +1938,7 @@ const App = () => {
     if (currentView === 'presupuesto') { cargarPresupuestoItems(); cargarPresupuestoAnual(); cargarPresupuestoOverrides(); cargarPresupuestoAprobaciones(); }
     if (currentView === 'responsables') { cargarUsuarios(); cargarColaboradoresPublico(); }
     if (currentView === 'datosBancarios') { cargarUsuarios(); cargarTodosTerceros(); }
+    if (currentView === 'pagosPAB') { cargarUsuarios(); cargarTodosTerceros(); cargarSolicitudes(); cargarCuentasCobro(); cargarPresupuestoItems(); cargarPresupuestoOverrides(); cargarPresupuestoAprobaciones(); cargarLotesPago(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentView]);
 
@@ -6290,6 +6311,15 @@ const App = () => {
   // no tiene sentido mantener los dos sincronizados a mano cuando el valor real ya quedó registrado.
   // El valor base/ajuste manual (getValorEsperado) solo sigue sirviendo de ESTIMADO mientras el concepto
   // sigue Pendiente ese mes (útil para saber cuánto esperar antes de pagar).
+  // Registro de la app → número del lote PAB VIGENTE (no anulado) en que ya se exportó.
+  const lotePorClave = useMemo(() => {
+    const mapa = {};
+    lotesPago.filter(l => l.estado !== 'Anulado').forEach(l => {
+      (l.lotes_pago_banco_items || []).filter(i => i.activo).forEach(i => { mapa[i.entidad_clave] = l.numero; });
+    });
+    return mapa;
+  }, [lotesPago]);
+
   // Estado de aprobación de un concepto en un mes: aprobado solo si el neto aprobado coincide
   // con el neto actual (al peso, tolerando centavos de redondeo).
   const estadoAprobacionPresupuesto = (presupuestoItemId, anio, mes, netoActual) => {
@@ -6673,6 +6703,7 @@ const App = () => {
             <>
               <button onClick={() => setCurrentView('responsables')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'responsables' ? '#C4A747' : '#E6E0D2', color: currentView === 'responsables' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>👥 Colaboradores</button>
               <button onClick={() => setCurrentView('datosBancarios')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'datosBancarios' ? '#C4A747' : '#E6E0D2', color: currentView === 'datosBancarios' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>🏦 Datos Bancarios</button>
+              <button onClick={() => setCurrentView('pagosPAB')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'pagosPAB' ? '#C4A747' : '#E6E0D2', color: currentView === 'pagosPAB' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💸 Pagos PAB</button>
             </>
           )}
         </div>
@@ -6689,6 +6720,25 @@ const App = () => {
             nitEmpresas={NIT_EMPRESAS}
             onUsuariosCambiaron={cargarUsuarios}
             onActualizarTercero={handleUpdateTercero}
+          />
+        )}
+
+        {currentView === 'pagosPAB' && (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
+          <ExportadorPABView
+            user={user}
+            empresas={empresas}
+            solicitudes={solicitudesUsuario}
+            presupuestoDetalle={presupuestoMensualDetalle}
+            filtroPresupuesto={filtroPresupuesto}
+            setFiltroPresupuesto={setFiltroPresupuesto}
+            usuarios={usuariosDB}
+            terceros={todosTerceros}
+            lotes={lotesPago}
+            lotePorClave={lotePorClave}
+            onRecargarLotes={cargarLotesPago}
+            onRecargarDatos={() => { cargarUsuarios(); cargarTodosTerceros(); cargarSolicitudes(); cargarCuentasCobro(); cargarPresupuestoItems(); cargarPresupuestoOverrides(); cargarPresupuestoAprobaciones(); cargarDeducciones(); cargarGastos(); cargarLotesPago(); }}
+            getMoneda={getMoneda}
+            formatCOP={(v) => formatMoneyByMoneda(v, 'COP')}
           />
         )}
 
@@ -7666,6 +7716,9 @@ const App = () => {
                           )}
                           {legalizacionVinculada && (
                             <div style={{ marginTop: '0.35rem', fontSize: '0.65rem', color: '#6C63D1', fontWeight: 'bold' }}>✅ Ya legalizado</div>
+                          )}
+                          {s.estado === 'Aprobado' && lotePorClave[`solicitud:${s.id}`] && (
+                            <div title="Ya va en un archivo PAB generado para el banco; falta confirmar el pago" style={{ marginTop: '0.35rem', fontSize: '0.65rem', color: '#3B72D9', fontWeight: 'bold' }}>📤 Exportado · lote #{lotePorClave[`solicitud:${s.id}`]}</div>
                           )}
                           {s.lotePagoId && (
                             <button onClick={() => handleVerLotePagoSolicitudes(s.lotePagoId)} style={{ display: 'block', marginTop: '0.35rem', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.65rem', color: '#6C63D1', fontWeight: 'bold', padding: 0 }}>
@@ -9219,6 +9272,7 @@ const App = () => {
                                   ) : item.aprobado ? (
                                     <span title={item.aprobacion?.aprobadoAt ? `Aprobado el ${new Date(item.aprobacion.aprobadoAt).toLocaleDateString('es-CO')}` : ''} style={{ color: '#2F9E52', fontSize: '0.8rem', fontWeight: 'bold' }}>
                                       👍 Aprobado
+                                      {lotePorClave[`presupuesto:${item.id}:${filtroPresupuesto.anio}-${filtroPresupuesto.mes}`] && <span style={{ display: 'block', color: '#3B72D9', fontSize: '0.7rem' }}>📤 Exportado · lote #{lotePorClave[`presupuesto:${item.id}:${filtroPresupuesto.anio}-${filtroPresupuesto.mes}`]}</span>}
                                       {puedeEditarPresupuesto && <button onClick={() => handleQuitarAprobacionPresupuesto(item)} title="Quitar aprobación" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#AFA897', marginLeft: '0.3rem' }}>✕</button>}
                                     </span>
                                   ) : item.aprobacionDesactualizada ? (
