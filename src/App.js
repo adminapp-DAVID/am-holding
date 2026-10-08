@@ -2629,7 +2629,7 @@ const App = () => {
     if (nuevoEstado === 'Devuelto') {
       patch.motivo_devolucion = opciones.motivoDevolucion || null;
     }
-    // Pago en lote (hoy solo Reembolsos, desde "Confirmar Pago en Lote"): todas las Solicitudes
+    // Pago en lote (Reembolsos, Anticipos o Pagos a Tercero, desde "Confirmar Pago en Lote"): todas las Solicitudes
     // pagadas juntas con un mismo comprobante quedan con el mismo lote_pago_id.
     if (nuevoEstado === 'Pagado' && opciones.loteId) {
       patch.lote_pago_id = opciones.loteId;
@@ -2681,6 +2681,14 @@ const App = () => {
   // Solicitud como "Pagado" (Opción C). 'ninguno' es el caso de una Legalización cuadrada
   // (soportes == anticipo original): no hay plata que mueva la empresa, así que no debe pedir
   // Cuenta/Comprobante ni generar nada en Finanzas — solo queda "Pagado".
+  // Pago en Lote (Solicitudes): tipos que se pueden pagar juntos con un solo comprobante. No se
+  // mezclan entre sí en un mismo lote.
+  const TIPOS_PAGO_LOTE_SOLICITUD = ['Reembolso', 'Anticipo', 'Pago a Tercero'];
+  const etiquetaTipoLote = (tipo, plural) => {
+    const base = { Reembolso: 'reembolso', Anticipo: 'anticipo', 'Pago a Tercero': 'pago a tercero' }[tipo] || 'solicitud';
+    return plural ? (tipo === 'Pago a Tercero' ? 'pagos a tercero' : `${base}s`) : base;
+  };
+
   const calcularAccionFinanzasSolicitud = (s) => {
     if (s.tipo === 'Pago a Tercero') return { accion: 'gasto', monto: parseFloat(s.valor) || 0 };
     if (s.tipo === 'Anticipo') return { accion: 'gasto', monto: parseFloat(s.valor) || 0 };
@@ -2998,7 +3006,7 @@ const App = () => {
 
       setSeleccionReembolsosPago([]);
       setConfirmarPagoLoteReembolsos(null);
-      const etiquetaTipo = esLoteTercero ? 'pago(s) a tercero' : 'reembolso(s)';
+      const etiquetaTipo = `${etiquetaTipoLote(items[0]?.tipo, true)}`;
       alert(fallidos.length > 0
         ? `✅ ${pagados} ${etiquetaTipo} pagados en lote.\n⚠️ No se pudieron pagar: ${fallidos.join('; ')}`
         : `✅ ${pagados} ${etiquetaTipo} marcados como Pagados con el mismo comprobante.`);
@@ -7529,13 +7537,12 @@ const App = () => {
                 const empresaSeleccion = seleccionados[0]?.empresa;
                 const esTerceroSeleccion = tipoSeleccion === 'Pago a Tercero';
                 const monedaSeleccion = esTerceroSeleccion ? (seleccionados[0]?.moneda || getMoneda(empresaSeleccion)) : null;
-                const totalSeleccion = seleccionados.reduce((sum, s) => sum + (esTerceroSeleccion ? (parseFloat(s.valor) || 0) : (s.totalCalculado || 0)), 0);
+                const totalSeleccion = seleccionados.reduce((sum, s) => sum + calcularAccionFinanzasSolicitud(s).monto, 0);
                 const totalFormateado = esTerceroSeleccion ? formatMoneyByMoneda(totalSeleccion, monedaSeleccion) : formatMoney(totalSeleccion, empresaSeleccion);
-                const etiquetaTipo = esTerceroSeleccion ? 'pago a tercero' : 'reembolso';
                 return (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FBF3DC', border: '1px solid #C4A747', borderRadius: '8px', padding: '0.85rem 1.25rem', marginBottom: '1rem' }}>
                     <span style={{ color: '#6B5A1E', fontSize: '0.85rem' }}>
-                      <strong>{seleccionados.length}</strong> {etiquetaTipo}{seleccionados.length !== 1 ? 's' : ''} de <strong>{empresaSeleccion}</strong> seleccionado{seleccionados.length !== 1 ? 's' : ''} — total <strong>{totalFormateado}</strong>
+                      <strong>{seleccionados.length}</strong> {etiquetaTipoLote(tipoSeleccion, seleccionados.length !== 1)} de <strong>{empresaSeleccion}</strong> seleccionado{seleccionados.length !== 1 ? 's' : ''} — total <strong>{totalFormateado}</strong>
                     </span>
                     <div style={{ display: 'flex', gap: '0.6rem' }}>
                       <button onClick={() => setSeleccionReembolsosPago([])} style={{ padding: '0.6rem 1rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>Cancelar selección</button>
@@ -7574,7 +7581,7 @@ const App = () => {
                       const esLegalizacionConAnticipo = s.tipo === 'Legalización' && s.valorAnticipoOriginal;
                       const diferenciaReembolso = esLegalizacionConAnticipo ? (s.totalCalculado || 0) - parseFloat(s.valorAnticipoOriginal) : null;
                       const legalizacionVinculada = s.tipo === 'Anticipo' ? solicitudesUsuario.find(x => x.tipo === 'Legalización' && (x.anticipoIds || []).includes(s.id)) : null;
-                      // Checkbox de Pago en Lote: Reembolsos y Pago a Tercero "Aprobado" son elegibles
+                      // Checkbox de Pago en Lote: Reembolsos, Anticipos y Pago a Tercero "Aprobado" son elegibles
                       // (no mezclados entre sí), y dentro de un mismo lote solo se puede mezclar la
                       // MISMA empresa — un comprobante de banco corresponde a una sola cuenta
                       // bancaria — y, si es Pago a Tercero, también la MISMA moneda (COP/USD), porque
@@ -7583,7 +7590,7 @@ const App = () => {
                       const empresaLoteActual = primeraSeleccionada?.empresa || null;
                       const tipoLoteActual = primeraSeleccionada?.tipo || null;
                       const monedaLoteActual = primeraSeleccionada?.tipo === 'Pago a Tercero' ? (primeraSeleccionada?.moneda || getMoneda(primeraSeleccionada?.empresa)) : null;
-                      const elegibleParaLote = (s.tipo === 'Reembolso' || s.tipo === 'Pago a Tercero') && s.estado === 'Aprobado';
+                      const elegibleParaLote = TIPOS_PAGO_LOTE_SOLICITUD.includes(s.tipo) && s.estado === 'Aprobado';
                       const monedaSolicitud = s.tipo === 'Pago a Tercero' ? (s.moneda || getMoneda(s.empresa)) : null;
                       const deshabilitadoPorEmpresa = elegibleParaLote && !!tipoLoteActual && (
                         s.tipo !== tipoLoteActual ||
@@ -7600,7 +7607,7 @@ const App = () => {
                                 checked={seleccionReembolsosPago.includes(s.id)}
                                 disabled={deshabilitadoPorEmpresa}
                                 onChange={() => handleToggleSeleccionReembolso(s.id)}
-                                title={deshabilitadoPorEmpresa ? `Ya elegiste ${tipoLoteActual === 'Pago a Tercero' ? 'Pago a Tercero' : 'Reembolsos'} de ${empresaLoteActual}${monedaLoteActual ? ` en ${monedaLoteActual}` : ''} — solo se puede pagar en lote un mismo tipo, empresa${tipoLoteActual === 'Pago a Tercero' ? ' y moneda' : ''} a la vez` : 'Elegir para pago en lote'}
+                                title={deshabilitadoPorEmpresa ? `Ya elegiste ${etiquetaTipoLote(tipoLoteActual, true)} de ${empresaLoteActual}${monedaLoteActual ? ` en ${monedaLoteActual}` : ''} — solo se puede pagar en lote un mismo tipo, empresa${tipoLoteActual === 'Pago a Tercero' ? ' y moneda' : ''} a la vez` : 'Elegir para pago en lote'}
                                 style={{ cursor: deshabilitadoPorEmpresa ? 'not-allowed' : 'pointer', width: '16px', height: '16px' }}
                               />
                             )}
@@ -9917,13 +9924,12 @@ const App = () => {
           const empresaLote = items[0]?.empresa;
           const esLoteTerceroModal = items[0]?.tipo === 'Pago a Tercero';
           const monedaLoteModal = esLoteTerceroModal ? (items[0]?.moneda || getMoneda(empresaLote)) : null;
-          const totalLote = items.reduce((sum, it) => sum + (esLoteTerceroModal ? (parseFloat(it.valor) || 0) : (it.totalCalculado || 0)), 0);
+          const totalLote = items.reduce((sum, it) => sum + calcularAccionFinanzasSolicitud(it).monto, 0);
           const totalLoteFormateado = esLoteTerceroModal ? formatMoneyByMoneda(totalLote, monedaLoteModal) : formatMoney(totalLote, empresaLote);
-          const etiquetaTipoModal = esLoteTerceroModal ? 'pago a tercero' : 'reembolso';
           return (
           <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
             <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '520px', width: '90%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
-              <h2 style={{ color: '#C4A747', marginBottom: '0.5rem' }}>💳 Confirmar Pago en Lote — {items.length} {etiquetaTipoModal}{items.length !== 1 ? 's' : ''}</h2>
+              <h2 style={{ color: '#C4A747', marginBottom: '0.5rem' }}>💳 Confirmar Pago en Lote — {items.length} {etiquetaTipoLote(items[0]?.tipo, items.length !== 1)}</h2>
               <p style={{ color: '#6B6458', fontSize: '0.85rem', marginTop: 0, marginBottom: '1.25rem' }}>
                 {empresaLote} — Total: {totalLoteFormateado}
               </p>
@@ -9931,8 +9937,8 @@ const App = () => {
               <div style={{ border: '1px solid #E6E0D2', borderRadius: '6px', padding: '0.75rem', marginBottom: '1.25rem', maxHeight: '150px', overflowY: 'auto' }}>
                 {items.map(it => (
                   <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', padding: '0.3rem 0' }}>
-                    <span style={{ color: '#221E15' }}>{esLoteTerceroModal ? (it.terceroInfo?.nombre || 'Tercero') : (colaboradoresPublico.find(c => c.id === it.responsableId)?.nombre || it.responsableNombre || '—')} — {it.detalle || (esLoteTerceroModal ? 'Pago a Tercero' : 'Reembolso')}</span>
-                    <span style={{ color: '#2F9E52', fontWeight: 'bold' }}>{esLoteTerceroModal ? formatMoneyByMoneda(parseFloat(it.valor) || 0, it.moneda || getMoneda(it.empresa)) : formatMoney(it.totalCalculado || 0, it.empresa)}</span>
+                    <span style={{ color: '#221E15' }}>{esLoteTerceroModal ? (it.terceroInfo?.nombre || 'Tercero') : (colaboradoresPublico.find(c => c.id === it.responsableId)?.nombre || it.responsableNombre || '—')} — {it.detalle || it.tipo}</span>
+                    <span style={{ color: '#2F9E52', fontWeight: 'bold' }}>{esLoteTerceroModal ? formatMoneyByMoneda(calcularAccionFinanzasSolicitud(it).monto, it.moneda || getMoneda(it.empresa)) : formatMoney(calcularAccionFinanzasSolicitud(it).monto, it.empresa)}</span>
                   </div>
                 ))}
               </div>
