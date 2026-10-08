@@ -2946,7 +2946,6 @@ const App = () => {
       return;
     }
     if (!items || items.length === 0) return;
-    const esLoteTercero = items[0]?.tipo === 'Pago a Tercero';
     if (!cuenta) {
       alert('Elige con qué cuenta de la empresa se hizo el pago');
       return;
