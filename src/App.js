@@ -3089,9 +3089,10 @@ const App = () => {
     setVerLotePago({ titulo: `🔗 Gastos pagados en este lote (${items.length})`, items });
   };
 
-  // Filtrar solicitudes por rol. El Gerente ahora se filtra igual que un Responsable: solo ve
-  // (y el Dashboard solo resume) las solicitudes que él mismo creó, no las de toda la empresa.
-  const solicitudesUsuario = (user?.rol === 'Responsable' || user?.rol === 'Gerente')
+  // Filtrar solicitudes por rol. Colaborador, Responsable y Gerente solo ven (y el Dashboard
+  // solo resume) las solicitudes propias, no las de toda la empresa.
+  const soloPropias = ['Colaborador', 'Responsable', 'Gerente'].includes(user?.rol);
+  const solicitudesUsuario = soloPropias
     ? solicitudes.filter(s => s.responsableId === user.id)
     : user?.rol === 'Contadora'
     ? solicitudes.filter(s => ['Aprobado', 'Pagado', 'Legalizado'].includes(s.estado))
@@ -4087,9 +4088,9 @@ const App = () => {
     setCuentasDeCobro(cuentasDeCobro.filter(c => c.id !== id));
   };
 
-  // El Gerente también se filtra igual que un Responsable: solo ve sus propias Cuentas de Cobro.
-  const cuentasCobroUsuario = (user?.rol === 'Responsable' || user?.rol === 'Gerente')
-    ? cuentasDeCobro.filter(c => c.responsableNombre === user.nombre)
+  // Colaborador, Responsable y Gerente: solo sus propias Cuentas de Cobro.
+  const cuentasCobroUsuario = soloPropias
+    ? cuentasDeCobro.filter(c => c.responsableId === user.id)
     : cuentasDeCobro;
 
   // GASTOS E INGRESOS CRUD
@@ -7673,7 +7674,7 @@ const App = () => {
 
             <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
               <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>
-                📋 {(user.rol === 'Responsable' || user.rol === 'Gerente') ? 'Mis Solicitudes' : user.rol === 'Contadora' ? 'Solicitudes Auditadas' : 'Todas las Solicitudes'} ({solicitudesFiltradas.length})
+                📋 {soloPropias ? 'Mis Solicitudes' : user.rol === 'Contadora' ? 'Solicitudes Auditadas' : 'Todas las Solicitudes'} ({solicitudesFiltradas.length})
               </h2>
 
               {/* FILTROS: buscador de texto libre + Tipo/Estado/(Empresa) + rango de fechas.
