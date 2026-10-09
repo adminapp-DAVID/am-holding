@@ -2326,6 +2326,12 @@ const App = () => {
       return;
     }
 
+    // Concepto obligatorio en TODOS los tipos: es el detalle con el que el pago queda en Finanzas.
+    if (!(newSolicitud.detalle || '').trim()) {
+      alert('Escribe el Concepto de la solicitud (es obligatorio y es el detalle con el que queda en Finanzas)');
+      return;
+    }
+
     if (newSolicitud.tipo === 'Anticipo' && !newSolicitud.valor) {
       alert('Ingresa valor solicitado');
       return;
@@ -2472,7 +2478,7 @@ const App = () => {
         fecha: newSolicitud.fecha,
         valor: (newSolicitud.tipo === 'Anticipo' || newSolicitud.tipo === 'Pago a Tercero') ? (parseFloat(newSolicitud.valor) || 0) : 0,
         total_calculado: totalCalculado,
-        detalle: newSolicitud.detalle || null,
+        detalle: newSolicitud.detalle.trim(),
         empresa_id: empresaId,
         documentos: newSolicitud.documentos,
         // anticipo_id (singular, columna vieja) se sigue llenando con el primero elegido, solo
@@ -2786,7 +2792,8 @@ const App = () => {
         responsable_id: solicitud.responsableId || null,
         ceco_id: cecoId,
         cuenta: cuentaPago || null,
-        detalle: solicitud.detalle,
+        // Nunca vacío en Finanzas: solicitudes viejas sin Concepto quedan como "Tipo — Colaborador".
+        detalle: (solicitud.detalle || '').trim() || `${solicitud.tipo} — ${solicitud.responsableNombre || 'sin colaborador'}`,
         valor: monto,
         estado: 'Pagado',
         observaciones: observacionesPorTipo[solicitud.tipo] || 'Generado automáticamente desde Solicitudes.',
@@ -7457,7 +7464,7 @@ const App = () => {
                   );
                 })()}
 
-                <input type="text" placeholder="Concepto" value={newSolicitud.detalle} onChange={(e) => setNewSolicitud({...newSolicitud, detalle: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', marginBottom: '1rem', boxSizing: 'border-box' }} />
+                <input type="text" placeholder="Concepto * (obligatorio)" required value={newSolicitud.detalle} onChange={(e) => setNewSolicitud({...newSolicitud, detalle: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: `1px solid ${newSolicitud.tipo && !newSolicitud.detalle.trim() ? '#CC4B4B' : '#E6E0D2'}`, borderRadius: '4px', color: '#332D1E', marginBottom: '1rem', boxSizing: 'border-box' }} />
 
                 {newSolicitud.tipo === 'Pago a Tercero' && (
                   <>
