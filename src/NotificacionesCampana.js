@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Bell } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
 // Campana 🔔 del encabezado: cada persona ve SOLO sus notificaciones (RLS en
@@ -70,17 +71,13 @@ const NotificacionesCampana = ({ user, onNavegar }) => {
 
   return (
     <div ref={contenedor} style={{ position: 'relative' }}>
-      <button onClick={() => setAbierta(!abierta)} title="Notificaciones"
-        style={{ position: 'relative', background: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '6px', padding: '0.6rem 0.8rem', fontSize: '1.1rem', cursor: 'pointer' }}>
-        🔔
-        {noLeidas.length > 0 && (
-          <span style={{ position: 'absolute', top: '-6px', right: '-6px', backgroundColor: '#CC4B4B', color: '#FFFFFF', borderRadius: '999px', fontSize: '0.7rem', fontWeight: 'bold', minWidth: '18px', height: '18px', lineHeight: '18px', padding: '0 4px', textAlign: 'center' }}>
-            {noLeidas.length > 99 ? '99+' : noLeidas.length}
-          </span>
-        )}
+      {/* Estilo del menú superior (clases tn-bell / tn-dot de components/TopNav.css). */}
+      <button className="tn-bell" onClick={() => setAbierta(!abierta)} title="Notificaciones" aria-label="Notificaciones">
+        <Bell size={19} />
+        {noLeidas.length > 0 && <span className="tn-dot">{noLeidas.length > 99 ? '99+' : noLeidas.length}</span>}
       </button>
       {abierta && (
-        <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', width: 'min(380px, calc(100vw - 2rem))', maxHeight: '70vh', overflowY: 'auto', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '8px', boxShadow: '0 10px 30px rgba(34,30,21,0.15)', zIndex: 200 }}>
+        <div className="tn-notif-panel" style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', width: 'min(380px, calc(100vw - 2rem))', maxHeight: '70vh', overflowY: 'auto', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '8px', boxShadow: '0 10px 30px rgba(34,30,21,0.15)', zIndex: 200 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', borderBottom: '1px solid #E6E0D2' }}>
             <strong style={{ color: '#221E15' }}>Notificaciones</strong>
             {noLeidas.length > 0 && (
