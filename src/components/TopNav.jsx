@@ -6,12 +6,13 @@ import {
 import "./TopNav.css";
 
 // Quién ve cada módulo — mismos permisos que tenía el menú anterior de App.js:
-// Presupuesto, Finanzas y Dashboard Financiero: todos menos Responsable; Colaboradores, Datos
-// Bancarios, Pagos PAB y Auditoría: solo Administrador y Coordinadora Administrativa (las vistas
-// en App.js vuelven a validar el rol, este menú solo decide qué botones se muestran).
+// Presupuesto, Finanzas y Dashboard Financiero: Administrador, Coordinadora y Gerente
+// (puedeVerFinanzas en App.js); Colaboradores, Datos Bancarios, Pagos PAB y Auditoría: solo
+// Administrador y Coordinadora Administrativa (las vistas en App.js vuelven a validar el rol,
+// este menú solo decide qué botones se muestran).
 const ADMIN = ["Administrador", "Coordinadora Administrativa"];
 const TODOS = [...ADMIN, "Contadora", "Gerente", "Responsable", "Colaborador"];
-const SIN_RESPONSABLE = TODOS.filter(r => r !== "Responsable");
+const ROLES_FINANZAS = [...ADMIN, "Gerente"];
 
 // `id` = valor de currentView en App.js.
 const GRUPOS = [
@@ -23,9 +24,9 @@ const GRUPOS = [
     { id: "cuentasCobro", label: "Cuentas de cobro", icon: FileText, roles: TODOS },
   ]},
   { label: "Finanzas", items: [
-    { id: "dashboardFinanciero", label: "Dashboard financiero", icon: LineChart, roles: SIN_RESPONSABLE },
-    { id: "finanzas", label: "Finanzas", icon: Wallet, roles: SIN_RESPONSABLE },
-    { id: "presupuesto", label: "Presupuesto", icon: CalendarRange, roles: SIN_RESPONSABLE },
+    { id: "dashboardFinanciero", label: "Dashboard financiero", icon: LineChart, roles: ROLES_FINANZAS },
+    { id: "finanzas", label: "Finanzas", icon: Wallet, roles: ROLES_FINANZAS },
+    { id: "presupuesto", label: "Presupuesto", icon: CalendarRange, roles: ROLES_FINANZAS },
     { id: "pagosPAB", label: "Pagos PAB", icon: Banknote, roles: ADMIN },
   ]},
   { label: "Equipo", items: [

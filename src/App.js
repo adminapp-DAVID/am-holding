@@ -6591,6 +6591,9 @@ const App = () => {
   const canEdit = user?.rol && ['Administrador', 'Coordinadora Administrativa', 'Responsable', 'Gerente'].includes(user.rol);
   const canApprove = user?.rol && ['Administrador', 'Coordinadora Administrativa'].includes(user.rol);
   const isReadOnly = user?.rol === 'Contadora';
+  // Finanzas, Dashboard Financiero y Presupuesto: solo Administrador, Coordinadora y Gerente
+  // (mismo criterio que ROLES_FINANZAS en components/TopNav.jsx).
+  const puedeVerFinanzas = ['Administrador', 'Coordinadora Administrativa', 'Gerente'].includes(user?.rol);
   
   // Color estado
   const getColorEstado = (estado) => {
@@ -8224,15 +8227,15 @@ const App = () => {
           );
         })()}
 
-        {currentView === 'finanzas' && user.rol === 'Responsable' && (
+        {currentView === 'finanzas' && !puedeVerFinanzas && (
           <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', textAlign: 'center', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
             <p style={{ color: '#CC4B4B', fontSize: '1.1rem', fontWeight: 'bold' }}>🔒 Acceso Restringido</p>
-            <p style={{ color: '#6B6458' }}>Los Colaboradores no tienen acceso al módulo de Finanzas.</p>
+            <p style={{ color: '#6B6458' }}>Tu rol no tiene acceso al módulo de Finanzas.</p>
             <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>Ir al Dashboard</button>
           </div>
         )}
 
-        {currentView === 'finanzas' && user.rol !== 'Responsable' && (
+        {currentView === 'finanzas' && puedeVerFinanzas && (
           <div>
             {/* BOTÓN IMPORTAR (SOLO ADMIN) */}
             {user?.rol === 'Administrador' && (
@@ -8917,7 +8920,7 @@ const App = () => {
           </div>
         )}
 
-        {currentView === 'dashboardFinanciero' && user.rol !== 'Responsable' && (
+        {currentView === 'dashboardFinanciero' && puedeVerFinanzas && (
           <div>
             {/* DASHBOARD FINANCIERO AVANZADO */}
             <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
@@ -9236,7 +9239,7 @@ const App = () => {
           </div>
         )}
 
-        {currentView === 'presupuesto' && user.rol === 'Responsable' && (
+        {currentView === 'presupuesto' && !puedeVerFinanzas && (
           <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', textAlign: 'center', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
             <h2 style={{ color: '#C4A747' }}>📅 Presupuesto</h2>
             <p style={{ color: '#6B6458' }}>No tienes acceso a este módulo.</p>
@@ -9244,7 +9247,7 @@ const App = () => {
           </div>
         )}
 
-        {currentView === 'presupuesto' && user.rol !== 'Responsable' && (() => {
+        {currentView === 'presupuesto' && puedeVerFinanzas && (() => {
           const puedeEditarPresupuesto = user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa';
           const inputStyle = { padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' };
           const cardStyle = { backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '8px', padding: '1.25rem' };
