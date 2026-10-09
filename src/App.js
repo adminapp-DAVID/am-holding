@@ -20,6 +20,7 @@ import DatosBancariosView from './DatosBancariosView';
 import ExportadorPABView from './ExportadorPABView';
 import NotificacionesCampana from './NotificacionesCampana';
 import AuditoriaView from './AuditoriaView';
+import TopNav from './components/TopNav';
 import { CODIGO_BANCO_EXTERIOR, inferirCodigoBanco, limpiarNumeroCuenta, limpiarDocumento } from './datosBancarios';
 
 // Logo por empresa. Para sumar ARKO, sube el archivo a src/assets/logos/,
@@ -6810,50 +6811,17 @@ const App = () => {
   // APP MAIN
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#F8F6F1', color: '#221E15' }}>
-      {/* Header + menú van juntos dentro de UN SOLO contenedor "sticky" (en vez de cada uno por
-          separado) — así ambos quedan fijos arriba al bajar en la página, pegados uno debajo
-          del otro sin dejar un hueco ni superponerse, sin tener que calcular a mano la altura
-          exacta del header para el "top" del menú. */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 100 }}>
-        <header style={{ backgroundColor: '#FFFFFF', borderBottom: '1px solid #E6E0D2', padding: '1.5rem', boxShadow: '0 1px 3px rgba(34,30,21,0.04)' }}>
-          <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div><img src={logoAmHolding} alt="AM HOLDING" style={{ height: '32px', width: 'auto', objectFit: 'contain', display: 'block' }} /><p style={{ fontSize: '0.85rem', color: '#6B6458', margin: '0.5rem 0 0 0' }}>{user.nombre} ({user.rol})</p></div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <NotificacionesCampana user={user} onNavegar={setCurrentView} />
-            <button onClick={handleLogout} style={{ backgroundColor: '#C4A747', color: '#221E15', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 2px 6px rgba(196,167,71,0.35)' }}>Salir</button>
-            </div>
-          </div>
-        </header>
-
-        <nav style={{ backgroundColor: '#F8F6F1', borderBottom: '1px solid #E6E0D2', padding: '1rem 0' }}>
-        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-          <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'dashboard' ? '#C4A747' : '#E6E0D2', color: currentView === 'dashboard' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📊 Dashboard</button>
-          <button onClick={() => setCurrentView('mi-perfil')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'mi-perfil' ? '#C4A747' : '#E6E0D2', color: currentView === 'mi-perfil' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>🙋 Mi Perfil</button>
-          
-          <button onClick={() => setCurrentView('solicitudes')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'solicitudes' ? '#C4A747' : '#E6E0D2', color: currentView === 'solicitudes' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📋 Solicitudes</button>
-          <button onClick={() => setCurrentView('cuentasCobro')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'cuentasCobro' ? '#C4A747' : '#E6E0D2', color: currentView === 'cuentasCobro' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💳 Cuentas de Cobro</button>
-          {user.rol !== 'Responsable' && (
-            <button onClick={() => setCurrentView('presupuesto')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'presupuesto' ? '#C4A747' : '#E6E0D2', color: currentView === 'presupuesto' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📅 Presupuesto</button>
-          )}
-
-          {user.rol !== 'Responsable' && (
-            <>
-              <button onClick={() => setCurrentView('finanzas')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'finanzas' ? '#C4A747' : '#E6E0D2', color: currentView === 'finanzas' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💰 Finanzas</button>
-              <button onClick={() => setCurrentView('dashboardFinanciero')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'dashboardFinanciero' ? '#C4A747' : '#E6E0D2', color: currentView === 'dashboardFinanciero' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>📈 Dashboard Financiero</button>
-            </>
-          )}
-          
-          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
-            <>
-              <button onClick={() => setCurrentView('responsables')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'responsables' ? '#C4A747' : '#E6E0D2', color: currentView === 'responsables' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>👥 Colaboradores</button>
-              <button onClick={() => setCurrentView('datosBancarios')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'datosBancarios' ? '#C4A747' : '#E6E0D2', color: currentView === 'datosBancarios' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>🏦 Datos Bancarios</button>
-              <button onClick={() => setCurrentView('pagosPAB')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'pagosPAB' ? '#C4A747' : '#E6E0D2', color: currentView === 'pagosPAB' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>💸 Pagos PAB</button>
-              <button onClick={() => setCurrentView('auditoria')} style={{ padding: '0.75rem 1.5rem', backgroundColor: currentView === 'auditoria' ? '#C4A747' : '#E6E0D2', color: currentView === 'auditoria' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>🕵️ Auditoría</button>
-            </>
-          )}
-        </div>
-        </nav>
-      </div>
+      {/* Menú superior con desplegables (components/TopNav.jsx): fijo arriba al bajar en la
+          página; qué módulos ve cada rol se decide ahí con los mismos permisos de siempre. */}
+      <TopNav
+        active={currentView}
+        onNavigate={setCurrentView}
+        role={user.rol}
+        userName={user.nombre}
+        logoSrc={logoAmHolding}
+        bell={<NotificacionesCampana user={user} onNavegar={setCurrentView} />}
+        onLogout={handleLogout}
+      />
 
       <main style={{ maxWidth: '1400px', margin: '2rem auto', padding: '0 1rem' }}>
         {currentView === 'datosBancarios' && (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
