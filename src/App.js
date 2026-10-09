@@ -2065,6 +2065,10 @@ const App = () => {
       alert('Fecha y valor son obligatorios');
       return;
     }
+    if (!(nuevoSoportePendiente.descripcion || '').trim()) {
+      alert('Escribe "Por concepto de" (es obligatorio)');
+      return;
+    }
     setSubiendoSoportePendiente(true);
     try {
       const archivo = nuevoSoportePendiente.archivo;
@@ -2087,7 +2091,7 @@ const App = () => {
         fecha: nuevoSoportePendiente.fecha,
         proveedor: nuevoSoportePendiente.proveedor || null,
         nit: nuevoSoportePendiente.nit || null,
-        descripcion: nuevoSoportePendiente.descripcion || null,
+        descripcion: nuevoSoportePendiente.descripcion.trim(),
         valor: parseFloat(nuevoSoportePendiente.valor) || 0,
         tipo_soporte: nuevoSoportePendiente.tipoSoporte || null,
         bucket_path: rutaArchivo,
@@ -2141,6 +2145,10 @@ const App = () => {
       alert('Fecha y valor son obligatorios');
       return;
     }
+    if (!(pendienteEditData.descripcion || '').trim()) {
+      alert('El Concepto es obligatorio');
+      return;
+    }
     setGuardandoEdicionPendiente(true);
     try {
       const { error } = await supabase
@@ -2149,7 +2157,7 @@ const App = () => {
           fecha: pendienteEditData.fecha,
           proveedor: pendienteEditData.proveedor || null,
           nit: pendienteEditData.nit || null,
-          descripcion: pendienteEditData.descripcion || null,
+          descripcion: pendienteEditData.descripcion.trim(),
           valor: parseFloat(pendienteEditData.valor) || 0,
           tipo_soporte: pendienteEditData.tipoSoporte || null
         })
@@ -2175,6 +2183,12 @@ const App = () => {
     const seleccionados = soportesPendientes.filter(s => seleccionPendientes.includes(s.id));
     if (seleccionados.length === 0) {
       alert('Selecciona al menos un recibo de tu bandeja');
+      return;
+    }
+    // Recibos subidos antes de que el Concepto fuera obligatorio: hay que completarlo (✏️) primero.
+    const sinConcepto = seleccionados.filter(s => !(s.descripcion || '').trim());
+    if (sinConcepto.length > 0) {
+      alert(`Completa el Concepto (✏️) de estos recibos antes de usarlos:\n• ${sinConcepto.map(s => `${s.fecha} — ${s.proveedor || 'sin proveedor'}`).join('\n• ')}`);
       return;
     }
     setCargandoSoportesPendientes(true);
@@ -2344,6 +2358,13 @@ const App = () => {
 
     if ((newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso' || newSolicitud.tipo === 'Legalización T. Pro') && newSolicitud.documentos.length === 0) {
       alert('Agrega al menos un documento');
+      return;
+    }
+
+    // Cada Ítem del Gasto también necesita su "Por concepto de".
+    const itemsSinConcepto = newSolicitud.documentos.filter(d => !(d.descripcion || '').trim()).length;
+    if (itemsSinConcepto > 0) {
+      alert(`Falta "Por concepto de" en ${itemsSinConcepto} ítem(s) del gasto`);
       return;
     }
 
@@ -7220,7 +7241,7 @@ const App = () => {
                     <input type="date" value={nuevoSoportePendiente.fecha} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, fecha: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
                     <input type="text" placeholder="Pagado a" value={nuevoSoportePendiente.proveedor} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, proveedor: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
                     <input type="text" placeholder="NIT" value={nuevoSoportePendiente.nit} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, nit: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                    <input type="text" placeholder="Por concepto de" value={nuevoSoportePendiente.descripcion} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, descripcion: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
+                    <input type="text" placeholder="Por concepto de *" required value={nuevoSoportePendiente.descripcion} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, descripcion: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
                     <input type="number" placeholder="Valor pagado" value={nuevoSoportePendiente.valor} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, valor: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
                     <select value={nuevoSoportePendiente.tipoSoporte} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, tipoSoporte: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }}>
                       <option value="">Tipo de Soporte</option>
@@ -7280,7 +7301,7 @@ const App = () => {
                                     <td style={{ padding: '0.35rem' }}><input type="date" value={pendienteEditData.fecha} onChange={(e) => setPendienteEditData({...pendienteEditData, fecha: e.target.value})} style={{ width: '100%', padding: '0.4rem', border: '1px solid #E6E0D2', borderRadius: '3px', boxSizing: 'border-box', fontSize: '0.8rem' }} /></td>
                                     <td style={{ padding: '0.35rem' }}><input type="text" value={pendienteEditData.proveedor} onChange={(e) => setPendienteEditData({...pendienteEditData, proveedor: e.target.value})} style={{ width: '100%', padding: '0.4rem', border: '1px solid #E6E0D2', borderRadius: '3px', boxSizing: 'border-box', fontSize: '0.8rem' }} /></td>
                                     <td style={{ padding: '0.35rem' }}>
-                                      <input type="text" placeholder="Concepto" value={pendienteEditData.descripcion} onChange={(e) => setPendienteEditData({...pendienteEditData, descripcion: e.target.value})} style={{ width: '100%', padding: '0.4rem', border: '1px solid #E6E0D2', borderRadius: '3px', boxSizing: 'border-box', fontSize: '0.8rem', marginBottom: '0.25rem' }} />
+                                      <input type="text" placeholder="Concepto *" required value={pendienteEditData.descripcion} onChange={(e) => setPendienteEditData({...pendienteEditData, descripcion: e.target.value})} style={{ width: '100%', padding: '0.4rem', border: '1px solid #E6E0D2', borderRadius: '3px', boxSizing: 'border-box', fontSize: '0.8rem', marginBottom: '0.25rem' }} />
                                       <select value={pendienteEditData.tipoSoporte} onChange={(e) => setPendienteEditData({...pendienteEditData, tipoSoporte: e.target.value})} style={{ width: '100%', padding: '0.4rem', border: '1px solid #E6E0D2', borderRadius: '3px', boxSizing: 'border-box', fontSize: '0.75rem' }}>
                                         <option value="">Tipo de Soporte</option>
                                         {tiposSoporte.map(t => <option key={t} value={t}>{t}</option>)}
@@ -7566,7 +7587,7 @@ const App = () => {
                             <input type="date" placeholder="Fecha del Gasto" value={doc.fecha || ''} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].fecha = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.8rem' }} />
                             <input type="text" placeholder="Pagado a" value={doc.proveedor} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].proveedor = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.8rem' }} />
                             <input type="text" placeholder="NIT" value={doc.nit} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].nit = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.8rem' }} />
-                            <input type="text" placeholder="Por concepto de" value={doc.descripcion} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].descripcion = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.8rem' }} />
+                            <input type="text" placeholder="Por concepto de *" required value={doc.descripcion} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].descripcion = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: `1px solid ${(doc.descripcion || '').trim() ? '#E6E0D2' : '#CC4B4B'}`, borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.8rem' }} />
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr auto', gap: '0.75rem' }}>
                             <input type="number" placeholder="Valor pagado" value={doc.valor} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].valor = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.8rem' }} />
