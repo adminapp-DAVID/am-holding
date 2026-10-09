@@ -47,7 +47,7 @@ const cargarPlantilla = async () => {
 
 const ExportadorPABView = ({
   user, empresas, solicitudes, presupuestoDetalle, filtroPresupuesto, setFiltroPresupuesto,
-  usuarios, terceros, lotes, lotePorClave, onRecargarLotes, onRecargarDatos, getMoneda, formatCOP
+  usuarios, terceros, lotes, lotePorClave, onRecargarLotes, onRecargarDatos, onRegistrarPagoLote, cecosGasto, getMoneda, formatCOP
 }) => {
   const esAdmin = user?.rol === 'Administrador';
   const [configs, setConfigs] = useState([]);
@@ -58,6 +58,9 @@ const ExportadorPABView = ({
   const [mostrarBloqueados, setMostrarBloqueados] = useState(false);
   const [generando, setGenerando] = useState(false);
   const [trabajandoLote, setTrabajandoLote] = useState(null);
+  // Modal "Marcar pagado": { lote, fechaPago, comprobante, cecos: { [solicitudId]: codigo } }.
+  const [pagoLote, setPagoLote] = useState(null);
+  const [guardandoPago, setGuardandoPago] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -108,7 +111,7 @@ const ExportadorPABView = ({
         const encabezadoBase = construirEncabezadoPAB({ config, tipoPago: g.tipoPago, secuencia: '', descripcion: descripcionLotePAB(g.tipoPago, filtroPresupuesto.anio, filtroPresupuesto.mes) });
         const items = g.items.map((c, i) => ({
           orden: i + 1, entidad_clave: c.clave, entidad_tipo: c.entidadTipo, entidad_id: c.entidadId,
-          anio: c.anio, mes: c.mes, valor: c.fila.valor, datos: c.fila
+          anio: c.anio, mes: c.mes, valor: c.fila.valor, datos: { ...c.fila, meta: c.meta }
         }));
         const { data, error } = await supabase.rpc('crear_lote_pago_banco', {
           p_config_id: config.id, p_tipo_pago: g.tipoPago, p_fecha: fechaAplicacion, p_encabezado: encabezadoBase, p_items: items
@@ -144,14 +147,48 @@ const ExportadorPABView = ({
     }
   };
 
-  const handleCerrar = async (lote, estado) => {
-    let motivo = null;
-    if (estado === 'Anulado') {
-      motivo = window.prompt(`Anular el lote #${lote.numero}: sus ${lote.cantidad} registro(s) quedarán libres para exportarse de nuevo. Úsalo solo si el archivo NO se pagó en el banco.\n\nMotivo:`);
-      if (motivo === null) return;
-    } else if (!window.confirm(`¿Marcar el lote #${lote.numero} como pagado en el banco?`)) {
-      return;
+  const itemsActivos = (lote) => [...(lote.lotes_pago_banco_items || [])].filter(i => i.activo !== false).sort((a, b) => a.orden - b.orden);
+
+  const abrirPagoLote = (lote) => {
+    const cecos = {};
+    itemsActivos(lote).filter(i => i.entidad_tipo === 'solicitud').forEach(i => { cecos[i.entidad_id] = ''; });
+    setPagoLote({ lote, fechaPago: lote.fecha_aplicacion || hoyLocal(), comprobante: null, cecos });
+  };
+
+  const leerComprobante = (file) => {
+    if (!file) { setPagoLote(p => ({ ...p, comprobante: null })); return; }
+    const reader = new FileReader();
+    reader.onload = () => setPagoLote(p => ({ ...p, comprobante: { nombre: file.name, tipo: file.type, tamaño: file.size, data: reader.result } }));
+    reader.readAsDataURL(file);
+  };
+
+  const confirmarPagoLote = async () => {
+    const { lote, fechaPago, comprobante, cecos } = pagoLote;
+    if (!fechaPago) { alert('Elige la fecha del pago'); return; }
+    if (!comprobante) { alert('Adjunta el comprobante del banco (uno para todo el lote)'); return; }
+    if (Object.values(cecos).some(c => !c)) { alert('Elige el CECO de cada solicitud'); return; }
+    const mesesPresupuesto = [...new Set(itemsActivos(lote).filter(i => i.entidad_tipo === 'presupuesto').map(i => `${i.anio}-${String(i.mes).padStart(2, '0')}`))];
+    const otroMes = mesesPresupuesto.filter(m => m !== fechaPago.substring(0, 7));
+    if (otroMes.length && !window.confirm(`La fecha de pago (${fechaPago}) es de otro mes que los conceptos de Presupuesto (${otroMes.join(', ')}). En Presupuesto el concepto queda pagado en el mes de la fecha de pago. ¿Continuar?`)) return;
+    setGuardandoPago(true);
+    try {
+      const r = await onRegistrarPagoLote(lote, { fechaPago, comprobante, cecoPorSolicitud: cecos });
+      setPagoLote(null);
+      alert(r.fallidos.length
+        ? `⚠️ ${r.registrados} pago(s) registrados en Finanzas${r.saltados ? `, ${r.saltados} ya estaban` : ''}.\nNo se pudieron registrar:\n• ${r.fallidos.join('\n• ')}\n\nEl lote sigue en "Generado": corrige y vuelve a pulsar ✅ (lo ya registrado no se duplica).`
+        : `✅ Lote #${lote.numero} pagado: ${r.registrados} pago(s) registrados en Finanzas${r.saltados ? ` (${r.saltados} ya estaban registrados)` : ''}.`);
+    } catch (e) {
+      console.error('Error registrando pago del lote:', e);
+      alert('❌ ' + (e.message || 'Error inesperado'));
+    } finally {
+      setGuardandoPago(false);
+      await onRecargarLotes();
     }
+  };
+
+  const handleCerrar = async (lote, estado) => {
+    const motivo = window.prompt(`Anular el lote #${lote.numero}: sus ${lote.cantidad} registro(s) quedarán libres para exportarse de nuevo. Úsalo solo si el archivo NO se pagó en el banco.\n\nMotivo:`);
+    if (motivo === null) return;
     setTrabajandoLote(lote.id);
     const { error } = await supabase.rpc('cerrar_lote_pago_banco', { p_lote_id: lote.id, p_estado: estado, p_motivo: motivo });
     setTrabajandoLote(null);
@@ -276,7 +313,7 @@ const ExportadorPABView = ({
                     </td>
                     <td style={{ ...td, whiteSpace: 'nowrap' }}>
                       <button disabled={trabajandoLote === l.id} onClick={() => handleRedescargar(l)} title="Volver a descargar el mismo archivo" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>⬇️</button>
-                      {l.estado === 'Generado' && <button disabled={trabajandoLote === l.id} onClick={() => handleCerrar(l, 'Pagado')} title="Marcar como pagado en el banco" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>✅</button>}
+                      {l.estado === 'Generado' && <button disabled={trabajandoLote === l.id} onClick={() => abrirPagoLote(l)} title="Marcar pagado y registrar en Finanzas" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>✅</button>}
                       {l.estado === 'Generado' && esAdmin && <button disabled={trabajandoLote === l.id} onClick={() => handleCerrar(l, 'Anulado')} title="Anular (libera los registros)" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>🚫</button>}
                     </td>
                   </tr>
@@ -286,9 +323,58 @@ const ExportadorPABView = ({
           </div>
         )}
         <p style={{ color: '#8F8877', fontSize: '0.75rem', margin: '0.75rem 0 0 0' }}>
-          ✅ marca el lote como pagado en el banco (los registros siguen bloqueados para no exportarlos dos veces; su pago en la app se registra como siempre: Confirmar Pago en Solicitudes / Marcar Pagado en Presupuesto). 🚫 Anular solo si el archivo no se pagó.
+          ✅ cuando el banco confirme el pago: pide fecha, el comprobante del lote y el CECO de cada solicitud, y registra todo en Finanzas (Solicitudes quedan Pagado; Presupuesto, pagado en el mes). 🚫 Anular solo si el archivo no se pagó.
         </p>
       </div>
+
+      {pagoLote && (() => {
+        const items = itemsActivos(pagoLote.lote);
+        return (
+          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+            <div style={{ ...card, maxWidth: '720px', width: '100%', maxHeight: '90vh', overflowY: 'auto', marginBottom: 0 }}>
+              <h3 style={{ color: '#C4A747', margin: '0 0 0.25rem 0' }}>✅ Lote #{pagoLote.lote.numero} pagado</h3>
+              <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>
+                {pagoLote.lote.empresas?.nombre} · {pagoLote.lote.config_bancaria_empresa?.nombre_cuenta} · {items.length} pago(s) por {formatCOP(parseFloat(pagoLote.lote.total) || 0)}. Se registra cada pago en Finanzas con el mismo comprobante.
+              </p>
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                <div>
+                  <label style={label}>Fecha del pago *</label>
+                  <input type="date" value={pagoLote.fechaPago} onChange={(e) => setPagoLote({ ...pagoLote, fechaPago: e.target.value })} style={input} />
+                </div>
+                <div style={{ flex: 1, minWidth: '220px' }}>
+                  <label style={label}>Comprobante del banco (todo el lote) *</label>
+                  <input type="file" accept=".pdf,image/*" onChange={(e) => leerComprobante(e.target.files[0])} style={{ ...input, width: '100%', boxSizing: 'border-box' }} />
+                </div>
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr><th style={th}>Pago</th><th style={{ ...th, textAlign: 'right' }}>Valor</th><th style={th}>CECO</th></tr></thead>
+                <tbody>
+                  {items.map(i => (
+                    <tr key={i.entidad_clave}>
+                      <td style={td}>{i.datos?.nombre || '—'}<div style={{ color: '#8F8877', fontSize: '0.7rem' }}>{i.entidad_tipo === 'solicitud' ? `Solicitud · ${i.datos?.meta?.tipo || ''}` : `Presupuesto · ${i.datos?.meta?.nombre || ''}`}</div></td>
+                      <td style={{ ...td, textAlign: 'right' }}>{formatCOP(parseFloat(i.valor) || 0)}</td>
+                      <td style={td}>
+                        {i.entidad_tipo === 'solicitud' ? (
+                          <select value={pagoLote.cecos[i.entidad_id] || ''} onChange={(e) => setPagoLote({ ...pagoLote, cecos: { ...pagoLote.cecos, [i.entidad_id]: e.target.value } })} style={{ ...input, padding: '0.35rem', maxWidth: '220px' }}>
+                            <option value="">Elegir CECO…</option>
+                            {cecosGasto.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
+                          </select>
+                        ) : <span style={{ color: '#6B6458' }}>{i.datos?.meta?.ceco || 'el del concepto'}</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
+                <button disabled={guardandoPago} onClick={() => setPagoLote(null)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#332D1E', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Cancelar</button>
+                <button disabled={guardandoPago} onClick={confirmarPagoLote} style={{ flex: 2, padding: '0.75rem', backgroundColor: '#2F9E52', color: '#FFFFFF', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoPago ? 'wait' : 'pointer', opacity: guardandoPago ? 0.6 : 1 }}>
+                  {guardandoPago ? '⏳ Registrando…' : 'Confirmar pago y registrar en Finanzas'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

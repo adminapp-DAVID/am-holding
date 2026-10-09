@@ -1518,7 +1518,7 @@ const App = () => {
     if (!['Administrador', 'Coordinadora Administrativa', 'Contadora'].includes(user?.rol)) return;
     const { data, error } = await supabase
       .from('lotes_pago_banco')
-      .select('id, numero, tipo_pago, secuencia, fecha_aplicacion, cantidad, total, encabezado, estado, created_at, motivo_anulacion, empresas ( nombre ), config_bancaria_empresa ( nombre_cuenta ), lotes_pago_banco_items ( entidad_clave, activo, orden, datos )')
+      .select('id, numero, tipo_pago, secuencia, fecha_aplicacion, cantidad, total, encabezado, estado, created_at, motivo_anulacion, empresas ( nombre ), config_bancaria_empresa ( nombre_cuenta ), lotes_pago_banco_items ( entidad_clave, entidad_tipo, entidad_id, anio, mes, valor, activo, orden, datos )')
       .order('numero', { ascending: false })
       .limit(200);
     if (error) {
@@ -4912,6 +4912,132 @@ const App = () => {
   };
 
   // ============================================================
+  // LOTE PAB PAGADO (pantalla 💸 Pagos PAB → ✅): registra en Finanzas cada pago del lote con
+  // los MISMOS pasos de siempre — Solicitudes: "Pagado" vía handleChangeEstado (genera su
+  // Gasto); Presupuesto: el mismo Gasto que crea "Marcar Pagado". El banco da UN comprobante
+  // por lote, así que se sube una vez y se enlaza (mismo bucket_path) a todos los registros.
+  // Es re-ejecutable: lo que ya quedó pagado se salta. El lote solo pasa a "Pagado" si todos
+  // sus registros quedaron registrados.
+  // ============================================================
+  const registrarPagoLotePAB = async (lote, { fechaPago, comprobante, cecoPorSolicitud }) => {
+    const cuenta = lote.config_bancaria_empresa?.nombre_cuenta || '';
+    const items = [...(lote.lotes_pago_banco_items || [])].filter(i => i.activo !== false).sort((a, b) => a.orden - b.orden);
+    const itemsSolicitud = items.filter(i => i.entidad_tipo === 'solicitud');
+    const itemsPresupuesto = items.filter(i => i.entidad_tipo === 'presupuesto');
+    const fallidos = [];
+    let registrados = 0;
+    let saltados = 0;
+
+    // 1) Estado actual (releído) de lo que falta pagar, para no duplicar.
+    const { data: solActuales, error: errorSol } = itemsSolicitud.length
+      ? await supabase.from('solicitudes').select('id, estado').in('id', itemsSolicitud.map(i => i.entidad_id))
+      : { data: [], error: null };
+    if (errorSol) throw errorSol;
+    const estadoSol = Object.fromEntries((solActuales || []).map(s => [String(s.id), s.estado]));
+    const solPendientes = itemsSolicitud.filter(i => estadoSol[String(i.entidad_id)] !== 'Pagado');
+    saltados += itemsSolicitud.length - solPendientes.length;
+
+    const presPendientes = [];
+    for (const it of itemsPresupuesto) {
+      const mesStr = `${it.anio}-${String(it.mes).padStart(2, '0')}`;
+      const { data: gastosDelConcepto, error } = await supabase.from('gastos').select('id, fecha').eq('presupuesto_item_id', it.entidad_id);
+      if (error) throw error;
+      if ((gastosDelConcepto || []).some(g => g.fecha && g.fecha.substring(0, 7) === mesStr)) saltados++;
+      else presPendientes.push(it);
+    }
+    if (solPendientes.length === 0 && presPendientes.length === 0) {
+      return { registrados, saltados, fallidos, cerrado: await cerrarLotePagado(lote) };
+    }
+
+    // 2) Comprobante único: se sube una vez y se enlaza a cada registro.
+    let rutaComprobante = null;
+    const tamanoKb = Math.round(dataUrlToUint8Array(comprobante.data).length / 1024);
+    const enlazarComprobante = async (entidadTipo, entidadId) => {
+      if (!rutaComprobante) {
+        rutaComprobante = await subirSoporteEntidad(comprobante, entidadTipo, entidadId);
+        if (!rutaComprobante) throw new Error('No se pudo subir el comprobante');
+        return;
+      }
+      const { error } = await supabase.from('soportes').insert({
+        bucket_path: rutaComprobante, nombre_original: comprobante.nombre, tamano_kb: tamanoKb,
+        entidad_tipo: entidadTipo, entidad_id: entidadId, subido_por: user.id
+      });
+      if (error) throw error;
+    };
+
+    // 3) Solicitudes: el comprobante se enlaza ANTES de pagar para que el Gasto generado lo copie.
+    for (const it of solPendientes) {
+      const solicitud = solicitudes.find(s => String(s.id) === String(it.entidad_id));
+      const nombre = it.datos?.nombre || solicitud?.detalle || it.entidad_id;
+      try {
+        if (estadoSol[String(it.entidad_id)] !== 'Aprobado') throw new Error(`está en "${estadoSol[String(it.entidad_id)] || 'no encontrada'}", no en Aprobado`);
+        if (!solicitud) throw new Error('no está cargada en la app (pulsa 🔄 Actualizar datos)');
+        const ceco = cecoPorSolicitud[it.entidad_id];
+        if (!ceco) throw new Error('falta el CECO');
+        await enlazarComprobante('solicitud', solicitud.id);
+        await handleChangeEstado(solicitud.id, 'Pagado', { cuentaPago: cuenta, cecoCodigo: ceco, loteId: lote.id, fechaPago });
+        registrados++;
+      } catch (e) {
+        console.error('Error pagando solicitud del lote PAB:', it.entidad_id, e);
+        fallidos.push(`${nombre}: ${e.message || 'error inesperado'}`);
+      }
+    }
+
+    // 4) Presupuesto: mismo Gasto que "Marcar Pagado" (presupuesto_item_id + mes).
+    if (presPendientes.length) {
+      const empresaId = await resolverEmpresaId(lote.empresas?.nombre);
+      for (const it of presPendientes) {
+        const concepto = presupuestoItems.find(p => String(p.id) === String(it.entidad_id));
+        const meta = it.datos?.meta || { nombre: concepto?.nombre, ceco: concepto?.ceco, responsableId: concepto?.responsableId };
+        const nombre = meta.nombre || it.datos?.nombre || it.entidad_id;
+        try {
+          const valor = parseFloat(it.valor) || 0;
+          const { data: nuevoGasto, error } = await supabase.from('gastos').insert({
+            fecha: fechaPago,
+            tipo: 'Gasto',
+            empresa_id: empresaId,
+            responsable_id: meta.responsableId || null,
+            ceco_id: await resolverCecoId(meta.ceco),
+            cuenta,
+            detalle: nombre,
+            valor,
+            valor_bruto: meta.valorBruto || valor,
+            deduccion_aplicada: meta.deduccion > 0 ? meta.deduccion : null,
+            estado: 'Pagado',
+            observaciones: OBSERVACIONES_GASTO_DESDE_PRESUPUESTO,
+            presupuesto_item_id: it.entidad_id,
+            lote_pago_id: lote.id
+          }).select('id').single();
+          if (error) throw error;
+          await enlazarComprobante('gasto', nuevoGasto.id);
+          registrados++;
+        } catch (e) {
+          console.error('Error registrando concepto del lote PAB:', it.entidad_id, e);
+          fallidos.push(`${nombre}: ${e.message || 'error inesperado'}`);
+        }
+      }
+    }
+
+    await Promise.all([cargarSolicitudes(), cargarGastos()]);
+
+    // 5) Verificación final: todas las solicitudes deben haber quedado en Pagado.
+    if (itemsSolicitud.length) {
+      const { data: verif } = await supabase.from('solicitudes').select('id, estado').in('id', itemsSolicitud.map(i => i.entidad_id));
+      const noPagadas = (verif || []).filter(s => s.estado !== 'Pagado').length;
+      if (noPagadas > 0 && fallidos.length === 0) fallidos.push(`${noPagadas} solicitud(es) no quedaron en Pagado`);
+    }
+    const cerrado = fallidos.length === 0 ? await cerrarLotePagado(lote) : false;
+    return { registrados, saltados, fallidos, cerrado };
+  };
+
+  const cerrarLotePagado = async (lote) => {
+    const { error } = await supabase.rpc('cerrar_lote_pago_banco', { p_lote_id: lote.id, p_estado: 'Pagado', p_motivo: null });
+    if (error) throw error;
+    await cargarLotesPago();
+    return true;
+  };
+
+  // ============================================================
   // PAGO A TERCERO EN LOTE (ej. Caelum manda varias facturas de distintos colaboradores para un
   // solo pago) — UN modal: Empresa/Cuenta/Tercero/CECO una sola vez, una línea por colaborador
   // (Colaborador + Valor + su propia factura), y un comprobante de pago compartido al final.
@@ -6749,6 +6875,8 @@ const App = () => {
             lotes={lotesPago}
             lotePorClave={lotePorClave}
             onRecargarLotes={cargarLotesPago}
+            onRegistrarPagoLote={registrarPagoLotePAB}
+            cecosGasto={cecosGasto}
             onRecargarDatos={() => { cargarUsuarios(); cargarTodosTerceros(); cargarSolicitudes(); cargarCuentasCobro(); cargarPresupuestoItems(); cargarPresupuestoOverrides(); cargarPresupuestoAprobaciones(); cargarDeducciones(); cargarGastos(); cargarLotesPago(); }}
             getMoneda={getMoneda}
             formatCOP={(v) => formatMoneyByMoneda(v, 'COP')}

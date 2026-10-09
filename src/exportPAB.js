@@ -152,7 +152,10 @@ export const construirCandidatosPAB = ({
         clave: `presupuesto:${i.id}:${anio}-${mes}`, origen: 'Presupuesto', entidadTipo: 'presupuesto', entidadId: String(i.id), anio, mes,
         etiqueta: `${i.tipo} — ${i.nombre}`, tipoPago: tipoPagoDe(TIPOS_PRESUPUESTO_PAB[i.tipo]),
         beneficiario: beneficiarioDeUsuario(usuarios.find(u => u.id === i.responsableId)),
-        valor: i.netoAPagar, referencia: referenciaPAB(i.tipo === 'Nómina' ? 'NOM' : 'HON', `${anio}${String(mes).padStart(2, '0')}${i.id}`), bloqueos
+        valor: i.netoAPagar, referencia: referenciaPAB(i.tipo === 'Nómina' ? 'NOM' : 'HON', `${anio}${String(mes).padStart(2, '0')}${i.id}`), bloqueos,
+        // Lo necesario para registrar el pago en Finanzas al cerrar el lote (mismo Gasto que
+        // crea "Marcar Pagado" en Presupuesto).
+        meta: { nombre: i.nombre, ceco: i.ceco, responsableId: i.responsableId || null, valorBruto: i.valorEsperado, deduccion: i.totalDeducciones || 0 }
       });
     });
 
@@ -171,7 +174,8 @@ export const construirCandidatosPAB = ({
           : beneficiarioDeUsuario(usuarios.find(u => u.id === s.responsableId)),
         valor: s.tipo === 'Reembolso' ? s.totalCalculado : s.valor,
         referencia: referenciaPAB({ Reembolso: 'REE', Anticipo: 'ANT', 'Pago a Tercero': 'TER' }[s.tipo], s.id),
-        bloqueos
+        bloqueos,
+        meta: { tipo: s.tipo, detalle: s.detalle || '' }
       });
     });
 
