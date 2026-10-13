@@ -4635,13 +4635,17 @@ const App = () => {
     }
   };
 
-  // Editar Fecha, CECO y Concepto de un registro de Finanzas — Administrador, Coordinadora y
+  // Editar Fecha, CECO, Concepto y Valor de un registro de Finanzas — Administrador, Coordinadora y
   // Gerente. No toca la Solicitud ni el concepto de Presupuesto de origen; el cambio queda en Auditoría.
   const puedeEditarConceptoFinanzas = ['Administrador', 'Coordinadora Administrativa', 'Gerente'].includes(user?.rol);
-  const [editandoConceptoFinanzas, setEditandoConceptoFinanzas] = useState(null); // { tabla, id, texto, fecha, ceco }
+  const [editandoConceptoFinanzas, setEditandoConceptoFinanzas] = useState(null); // { tabla, id, texto, fecha, ceco, valor, valorDestino }
   const [guardandoConceptoFinanzas, setGuardandoConceptoFinanzas] = useState(false);
   const handleGuardarConceptoFinanzas = async () => {
-    const { tabla, id, texto, fecha, ceco } = editandoConceptoFinanzas || {};
+    const { tabla, id, texto, fecha, ceco, valor: valorTexto, valorDestino: valorDestinoTexto, tieneValorDestino } = editandoConceptoFinanzas || {};
+    const valor = parseValorFiltro(valorTexto);
+    const valorDestino = tieneValorDestino ? parseValorFiltro(valorDestinoTexto) : null;
+    if (!valor || valor <= 0) { alert('El valor debe ser mayor a cero'); return; }
+    if (tieneValorDestino && (!valorDestino || valorDestino <= 0)) { alert('El valor destino debe ser mayor a cero'); return; }
     const detalle = (texto || '').trim();
     if (!detalle) { alert('El concepto no puede quedar vacío'); return; }
     if (!fecha) { alert('La fecha no puede quedar vacía'); return; }
@@ -4650,10 +4654,10 @@ const App = () => {
     try {
       const cecoId = await resolverCecoId(ceco);
       if (!cecoId) { alert('❌ No se encontró el CECO ' + ceco); return; }
-      const { data, error } = await supabase.from(tabla).update({ detalle, fecha, ceco_id: cecoId }).eq('id', id).select('id');
+      const { data, error } = await supabase.from(tabla).update({ detalle, fecha, ceco_id: cecoId, valor, ...(tieneValorDestino ? { valor_destino: valorDestino } : {}) }).eq('id', id).select('id');
       if (error) { alert('❌ No se pudo guardar: ' + error.message); return; }
       if (!data || data.length === 0) { alert('❌ No se pudo guardar: tu rol no tiene permiso para editar este registro.'); return; }
-      const cambios = { detalle, fecha, ceco };
+      const cambios = { detalle, fecha, ceco, valor, ...(tieneValorDestino ? { valorDestino } : {}) };
       if (tabla === 'ingresos') setIngresos(prev => prev.map(i => (i.id === id ? { ...i, ...cambios } : i)));
       else setGastos(prev => prev.map(g => (g.id === id ? { ...g, ...cambios } : g)));
       setEditandoConceptoFinanzas(null);
@@ -8849,6 +8853,10 @@ const App = () => {
                                   {!editandoConceptoFinanzas.opcionesCeco.some(c => c.codigo === editandoConceptoFinanzas.ceco) && <option value={editandoConceptoFinanzas.ceco}>{editandoConceptoFinanzas.ceco || 'Elegir CECO…'}</option>}
                                   {editandoConceptoFinanzas.opcionesCeco.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
                                 </select>
+                                <input type="text" inputMode="decimal" value={editandoConceptoFinanzas.valor} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, valor: e.target.value })} title="Valor" placeholder="Valor" style={{ width: '110px', padding: '0.3rem', border: '1px solid #C4A747', borderRadius: '4px', fontSize: '0.8rem' }} />
+                                {editandoConceptoFinanzas.tieneValorDestino && (
+                                  <input type="text" inputMode="decimal" value={editandoConceptoFinanzas.valorDestino} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, valorDestino: e.target.value })} title="Valor destino (otra moneda)" placeholder="Valor destino" style={{ width: '110px', padding: '0.3rem', border: '1px solid #C4A747', borderRadius: '4px', fontSize: '0.8rem' }} />
+                                )}
                                 <input autoFocus type="text" value={editandoConceptoFinanzas.texto} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, texto: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') handleGuardarConceptoFinanzas(); if (e.key === 'Escape') setEditandoConceptoFinanzas(null); }} style={{ flex: 1, minWidth: '140px', padding: '0.35rem', border: '1px solid #C4A747', borderRadius: '4px', fontSize: '0.8rem' }} />
                                 <button disabled={guardandoConceptoFinanzas} onClick={handleGuardarConceptoFinanzas} title="Guardar" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>💾</button>
                                 <button onClick={() => setEditandoConceptoFinanzas(null)} title="Cancelar" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>✖️</button>
@@ -8857,7 +8865,7 @@ const App = () => {
                               <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'flex-start' }}>
                                 <div style={{ flex: 1 }}><TextoResumido texto={r.detalle} /></div>
                                 {puedeEditarConceptoFinanzas && (
-                                  <button onClick={() => setEditandoConceptoFinanzas({ tabla: esIngreso ? 'ingresos' : 'gastos', id: r.id, texto: r.detalle || '', fecha: r.fecha || '', ceco: r.ceco || '', opcionesCeco: esIngreso ? cecosIngreso : (esTraslado ? cecosTraslado : cecosGasto) })} title="Editar fecha, CECO y concepto (solo en Finanzas)" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', padding: 0 }}>✏️</button>
+                                  <button onClick={() => setEditandoConceptoFinanzas({ tabla: esIngreso ? 'ingresos' : 'gastos', id: r.id, texto: r.detalle || '', fecha: r.fecha || '', ceco: r.ceco || '', valor: String((esIngreso ? r : (gastos.find(g => g.id === r.id) || r)).valor ?? '').replace('.', ','), tieneValorDestino: esTraslado && r.valorDestino != null, valorDestino: String(r.valorDestino ?? '').replace('.', ','), opcionesCeco: esIngreso ? cecosIngreso : (esTraslado ? cecosTraslado : cecosGasto) })} title="Editar fecha, CECO, valor y concepto (solo en Finanzas)" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', padding: 0 }}>✏️</button>
                                 )}
                               </div>
                             )}
