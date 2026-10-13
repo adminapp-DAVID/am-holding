@@ -4635,22 +4635,27 @@ const App = () => {
     }
   };
 
-  // Editar SOLO el Concepto (detalle) de un registro de Finanzas — Administrador, Coordinadora y
+  // Editar Fecha, CECO y Concepto de un registro de Finanzas — Administrador, Coordinadora y
   // Gerente. No toca la Solicitud ni el concepto de Presupuesto de origen; el cambio queda en Auditoría.
   const puedeEditarConceptoFinanzas = ['Administrador', 'Coordinadora Administrativa', 'Gerente'].includes(user?.rol);
-  const [editandoConceptoFinanzas, setEditandoConceptoFinanzas] = useState(null); // { tabla, id, texto }
+  const [editandoConceptoFinanzas, setEditandoConceptoFinanzas] = useState(null); // { tabla, id, texto, fecha, ceco }
   const [guardandoConceptoFinanzas, setGuardandoConceptoFinanzas] = useState(false);
   const handleGuardarConceptoFinanzas = async () => {
-    const { tabla, id, texto } = editandoConceptoFinanzas || {};
+    const { tabla, id, texto, fecha, ceco } = editandoConceptoFinanzas || {};
     const detalle = (texto || '').trim();
     if (!detalle) { alert('El concepto no puede quedar vacío'); return; }
+    if (!fecha) { alert('La fecha no puede quedar vacía'); return; }
+    if (!ceco) { alert('Elige un CECO'); return; }
     setGuardandoConceptoFinanzas(true);
     try {
-      const { data, error } = await supabase.from(tabla).update({ detalle }).eq('id', id).select('id');
-      if (error) { alert('❌ No se pudo guardar el concepto: ' + error.message); return; }
+      const cecoId = await resolverCecoId(ceco);
+      if (!cecoId) { alert('❌ No se encontró el CECO ' + ceco); return; }
+      const { data, error } = await supabase.from(tabla).update({ detalle, fecha, ceco_id: cecoId }).eq('id', id).select('id');
+      if (error) { alert('❌ No se pudo guardar: ' + error.message); return; }
       if (!data || data.length === 0) { alert('❌ No se pudo guardar: tu rol no tiene permiso para editar este registro.'); return; }
-      if (tabla === 'ingresos') setIngresos(prev => prev.map(i => (i.id === id ? { ...i, detalle } : i)));
-      else setGastos(prev => prev.map(g => (g.id === id ? { ...g, detalle } : g)));
+      const cambios = { detalle, fecha, ceco };
+      if (tabla === 'ingresos') setIngresos(prev => prev.map(i => (i.id === id ? { ...i, ...cambios } : i)));
+      else setGastos(prev => prev.map(g => (g.id === id ? { ...g, ...cambios } : g)));
       setEditandoConceptoFinanzas(null);
     } finally {
       setGuardandoConceptoFinanzas(false);
@@ -8838,7 +8843,12 @@ const App = () => {
                           </td>
                           <td style={{ padding: '0.75rem', color: '#6B6458', maxWidth: '260px' }}>
                             {editandoConceptoFinanzas && editandoConceptoFinanzas.id === r.id && editandoConceptoFinanzas.tabla === (esIngreso ? 'ingresos' : 'gastos') ? (
-                              <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+                              <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <input type="date" value={editandoConceptoFinanzas.fecha} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, fecha: e.target.value })} title="Fecha" style={{ padding: '0.3rem', border: '1px solid #C4A747', borderRadius: '4px', fontSize: '0.8rem' }} />
+                                <select value={editandoConceptoFinanzas.ceco} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, ceco: e.target.value })} title="CECO" style={{ padding: '0.3rem', border: '1px solid #C4A747', borderRadius: '4px', fontSize: '0.8rem', maxWidth: '180px' }}>
+                                  {!editandoConceptoFinanzas.opcionesCeco.some(c => c.codigo === editandoConceptoFinanzas.ceco) && <option value={editandoConceptoFinanzas.ceco}>{editandoConceptoFinanzas.ceco || 'Elegir CECO…'}</option>}
+                                  {editandoConceptoFinanzas.opcionesCeco.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
+                                </select>
                                 <input autoFocus type="text" value={editandoConceptoFinanzas.texto} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, texto: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') handleGuardarConceptoFinanzas(); if (e.key === 'Escape') setEditandoConceptoFinanzas(null); }} style={{ flex: 1, minWidth: '140px', padding: '0.35rem', border: '1px solid #C4A747', borderRadius: '4px', fontSize: '0.8rem' }} />
                                 <button disabled={guardandoConceptoFinanzas} onClick={handleGuardarConceptoFinanzas} title="Guardar" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>💾</button>
                                 <button onClick={() => setEditandoConceptoFinanzas(null)} title="Cancelar" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>✖️</button>
@@ -8847,7 +8857,7 @@ const App = () => {
                               <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'flex-start' }}>
                                 <div style={{ flex: 1 }}><TextoResumido texto={r.detalle} /></div>
                                 {puedeEditarConceptoFinanzas && (
-                                  <button onClick={() => setEditandoConceptoFinanzas({ tabla: esIngreso ? 'ingresos' : 'gastos', id: r.id, texto: r.detalle || '' })} title="Editar concepto (solo en Finanzas)" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', padding: 0 }}>✏️</button>
+                                  <button onClick={() => setEditandoConceptoFinanzas({ tabla: esIngreso ? 'ingresos' : 'gastos', id: r.id, texto: r.detalle || '', fecha: r.fecha || '', ceco: r.ceco || '', opcionesCeco: esIngreso ? cecosIngreso : (esTraslado ? cecosTraslado : cecosGasto) })} title="Editar fecha, CECO y concepto (solo en Finanzas)" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', padding: 0 }}>✏️</button>
                                 )}
                               </div>
                             )}
