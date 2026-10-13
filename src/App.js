@@ -4635,6 +4635,28 @@ const App = () => {
     }
   };
 
+  // Editar SOLO el Concepto (detalle) de un registro de Finanzas — Administrador, Coordinadora y
+  // Gerente. No toca la Solicitud ni el concepto de Presupuesto de origen; el cambio queda en Auditoría.
+  const puedeEditarConceptoFinanzas = ['Administrador', 'Coordinadora Administrativa', 'Gerente'].includes(user?.rol);
+  const [editandoConceptoFinanzas, setEditandoConceptoFinanzas] = useState(null); // { tabla, id, texto }
+  const [guardandoConceptoFinanzas, setGuardandoConceptoFinanzas] = useState(false);
+  const handleGuardarConceptoFinanzas = async () => {
+    const { tabla, id, texto } = editandoConceptoFinanzas || {};
+    const detalle = (texto || '').trim();
+    if (!detalle) { alert('El concepto no puede quedar vacío'); return; }
+    setGuardandoConceptoFinanzas(true);
+    try {
+      const { data, error } = await supabase.from(tabla).update({ detalle }).eq('id', id).select('id');
+      if (error) { alert('❌ No se pudo guardar el concepto: ' + error.message); return; }
+      if (!data || data.length === 0) { alert('❌ No se pudo guardar: tu rol no tiene permiso para editar este registro.'); return; }
+      if (tabla === 'ingresos') setIngresos(prev => prev.map(i => (i.id === id ? { ...i, detalle } : i)));
+      else setGastos(prev => prev.map(g => (g.id === id ? { ...g, detalle } : g)));
+      setEditandoConceptoFinanzas(null);
+    } finally {
+      setGuardandoConceptoFinanzas(false);
+    }
+  };
+
   const handleUpdateGasto = async (id, campo, valor) => {
     const columnaDB = { estado: 'estado' }[campo] || campo;
     const anteriores = gastos;
@@ -8815,7 +8837,20 @@ const App = () => {
                             {r.cuenta && <div style={{ color: '#6B6458', fontSize: '0.75rem' }}>{r.cuenta}</div>}
                           </td>
                           <td style={{ padding: '0.75rem', color: '#6B6458', maxWidth: '260px' }}>
-                            <TextoResumido texto={r.detalle} />
+                            {editandoConceptoFinanzas && editandoConceptoFinanzas.id === r.id && editandoConceptoFinanzas.tabla === (esIngreso ? 'ingresos' : 'gastos') ? (
+                              <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+                                <input autoFocus type="text" value={editandoConceptoFinanzas.texto} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, texto: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') handleGuardarConceptoFinanzas(); if (e.key === 'Escape') setEditandoConceptoFinanzas(null); }} style={{ flex: 1, minWidth: '140px', padding: '0.35rem', border: '1px solid #C4A747', borderRadius: '4px', fontSize: '0.8rem' }} />
+                                <button disabled={guardandoConceptoFinanzas} onClick={handleGuardarConceptoFinanzas} title="Guardar" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>💾</button>
+                                <button onClick={() => setEditandoConceptoFinanzas(null)} title="Cancelar" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>✖️</button>
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'flex-start' }}>
+                                <div style={{ flex: 1 }}><TextoResumido texto={r.detalle} /></div>
+                                {puedeEditarConceptoFinanzas && (
+                                  <button onClick={() => setEditandoConceptoFinanzas({ tabla: esIngreso ? 'ingresos' : 'gastos', id: r.id, texto: r.detalle || '' })} title="Editar concepto (solo en Finanzas)" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', padding: 0 }}>✏️</button>
+                                )}
+                              </div>
+                            )}
                             {esPagoTercero && r.terceroInfo?.nombre && (
                               <div style={{ fontSize: '0.7rem', color: '#8F8877' }}>👤 {r.terceroInfo.nombre}{r.terceroInfo.dni ? ` · ${r.terceroInfo.dni}` : ''}</div>
                             )}
