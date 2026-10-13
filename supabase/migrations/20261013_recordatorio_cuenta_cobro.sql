@@ -66,7 +66,7 @@ select cron.schedule('recordatorio-cuenta-cobro-dia-12', '0 13 12 * *', 'select 
 -- Envío inmediato (una vez): devuelve a cuántas personas les llegó.
 select public.notificar_cuentas_cobro_pendientes() as recordatorios_enviados_hoy;
 
--- Verificación (solo lectura): a quiénes les llegaría HOY el recordatorio.
+-- Verificación (solo lectura): a quiénes les llegó (los que aún no tienen cuenta de cobro de este mes).
 select us.nombre, us.tipo_vinculacion
 from public.usuarios us
 where translate(lower(coalesce(us.tipo_vinculacion, '')), 'áéíóú', 'aeiou') like 'prestacion de servicio%'
