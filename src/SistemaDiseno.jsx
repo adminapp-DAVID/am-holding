@@ -10,6 +10,11 @@ import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Badge, estadoBadge } from '@/components/ui/badge';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
+import logoAmHolding from './assets/logos/logo-am-holding.png';
+import logoNoss from './assets/logos/logo-noss.png';
+import logoProGlobal from './assets/logos/logo-pro-global.png';
+import logoForSeven from './assets/logos/logo-for-seven.png';
+import logoPronova from './assets/logos/logo-pronova.png';
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription, DialogClose } from '@/components/ui/dialog';
 
 // Catálogo de componentes (etapa 2 del sistema de diseño). Página aparte, sin login ni datos
@@ -21,6 +26,13 @@ const FILAS = [
   { fecha: '2026-10-09', concepto: 'Publicidad redes', empresa: 'FOR SEVEN MEDIA SAS', valor: 'US$ 450', estado: 'Pendiente' },
   { fecha: '2026-10-12', concepto: 'Compra equipos', empresa: 'PRO INVESTMENTS GLOBAL SAS', valor: '$ 1.250.000', estado: 'Devuelto' },
 ];
+
+const LOGOS = {
+  'AM SPORTS GROUP SAS': logoNoss,
+  'PRO INVESTMENTS GLOBAL SAS': logoProGlobal,
+  'FOR SEVEN MEDIA SAS': logoForSeven,
+  'PRONOVA CAPITAL SAS': logoPronova,
+};
 
 const Seccion = ({ titulo, children }) => (
   <section className="flex flex-col gap-3">
@@ -34,10 +46,22 @@ function SistemaDiseno() {
   return (
     <div className="min-h-screen bg-background px-4 py-8 text-foreground">
       <div className="mx-auto flex max-w-5xl flex-col gap-8">
-        <header>
+        <header className="flex flex-col gap-3">
+          <img src={logoAmHolding} alt="AM HOLDING" className="h-14 w-auto self-start object-contain" />
           <h1 className="m-0 text-2xl font-extrabold">Sistema de diseño · AM Holding</h1>
           <p className="m-0 mt-1 text-sm text-muted-foreground">Componentes base (shadcn/ui) con la paleta de la app. Solo muestra, sin datos reales.</p>
         </header>
+
+        <Seccion titulo="Logos de las empresas">
+          <div className="flex flex-wrap items-center gap-3">
+            {Object.entries(LOGOS).map(([empresa, src]) => (
+              <Card key={empresa} className="items-center gap-2 px-5 py-4">
+                <img src={src} alt={empresa} className="h-10 w-auto max-w-40 object-contain" />
+                <span className="text-xs font-semibold text-muted-foreground">{empresa}</span>
+              </Card>
+            ))}
+          </div>
+        </Seccion>
 
         <Seccion titulo="Botones">
           <div className="flex flex-wrap gap-2">
@@ -133,7 +157,12 @@ function SistemaDiseno() {
                 <TableRow key={f.concepto}>
                   <TableCell className="whitespace-nowrap">{f.fecha}</TableCell>
                   <TableCell>{f.concepto}</TableCell>
-                  <TableCell className="whitespace-nowrap">{f.empresa}</TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    <div className="flex items-center gap-2">
+                      <img src={LOGOS[f.empresa]} alt="" className="h-[18px] w-auto max-w-20 object-contain" />
+                      {f.empresa}
+                    </div>
+                  </TableCell>
                   <TableCell className="text-right font-semibold whitespace-nowrap">{f.valor}</TableCell>
                   <TableCell><Badge variant={estadoBadge(f.estado)}>{f.estado}</Badge></TableCell>
                 </TableRow>
