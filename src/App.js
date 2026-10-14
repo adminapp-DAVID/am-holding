@@ -499,6 +499,7 @@ const App = () => {
   // Cuentas de Cobro solo maneja estos 3 estados (el check constraint de la tabla no admite
   // "Legalizado" — ese estado es propio de Solicitudes). No reutilizar estadosSolicitud aquí.
   const estadosCuentaCobro = ['Pendiente', 'Aprobado', 'Pagado'];
+  const [filtroCuentasEstado, setFiltroCuentasEstado] = useState('Todos');
   // Gastos/Ingresos — conectado a Supabase (tablas public.gastos / public.ingresos). Los soportes de cada
   // registro NUEVO se suben al bucket "soportes" (uno por uno, igual que Cuentas de Cobro). Los registros
   // HISTÓRICOS migrados desde el Drive/Excel anterior no traen archivo subido — en su lugar guardan
@@ -9912,7 +9913,19 @@ const App = () => {
             </div>
 
             <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>💳 Cuentas de Cobro ({cuentasCobroUsuario.length})</h2>
+              <h2 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>💳 Cuentas de Cobro ({cuentasCobroUsuario.length})</h2>
+              {/* Filtro por estado, con el conteo de cada uno */}
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+                {['Todos', ...estadosCuentaCobro].map(e => {
+                  const n = e === 'Todos' ? cuentasCobroUsuario.length : cuentasCobroUsuario.filter(c => c.estado === e).length;
+                  const activo = filtroCuentasEstado === e;
+                  return (
+                    <button key={e} onClick={() => setFiltroCuentasEstado(e)} style={{ padding: '0.45rem 0.9rem', borderRadius: '999px', border: `1px solid ${activo ? '#C4A747' : '#E6E0D2'}`, backgroundColor: activo ? '#C4A747' : '#FFFFFF', color: activo ? '#221E15' : '#6B6458', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}>
+                      {e} ({n})
+                    </button>
+                  );
+                })}
+              </div>
               {cargandoCuentasCobro && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando cuentas de cobro...</p>}
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
@@ -9929,7 +9942,7 @@ const App = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {cuentasCobroUsuario.map(c => (
+                    {cuentasCobroUsuario.filter(c => filtroCuentasEstado === 'Todos' || c.estado === filtroCuentasEstado).map(c => (
                       <tr key={c.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{c.fecha}</td>
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{c.numero}</td>
@@ -9971,6 +9984,11 @@ const App = () => {
                 {cuentasCobroUsuario.length === 0 && (
                   <div style={{ padding: '2rem', textAlign: 'center', color: '#6B6458' }}>
                     Sin cuentas de cobro registradas
+                  </div>
+                )}
+                {cuentasCobroUsuario.length > 0 && filtroCuentasEstado !== 'Todos' && !cuentasCobroUsuario.some(c => c.estado === filtroCuentasEstado) && (
+                  <div style={{ padding: '2rem', textAlign: 'center', color: '#6B6458' }}>
+                    No hay cuentas de cobro en estado {filtroCuentasEstado}
                   </div>
                 )}
               </div>
