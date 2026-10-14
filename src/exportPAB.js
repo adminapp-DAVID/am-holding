@@ -41,6 +41,11 @@ export const valorPAB = (valor) => {
 // Referencia (columna I, máx. 21): identifica el registro de la app en el extracto del banco.
 export const referenciaPAB = (prefijo, id) => `${prefijo}-${String(id || '').replace(/-/g, '').slice(0, 21 - prefijo.length - 1)}`.toUpperCase();
 
+// Referencia que va en el archivo: el Conversor de pagos solo acepta NÚMEROS en la columna I
+// ("Error en tipo de dato ingresado" con letras o guiones). Se usa número de lote + fila
+// (lote 12, fila 3 → "120003"): única por pago y sirve para cruzar el reporte del banco.
+export const referenciaLotePAB = (numeroLote, orden) => `${numeroLote}${String(orden).padStart(4, '0')}`.slice(0, 21);
+
 // Descripción del encabezado (G2, máx. 10): "NOM 1026", "PROV 1026", "TERC 1026".
 export const descripcionLotePAB = (tipoPago, anio, mes) =>
   `${ABREV_TIPO_PAGO[tipoPago] || 'PAGO'} ${String(mes).padStart(2, '0')}${String(anio).slice(-2)}`.slice(0, 10);

@@ -3,7 +3,7 @@ import path from 'path';
 import JSZip from 'jszip';
 import * as XLSX from 'xlsx';
 import {
-  normalizarNombrePAB, fechaPAB, valorPAB, referenciaPAB, descripcionLotePAB, secuenciaPAB,
+  normalizarNombrePAB, fechaPAB, valorPAB, referenciaPAB, referenciaLotePAB, descripcionLotePAB, secuenciaPAB,
   problemasEncabezadoPAB, construirEncabezadoPAB, construirFilaPAB, totalesPAB,
   construirCandidatosPAB, llenarHojaPAB, generarArchivoPAB
 } from './exportPAB';
@@ -148,4 +148,9 @@ describe('escritura en la plantilla', () => {
     const suma = filasLeidas.reduce((s, r) => s + r['ValorTransaccion '], 0);
     expect(Math.round(suma * 100) / 100).toBe(totalesPAB(filas).total);
   }, 30000);
+});
+
+test('referencia del archivo: solo números (lote + fila)', () => {
+  expect(referenciaLotePAB(12, 3)).toBe('120003');
+  expect(referenciaLotePAB(12, 3)).toMatch(/^\d{1,21}$/);
 });
