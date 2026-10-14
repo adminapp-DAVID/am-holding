@@ -1676,6 +1676,7 @@ const App = () => {
   const gastoDBToLocal = (row) => ({
     id: row.id,
     fecha: row.fecha,
+    createdAt: row.created_at || null,
     tipo: row.tipo,
     empresa: row.empresas?.nombre || '',
     responsable: row.usuarios?.nombre || '',
@@ -1718,7 +1719,7 @@ const App = () => {
     setCargandoGastos(true);
     const { data, error } = await supabase
       .from('gastos')
-      .select('id, fecha, tipo, cuenta, cuenta_salida, cuenta_destino, detalle, valor, valor_destino, valor_bruto, deduccion_aplicada, categoria, estado, observaciones, presupuesto_item_id, soporte_drive_link, responsable_id, moneda_pago, tercero_info, tercero_id, solicitud_origen_id, lote_pago_id, neutro, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
+      .select('id, created_at, fecha, tipo, cuenta, cuenta_salida, cuenta_destino, detalle, valor, valor_destino, valor_bruto, deduccion_aplicada, categoria, estado, observaciones, presupuesto_item_id, soporte_drive_link, responsable_id, moneda_pago, tercero_info, tercero_id, solicitud_origen_id, lote_pago_id, neutro, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
       .order('fecha', { ascending: false });
     if (error) {
       console.error('Error cargando gastos:', error);
@@ -1737,6 +1738,7 @@ const App = () => {
   const ingresoDBToLocal = (row) => ({
     id: row.id,
     fecha: row.fecha,
+    createdAt: row.created_at || null,
     tipo: row.tipo,
     empresa: row.empresas?.nombre || '',
     responsable: row.usuarios?.nombre || '',
@@ -1761,7 +1763,7 @@ const App = () => {
     setCargandoIngresos(true);
     const { data, error } = await supabase
       .from('ingresos')
-      .select('id, fecha, tipo, cuenta, detalle, valor, categoria, estado, observaciones, soporte_drive_link, responsable_id, solicitud_origen_id, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
+      .select('id, created_at, fecha, tipo, cuenta, detalle, valor, categoria, estado, observaciones, soporte_drive_link, responsable_id, solicitud_origen_id, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
       .order('fecha', { ascending: false });
     if (error) {
       console.error('Error cargando ingresos:', error);
@@ -6352,7 +6354,9 @@ const App = () => {
       ];
     }),
     ...ingresosUsuario.map(i => ({ ...i, tipo: 'Ingreso', _origen: 'ingreso' })),
-  ].sort((a, b) => new Date(b.fecha) - new Date(a.fecha) || (b.id || 0) - (a.id || 0));
+  // Del más reciente CREADO al más antiguo (fecha y hora de creación); los registros viejos sin
+  // created_at quedan al final, ordenados por fecha del movimiento.
+  ].sort((a, b) => (new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) || (new Date(b.fecha) - new Date(a.fecha)) || ((b.id || 0) - (a.id || 0)));
 
   // "1.500.000" / "1500000" / "70,88" → número (formato colombiano: punto de miles, coma
   // decimal). Vacío o inválido → null (= sin límite).
