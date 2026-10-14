@@ -9181,20 +9181,19 @@ const App = () => {
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Tipo</TableHead>
+                    <TableHead className="w-px">Fecha / Tipo</TableHead>
                     {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <TableHead>Colaborador</TableHead>}
                     <TableHead>Empresa</TableHead>
                     <TableHead>CECO / Cuenta</TableHead>
                     <TableHead>Detalle</TableHead>
-                    <TableHead className="text-right">Valor</TableHead>
-                    <TableHead className="text-center">Soportes</TableHead>
-                    {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <TableHead className="text-center">Acción</TableHead>}
+                    <TableHead className="w-px text-right">Valor</TableHead>
+                    <TableHead className="w-px text-center">Soportes</TableHead>
+                    {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <TableHead className="w-px text-center">Acción</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                     {registrosFinanzas.length === 0 ? (
-                      <TableRow className="hover:bg-transparent"><TableCell colSpan={9} className="py-8 text-center text-muted-foreground">Sin registros para este filtro.</TableCell></TableRow>
+                      <TableRow className="hover:bg-transparent"><TableCell colSpan={8} className="py-8 text-center text-muted-foreground">Sin registros para este filtro.</TableCell></TableRow>
                     ) : registrosFinanzas.map(r => {
                       const esGasto = r.tipo === 'Gasto';
                       const esTraslado = r.tipo === 'Traslado';
@@ -9220,19 +9219,18 @@ const App = () => {
                       const nombreTerceroCatalogo = !esPagoTercero && r.terceroId ? todosTerceros.find(t => t.id === r.terceroId)?.nombre : null;
                       return (
                         <TableRow key={`${r.tipo}-${r.id}${r._ladoTraslado ? '-' + r._ladoTraslado : ''}`}>
-                          <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{r.fecha}</TableCell>
-                          <TableCell className="whitespace-nowrap text-xs">
+                          <TableCell className="w-px whitespace-nowrap text-xs"><div className="text-[0.7rem] text-muted-foreground">{r.fecha}</div>
                             {iconoTipo} {r.tipo}
                             {esSalidaTraslado && <span className="font-bold text-destructive"> · Salida</span>}
                             {esEntradaTraslado && <span className="font-bold text-success"> · Entrada</span>}
                           </TableCell>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <TableCell className="text-xs"><div className="flex items-center gap-2"><ColaboradorAvatar foto={colaboradorInfo?.foto_url} nombre={nombreColaborador} size={22} />{nombreColaborador}</div></TableCell>}
-                          <TableCell className="text-xs"><div className="flex items-center gap-2"><EmpresaLogo empresa={r.empresa} height={16} />{r.empresa}</div></TableCell>
-                          <TableCell className="text-xs">
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <TableCell className="w-px whitespace-nowrap text-xs"><div className="flex items-center gap-2"><ColaboradorAvatar foto={colaboradorInfo?.foto_url} nombre={nombreColaborador} size={22} />{nombreColaborador}</div></TableCell>}
+                          <TableCell className="w-px whitespace-nowrap text-xs" title={r.empresa}><EmpresaLogo empresa={r.empresa} height={20} /><div className="text-[0.65rem] text-muted-foreground">{(r.empresa || '').split(' ')[0]}</div></TableCell>
+                          <TableCell className="w-px whitespace-nowrap text-xs">
                             <span className="whitespace-nowrap font-bold text-primary">{r.ceco}</span>
                             {r.cuenta && <div className="text-muted-foreground">{r.cuenta}</div>}
                           </TableCell>
-                          <TableCell className="min-w-[200px] max-w-[300px] text-muted-foreground">
+                          <TableCell className="min-w-[220px] text-muted-foreground">
                             {editandoConceptoFinanzas && editandoConceptoFinanzas.id === r.id && editandoConceptoFinanzas.tabla === (esIngreso ? 'ingresos' : 'gastos') ? (
                               <div className="flex flex-wrap items-center gap-1.5">
                                 <Input type="date" value={editandoConceptoFinanzas.fecha} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, fecha: e.target.value })} title="Fecha" aria-label="Fecha" className="h-8 w-auto border-primary text-xs" />
@@ -9285,7 +9283,7 @@ const App = () => {
                               </div>
                             ) : (
                               <div className="flex items-start gap-1">
-                                <div className="flex-1"><TextoResumido texto={r.detalle} /></div>
+                                <div><TextoResumido texto={r.detalle} /></div>
                                 {puedeEditarConceptoFinanzas && (
                                   <Button variant="ghost" size="icon" onClick={() => setEditandoConceptoFinanzas({ tabla: esIngreso ? 'ingresos' : 'gastos', id: r.id, texto: r.detalle || '', fecha: r.fecha || '', ceco: r.ceco || '', valor: String((esIngreso ? r : (gastos.find(g => g.id === r.id) || r)).valor ?? '').replace('.', ','), tieneValorDestino: esTraslado && r.valorDestino != null, permiteNeutro: !esIngreso && !esTraslado, neutro: !!r.neutro, permiteVinculo: esGasto && (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa'), empresa: r.empresa, presupuestoItemId: r.presupuestoItemId || '', presupuestoItemIdOriginal: r.presupuestoItemId || '', moneda: r.moneda || getMoneda(r.empresa), monedaOriginal: r.moneda || getMoneda(r.empresa), valorDestino: String(r.valorDestino ?? '').replace('.', ','), opcionesCeco: esIngreso ? cecosIngreso : (esTraslado ? cecosTraslado : cecosGasto) })} title="Editar fecha, CECO, valor y concepto (solo en Finanzas)" aria-label="Editar" className="size-7 shrink-0 text-[#6C63D1]"><Pencil size={14} /></Button>
                                 )}
@@ -9323,7 +9321,7 @@ const App = () => {
                               </button>
                             )}
                           </TableCell>
-                          <TableCell className={cn('whitespace-nowrap text-right font-bold', claseValor)}>
+                          <TableCell className={cn('w-px whitespace-nowrap text-right font-bold', claseValor)}>
                             {esSalidaTraslado ? '− ' : esEntradaTraslado ? '+ ' : ''}{(esPagoTercero || (esGasto && r.moneda)) ? formatMoneyByMoneda(parseFloat(r.valor) || 0, r.moneda || getMoneda(r.empresa)) : formatMoney(r.valor, r.empresa)}
                             {r.valorBruto != null && (
                               <div className="text-[0.7rem] font-normal text-muted-foreground" title="Valor bruto antes de deducciones">
