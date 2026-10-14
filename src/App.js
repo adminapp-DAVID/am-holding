@@ -500,6 +500,8 @@ const App = () => {
   // "Legalizado" — ese estado es propio de Solicitudes). No reutilizar estadosSolicitud aquí.
   const estadosCuentaCobro = ['Pendiente', 'Aprobado', 'Pagado'];
   const [filtroCuentasEstado, setFiltroCuentasEstado] = useState('Todos');
+  const [filtroCuentasMes, setFiltroCuentasMes] = useState('Todos'); // 'Todos' | 'AAAA-M' (mes cobrado)
+  const [filtroCuentasEmpresa, setFiltroCuentasEmpresa] = useState('Todas');
   // Gastos/Ingresos — conectado a Supabase (tablas public.gastos / public.ingresos). Los soportes de cada
   // registro NUEVO se suben al bucket "soportes" (uno por uno, igual que Cuentas de Cobro). Los registros
   // HISTÓRICOS migrados desde el Drive/Excel anterior no traen archivo subido — en su lugar guardan
@@ -4093,6 +4095,15 @@ const App = () => {
   const cuentasCobroUsuario = soloPropias
     ? cuentasDeCobro.filter(c => c.responsableId === user.id)
     : cuentasDeCobro;
+  // Filtros de la lista: Mes cobrado y Empresa primero (los conteos por estado se calculan sobre
+  // ese resultado), luego Estado.
+  const mesesCuentasCobro = [...new Set(cuentasCobroUsuario.filter(c => c.mes && c.anio).map(c => `${c.anio}-${c.mes}`))]
+    .sort((a, b) => { const [ay, am] = a.split('-').map(Number); const [by, bm] = b.split('-').map(Number); return by - ay || bm - am; });
+  const empresasCuentasCobro = [...new Set(cuentasCobroUsuario.map(c => c.empresa).filter(Boolean))].sort();
+  const cuentasCobroPorMesEmpresa = cuentasCobroUsuario.filter(c =>
+    (filtroCuentasMes === 'Todos' || `${c.anio}-${c.mes}` === filtroCuentasMes) &&
+    (filtroCuentasEmpresa === 'Todas' || c.empresa === filtroCuentasEmpresa));
+  const cuentasCobroFiltradas = cuentasCobroPorMesEmpresa.filter(c => filtroCuentasEstado === 'Todos' || c.estado === filtroCuentasEstado);
 
   // GASTOS E INGRESOS CRUD
   // Resuelve nombre de empresa / código de CECO a sus id de Supabase (mismo patrón usado en
@@ -9914,10 +9925,26 @@ const App = () => {
 
             <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
               <h2 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>💳 Cuentas de Cobro ({cuentasCobroUsuario.length})</h2>
-              {/* Filtro por estado, con el conteo de cada uno */}
+              {/* Filtros: Mes cobrado y Empresa */}
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                <select value={filtroCuentasMes} onChange={(e) => setFiltroCuentasMes(e.target.value)} style={{ padding: '0.5rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', fontSize: '0.85rem' }}>
+                  <option value="Todos">📅 Todos los meses</option>
+                  {mesesCuentasCobro.map(k => { const [y, m] = k.split('-').map(Number); return <option key={k} value={k}>{MESES_ES[m - 1].charAt(0).toUpperCase() + MESES_ES[m - 1].slice(1)} {y}</option>; })}
+                </select>
+                {empresasCuentasCobro.length > 1 && (
+                  <select value={filtroCuentasEmpresa} onChange={(e) => setFiltroCuentasEmpresa(e.target.value)} style={{ padding: '0.5rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', fontSize: '0.85rem' }}>
+                    <option value="Todas">🏢 Todas las empresas</option>
+                    {empresasCuentasCobro.map(e => <option key={e} value={e}>{e}</option>)}
+                  </select>
+                )}
+                {(filtroCuentasMes !== 'Todos' || filtroCuentasEmpresa !== 'Todas' || filtroCuentasEstado !== 'Todos') && (
+                  <button onClick={() => { setFiltroCuentasMes('Todos'); setFiltroCuentasEmpresa('Todas'); setFiltroCuentasEstado('Todos'); }} style={{ padding: '0.5rem 0.9rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', fontSize: '0.8rem', cursor: 'pointer' }}>🔄 Limpiar filtros</button>
+                )}
+              </div>
+              {/* Filtro por estado, con el conteo de cada uno (sobre el mes y empresa elegidos) */}
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
                 {['Todos', ...estadosCuentaCobro].map(e => {
-                  const n = e === 'Todos' ? cuentasCobroUsuario.length : cuentasCobroUsuario.filter(c => c.estado === e).length;
+                  const n = e === 'Todos' ? cuentasCobroPorMesEmpresa.length : cuentasCobroPorMesEmpresa.filter(c => c.estado === e).length;
                   const activo = filtroCuentasEstado === e;
                   return (
                     <button key={e} onClick={() => setFiltroCuentasEstado(e)} style={{ padding: '0.45rem 0.9rem', borderRadius: '999px', border: `1px solid ${activo ? '#C4A747' : '#E6E0D2'}`, backgroundColor: activo ? '#C4A747' : '#FFFFFF', color: activo ? '#221E15' : '#6B6458', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}>
@@ -9942,7 +9969,7 @@ const App = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {cuentasCobroUsuario.filter(c => filtroCuentasEstado === 'Todos' || c.estado === filtroCuentasEstado).map(c => (
+                    {cuentasCobroFiltradas.map(c => (
                       <tr key={c.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
                         <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{c.fecha}</td>
                         <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{c.numero}</td>
@@ -9986,9 +10013,9 @@ const App = () => {
                     Sin cuentas de cobro registradas
                   </div>
                 )}
-                {cuentasCobroUsuario.length > 0 && filtroCuentasEstado !== 'Todos' && !cuentasCobroUsuario.some(c => c.estado === filtroCuentasEstado) && (
+                {cuentasCobroUsuario.length > 0 && cuentasCobroFiltradas.length === 0 && (
                   <div style={{ padding: '2rem', textAlign: 'center', color: '#6B6458' }}>
-                    No hay cuentas de cobro en estado {filtroCuentasEstado}
+                    No hay cuentas de cobro con estos filtros
                   </div>
                 )}
               </div>
