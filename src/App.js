@@ -1938,7 +1938,7 @@ const App = () => {
     if (currentView === 'solicitudes') cargarSolicitudes();
     if (currentView === 'cuentasCobro') cargarCuentasCobro();
     if (currentView === 'finanzas' || currentView === 'dashboardFinanciero') { cargarGastos(); cargarIngresos(); }
-    if (currentView === 'presupuesto') { cargarPresupuestoItems(); cargarPresupuestoAnual(); cargarPresupuestoOverrides(); cargarPresupuestoAprobaciones(); }
+    if (currentView === 'presupuesto') { cargarPresupuestoItems(); cargarPresupuestoAnual(); cargarPresupuestoOverrides(); cargarPresupuestoAprobaciones(); cargarCuentasCobro(); }
     if (currentView === 'responsables') { cargarUsuarios(); cargarColaboradoresPublico(); }
     if (currentView === 'datosBancarios' || currentView === 'auditoria') { cargarUsuarios(); cargarTodosTerceros(); }
     if (currentView === 'pagosPAB') { cargarUsuarios(); cargarTodosTerceros(); cargarSolicitudes(); cargarCuentasCobro(); cargarPresupuestoItems(); cargarPresupuestoOverrides(); cargarPresupuestoAprobaciones(); cargarLotesPago(); }
@@ -6540,9 +6540,10 @@ const App = () => {
   // Honorarios ("Prestación de Servicio"): antes de aprobar el pago en Presupuesto, el
   // colaborador debe tener su Cuenta de Cobro de ESE mes/año y empresa en estado Aprobado (o ya
   // Pagado). Los demás tipos de concepto (Nómina, servicios, etc.) no tienen este requisito.
-  const TIPO_HONORARIOS = 'Prestación de Servicio';
+  // Tolera mayúsculas, tildes y "Servicio(s)" en el tipo del concepto.
+  const esConceptoHonorarios = (tipo) => String(tipo || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().startsWith('prestacion de servicio');
   const requisitoCuentaCobro = (item, anio, mes) => {
-    if (item.tipo !== TIPO_HONORARIOS) return { ok: true };
+    if (!esConceptoHonorarios(item.tipo)) return { ok: true };
     if (!item.responsableId) return { ok: false, motivo: 'Concepto sin colaborador vinculado (asígnalo en Gestión de Conceptos)' };
     const delMes = cuentasDeCobro.filter(c => c.responsableId === item.responsableId && Number(c.mes) === Number(mes) && Number(c.anio) === Number(anio) && c.empresa === item.empresa);
     if (delMes.length === 0) return { ok: false, motivo: 'Sin cuenta de cobro del mes' };
