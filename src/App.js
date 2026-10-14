@@ -553,6 +553,8 @@ const App = () => {
   // Administrador y Coordinadora gestionan las cuentas de cobro de todos: su propio formulario de
   // "Nueva Cuenta de Cobro" arranca plegado para no confundirlo con las cuentas de los colaboradores.
   const [mostrarNuevaCuentaCobro, setMostrarNuevaCuentaCobro] = useState(false);
+  // Finanzas: el formulario "Nuevo Gasto/Ingreso" arranca plegado y se despliega con un clic.
+  const [mostrarNuevoMovimientoFinanzas, setMostrarNuevoMovimientoFinanzas] = useState(false);
   const [filtroCuentasMes, setFiltroCuentasMes] = useState('Todos'); // 'Todos' | 'AAAA-M' (mes cobrado)
   const [filtroCuentasEmpresa, setFiltroCuentasEmpresa] = useState('Todas');
   // Gastos/Ingresos — conectado a Supabase (tablas public.gastos / public.ingresos). Los soportes de cada
@@ -3188,6 +3190,8 @@ const App = () => {
 
   // Filtrar solicitudes por rol. Colaborador, Responsable y Gerente solo ven (y el Dashboard
   // solo resume) las solicitudes propias, no las de toda la empresa.
+  // Administrador y Coordinadora gestionan todas las solicitudes pero no crean las suyas.
+  const gestionaSolicitudes = user?.rol === 'Administrador' || user?.rol === 'Coordinadora Administrativa';
   const soloPropias = ['Colaborador', 'Responsable', 'Gerente'].includes(user?.rol);
   const solicitudesUsuario = soloPropias
     ? solicitudes.filter(s => s.responsableId === user.id)
@@ -7431,7 +7435,10 @@ const App = () => {
           // Etapa 3 del sistema de diseño: Solicitudes migrado a los componentes de
           // src/components/ui/ (misma lógica, handlers y permisos que antes; solo cambia la presentación).
           <div className="flex flex-col gap-6">
-              {!isReadOnly && (
+              {/* Administrador y Coordinadora no crean solicitudes, solo las gestionan: no ven la
+                  Bandeja ni "Nueva Solicitud". El formulario solo se les muestra al editar una
+                  (✏️ en la tabla), porque la edición reutiliza ese mismo formulario. */}
+              {!isReadOnly && !gestionaSolicitudes && (
                 <Card className="gap-4 px-0 py-6 sm:py-7">
                   <CardHeader className="sm:px-7">
                     <CardTitle className="text-lg">📥 Mi Bandeja de Soportes</CardTitle>
@@ -7550,6 +7557,7 @@ const App = () => {
                 </Card>
               )}
 
+              {(!gestionaSolicitudes || editingSolicitudId) && (
               <Card id="form-nueva-solicitud" className={cn('gap-4 px-0 py-6 sm:py-7', editingSolicitudId && 'border-2 border-[#6C63D1]')}>
                 <CardHeader className="sm:px-7">
                   <CardTitle className={cn('text-lg', editingSolicitudId && 'text-[#6C63D1]')}>{editingSolicitudId ? '✏️ Editando Solicitud' : 'Nueva Solicitud'}</CardTitle>
@@ -7864,6 +7872,7 @@ const App = () => {
                 </div>
                 </CardContent>
               </Card>
+              )}
 
             <Card className="gap-4 px-0 py-6 sm:py-7">
               <CardHeader className="sm:px-7">
@@ -8448,8 +8457,13 @@ const App = () => {
             {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
             <Card className="gap-4 px-0 py-6 sm:py-7">
               <CardHeader className="sm:px-7">
-                <CardTitle className="text-lg">Nuevo Gasto/Ingreso</CardTitle>
+                <button type="button" onClick={() => setMostrarNuevoMovimientoFinanzas(!mostrarNuevoMovimientoFinanzas)} aria-expanded={mostrarNuevoMovimientoFinanzas} className="flex w-full cursor-pointer flex-wrap items-center gap-2 border-0 bg-transparent p-0 text-left font-[inherit]">
+                  {mostrarNuevoMovimientoFinanzas ? <ChevronDown size={18} className="text-primary" /> : <ChevronRight size={18} className="text-primary" />}
+                  <CardTitle className="text-lg">Nuevo Gasto / Ingreso / Traslado</CardTitle>
+                  <span className="text-xs text-muted-foreground">(clic para {mostrarNuevoMovimientoFinanzas ? 'ocultar' : 'registrar uno nuevo'})</span>
+                </button>
               </CardHeader>
+              {mostrarNuevoMovimientoFinanzas && (
               <CardContent className="flex flex-col gap-4 sm:px-7">
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -8736,6 +8750,7 @@ const App = () => {
                 {(guardandoGasto || guardandoIngreso) ? 'Guardando...' : `Registrar ${newGasto.tipo}`}
               </Button>
               </CardContent>
+              )}
             </Card>
             )}
 
