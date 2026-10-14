@@ -3,7 +3,7 @@ import JSZip from 'jszip';
 import { supabase } from './supabaseClient';
 import {
   construirCandidatosPAB, construirEncabezadoPAB, problemasEncabezadoPAB, generarArchivoPAB,
-  descripcionLotePAB, totalesPAB, nombreArchivoPAB, TIPOS_PAGO_PAB, nombreBancoCorto
+  descripcionLotePAB, totalesPAB, nombreArchivoPAB, TIPOS_PAGO_PAB, nombreBancoCorto, referenciaLotePAB
 } from './exportPAB';
 import { RotateCcw, Download, Loader2, ChevronDown, ChevronRight, CheckCircle2, Ban } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -131,7 +131,7 @@ const ExportadorPABView = ({
         });
         if (error || !data || !data[0]) throw new Error(error?.message || 'La base de datos no devolvió el lote creado');
         const { numero, secuencia } = data[0];
-        const bytes = await generarArchivoPAB(JSZip, plantilla, { ...encabezadoBase, secuencia }, g.items.map(c => c.fila));
+        const bytes = await generarArchivoPAB(JSZip, plantilla, { ...encabezadoBase, secuencia }, g.items.map((c, i) => ({ ...c.fila, referencia: referenciaLotePAB(numero, i + 1) })));
         descargarBytes(bytes, nombreArchivoPAB({ empresa, tipoPago: g.tipoPago, fechaAplicacion, numeroLote: numero }));
         generados.push(`#${numero} (${secuencia})`);
       }
@@ -150,7 +150,7 @@ const ExportadorPABView = ({
     setTrabajandoLote(lote.id);
     try {
       const plantilla = await cargarPlantilla();
-      const filas = [...(lote.lotes_pago_banco_items || [])].sort((a, b) => a.orden - b.orden).map(i => i.datos);
+      const filas = [...(lote.lotes_pago_banco_items || [])].sort((a, b) => a.orden - b.orden).map(i => ({ ...i.datos, referencia: referenciaLotePAB(lote.numero, i.orden) }));
       const bytes = await generarArchivoPAB(JSZip, plantilla, lote.encabezado, filas);
       descargarBytes(bytes, nombreArchivoPAB({ empresa: lote.empresas?.nombre, tipoPago: lote.tipo_pago, fechaAplicacion: lote.fecha_aplicacion, numeroLote: lote.numero }));
     } catch (e) {

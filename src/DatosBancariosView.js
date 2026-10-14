@@ -5,6 +5,15 @@ import {
   CODIGO_BANCO_EXTERIOR, problemasDatosBancarios, limpiarNumeroCuenta, limpiarDocumento,
   nombreBancoPorCodigo
 } from './datosBancarios';
+import { Pencil, Plus, Check, Loader2, CheckCircle2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 
 // Pantalla "🏦 Datos Bancarios" (Administrador / Coordinadora Administrativa):
 //  1) Cuentas origen de cada empresa para el pago masivo PAB (solo el Administrador edita).
@@ -28,10 +37,15 @@ const CLASES_DE_PAGO = [
 // Usuarios de relleno que no son personas a las que se les pague.
 const USUARIOS_EXCLUIDOS = ['Por Definir'];
 
-const card = { backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)', marginBottom: '2rem' };
-const inputSm = { width: '100%', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.8rem' };
-const th = { textAlign: 'left', padding: '0.6rem', color: '#C4A747', fontSize: '0.8rem' };
-const td = { padding: '0.5rem', verticalAlign: 'top' };
+const claseCheckbox = 'size-4 cursor-pointer accent-[#C4A747]';
+// SelectBanco / SelectTipoDocumento solo aceptan `style`.
+const estiloCampoCompacto = { width: '100%', height: '32px', padding: '0 0.5rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '8px', color: '#221E15', fontSize: '0.75rem', fontFamily: 'inherit', boxSizing: 'border-box' };
+const Campo = ({ label, htmlFor, className, children }) => (
+  <div className={cn('flex flex-col gap-1.5', className)}>
+    <Label htmlFor={htmlFor}>{label}</Label>
+    {children}
+  </div>
+);
 
 const configVacia = { id: null, empresa: '', nombreCuenta: '', nitPagador: '', numeroCuenta: '', tipoCuenta: 'S', tipoPagoNomina: 225, tipoPagoProveedores: 220, tipoPagoTerceros: 238, activo: true };
 
@@ -136,127 +150,161 @@ const DatosBancariosView = ({ user, usuarios, terceros, cuentasPorEmpresa, nitEm
 
   const nombresCuentas = form.empresa ? (cuentasPorEmpresa[form.empresa] || []) : [];
 
+  // Etapa 3 del sistema de diseño: misma lógica; solo cambia la presentación.
   return (
-    <div>
-      <div style={card}>
-        <h2 style={{ color: '#C4A747', margin: '0 0 0.5rem 0' }}>🏦 Cuentas origen para pagos masivos (PAB)</h2>
-        <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '0 0 1.5rem 0' }}>
-          Datos del encabezado de la plantilla Bancolombia: NIT pagador (sin dígito de verificación), cuenta a debitar y tipo de pago por grupo.
-          {!esAdmin && ' Solo el Administrador puede modificarlos.'}
-        </p>
-        {errorConfig && <p style={{ color: '#CC4B4B', fontSize: '0.85rem' }}>⚠️ No se pudo cargar la configuración ({errorConfig}). ¿Ya se corrió el script SQL de datos bancarios en Supabase?</p>}
+    <div className="flex flex-col gap-6">
+      <Card className="gap-4 px-0 py-6">
+        <CardHeader className="sm:px-7">
+          <CardTitle className="text-lg">🏦 Cuentas origen para pagos masivos (PAB)</CardTitle>
+          <CardDescription>
+            Datos del encabezado de la plantilla Bancolombia: NIT pagador (sin dígito de verificación), cuenta a debitar y tipo de pago por grupo.
+            {!esAdmin && ' Solo el Administrador puede modificarlos.'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4 sm:px-7">
+          {errorConfig && <p className="m-0 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">⚠️ No se pudo cargar la configuración ({errorConfig}). ¿Ya se corrió el script SQL de datos bancarios en Supabase?</p>}
 
-        {esAdmin && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem', alignItems: 'end' }}>
-            <select value={form.empresa} onChange={(e) => setForm({ ...form, empresa: e.target.value, nombreCuenta: '', nitPagador: form.id ? form.nitPagador : limpiarDocumento(nitEmpresas[e.target.value] || '', 3).replace(/\D.*$/, '') })} style={inputSm}>
-              <option value="">Empresa</option>
-              {Object.keys(cuentasPorEmpresa).map(e => <option key={e} value={e}>{e}</option>)}
-            </select>
-            <select value={form.nombreCuenta} onChange={(e) => setForm({ ...form, nombreCuenta: e.target.value })} style={inputSm}>
-              <option value="">Cuenta</option>
-              {nombresCuentas.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <input type="text" placeholder="NIT pagador (sin DV)" value={form.nitPagador} onChange={(e) => setForm({ ...form, nitPagador: e.target.value })} style={inputSm} />
-            <input type="text" placeholder="N° cuenta a debitar" value={form.numeroCuenta} onChange={(e) => setForm({ ...form, numeroCuenta: e.target.value })} style={inputSm} />
-            <select value={form.tipoCuenta} onChange={(e) => setForm({ ...form, tipoCuenta: e.target.value })} style={inputSm}>
-              <option value="S">S – Ahorros</option>
-              <option value="D">D – Corriente</option>
-            </select>
-            {[['tipoPagoNomina', 'Nómina'], ['tipoPagoProveedores', 'Colaboradores'], ['tipoPagoTerceros', 'Terceros']].map(([k, etiqueta]) => (
-              <label key={k} style={{ fontSize: '0.7rem', color: '#6B6458' }}>{etiqueta}
-                <select value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} style={inputSm}>
-                  {CLASES_DE_PAGO.map(c => <option key={c.codigo} value={c.codigo}>{c.nombre}</option>)}
-                </select>
+          {esAdmin && (
+            <div className={cn('grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] items-end gap-3 rounded-lg border border-solid p-4', form.id ? 'border-primary bg-primary/5' : 'border-border bg-background')}>
+              <Campo label="Empresa" htmlFor="db-empresa">
+                <Select id="db-empresa" value={form.empresa} onChange={(e) => setForm({ ...form, empresa: e.target.value, nombreCuenta: '', nitPagador: form.id ? form.nitPagador : limpiarDocumento(nitEmpresas[e.target.value] || '', 3).replace(/\D.*$/, '') })}>
+                  <option value="">Seleccionar</option>
+                  {Object.keys(cuentasPorEmpresa).map(e => <option key={e} value={e}>{e}</option>)}
+                </Select>
+              </Campo>
+              <Campo label="Cuenta" htmlFor="db-cuenta">
+                <Select id="db-cuenta" value={form.nombreCuenta} onChange={(e) => setForm({ ...form, nombreCuenta: e.target.value })}>
+                  <option value="">Seleccionar</option>
+                  {nombresCuentas.map(c => <option key={c} value={c}>{c}</option>)}
+                </Select>
+              </Campo>
+              <Campo label="NIT pagador (sin DV)" htmlFor="db-nit">
+                <Input id="db-nit" placeholder="Solo números" value={form.nitPagador} onChange={(e) => setForm({ ...form, nitPagador: e.target.value })} />
+              </Campo>
+              <Campo label="N° cuenta a debitar" htmlFor="db-numero">
+                <Input id="db-numero" placeholder="6 a 11 dígitos" value={form.numeroCuenta} onChange={(e) => setForm({ ...form, numeroCuenta: e.target.value })} />
+              </Campo>
+              <Campo label="Tipo de cuenta" htmlFor="db-tipo">
+                <Select id="db-tipo" value={form.tipoCuenta} onChange={(e) => setForm({ ...form, tipoCuenta: e.target.value })}>
+                  <option value="S">S – Ahorros</option>
+                  <option value="D">D – Corriente</option>
+                </Select>
+              </Campo>
+              {[['tipoPagoNomina', 'Tipo de pago Nómina'], ['tipoPagoProveedores', 'Tipo de pago Colaboradores'], ['tipoPagoTerceros', 'Tipo de pago Terceros']].map(([k, etiqueta]) => (
+                <Campo key={k} label={etiqueta} htmlFor={`db-${k}`}>
+                  <Select id={`db-${k}`} value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })}>
+                    {CLASES_DE_PAGO.map(c => <option key={c.codigo} value={c.codigo}>{c.nombre}</option>)}
+                  </Select>
+                </Campo>
+              ))}
+              <label className="flex h-9 cursor-pointer items-center gap-2 text-sm text-foreground">
+                <input type="checkbox" className={claseCheckbox} checked={form.activo} onChange={(e) => setForm({ ...form, activo: e.target.checked })} /> Activa
               </label>
-            ))}
-            <label style={{ fontSize: '0.8rem', color: '#6B6458' }}>
-              <input type="checkbox" checked={form.activo} onChange={(e) => setForm({ ...form, activo: e.target.checked })} /> Activa
-            </label>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button disabled={guardando} onClick={handleGuardarConfig} style={{ padding: '0.6rem 1rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', opacity: guardando ? 0.6 : 1 }}>{form.id ? 'Guardar' : '+ Agregar'}</button>
-              {form.id && <button onClick={() => setForm(configVacia)} style={{ padding: '0.6rem 1rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Cancelar</button>}
+              <div className="flex gap-2">
+                <Button disabled={guardando} onClick={handleGuardarConfig} className="flex-1">
+                  {guardando ? <Loader2 className="animate-spin" /> : form.id ? <Check /> : <Plus />}
+                  {form.id ? 'Guardar' : 'Agregar'}
+                </Button>
+                {form.id && <Button variant="outline" onClick={() => setForm(configVacia)}>Cancelar</Button>}
+              </div>
             </div>
+          )}
+
+          <div className="overflow-hidden rounded-lg border border-solid border-border">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Empresa</TableHead><TableHead>Cuenta</TableHead><TableHead>NIT pagador</TableHead><TableHead>N° cuenta</TableHead><TableHead>Tipo</TableHead>
+                  <TableHead><span title="Tipo de pago: Nómina / Colaboradores / Terceros">Nóm. / Colab. / Terc.</span></TableHead><TableHead>Estado</TableHead>{esAdmin && <TableHead className="w-px"></TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {configs.length === 0 ? (
+                  <TableRow className="hover:bg-transparent"><TableCell colSpan={8} className="py-6 text-center text-muted-foreground">Sin cuentas configuradas todavía.</TableCell></TableRow>
+                ) : configs.map(c => (
+                  <TableRow key={c.id} className={cn(c.activo === false && 'opacity-50', form.id === c.id && 'bg-primary/10')}>
+                    <TableCell className="whitespace-nowrap">{c.empresas?.nombre}</TableCell>
+                    <TableCell className="whitespace-nowrap">{c.nombre_cuenta}</TableCell>
+                    <TableCell className="tabular-nums">{c.nit_pagador}</TableCell>
+                    <TableCell className="tabular-nums">{c.numero_cuenta}</TableCell>
+                    <TableCell>{c.tipo_cuenta === 'S' ? 'Ahorros' : 'Corriente'}</TableCell>
+                    <TableCell className="tabular-nums">{c.tipo_pago_nomina} / {c.tipo_pago_proveedores} / {c.tipo_pago_terceros}</TableCell>
+                    <TableCell><Badge variant={c.activo === false ? 'muted' : 'success'}>{c.activo === false ? 'Inactiva' : 'Activa'}</Badge></TableCell>
+                    {esAdmin && (
+                      <TableCell className="w-px">
+                        <Button variant="ghost" size="icon" className="size-8 text-[#6C63D1]" onClick={() => editarConfig(c)} title="Editar" aria-label="Editar"><Pencil size={16} /></Button>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
-        )}
+        </CardContent>
+      </Card>
 
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-            <thead><tr style={{ borderBottom: '2px solid #C4A747' }}>
-              <th style={th}>Empresa</th><th style={th}>Cuenta</th><th style={th}>NIT pagador</th><th style={th}>N° cuenta</th><th style={th}>Tipo</th><th style={th}>Nómina / Colab. / Terceros</th><th style={th}>Estado</th>{esAdmin && <th style={th}></th>}
-            </tr></thead>
-            <tbody>
-              {configs.length === 0 ? (
-                <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: '#AFA897', padding: '1.5rem' }}>Sin cuentas configuradas todavía.</td></tr>
-              ) : configs.map(c => (
-                <tr key={c.id} style={{ borderBottom: '1px solid #E6E0D2', opacity: c.activo === false ? 0.5 : 1 }}>
-                  <td style={td}>{c.empresas?.nombre}</td>
-                  <td style={td}>{c.nombre_cuenta}</td>
-                  <td style={td}>{c.nit_pagador}</td>
-                  <td style={td}>{c.numero_cuenta}</td>
-                  <td style={td}>{c.tipo_cuenta === 'S' ? 'Ahorros' : 'Corriente'}</td>
-                  <td style={td}>{c.tipo_pago_nomina} / {c.tipo_pago_proveedores} / {c.tipo_pago_terceros}</td>
-                  <td style={td}>{c.activo === false ? 'Inactiva' : 'Activa'}</td>
-                  {esAdmin && <td style={td}><button onClick={() => editarConfig(c)} style={{ background: 'none', border: 'none', cursor: 'pointer' }} title="Editar">✏️</button></td>}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div style={card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
-          <h2 style={{ color: '#C4A747', margin: 0 }}>
-            {incompletas.length === 0 ? '✅ Datos bancarios completos' : `⚠️ Datos bancarios incompletos (${incompletas.length} de ${filas.length})`}
-          </h2>
-          <label style={{ fontSize: '0.8rem', color: '#6B6458' }}>
-            <input type="checkbox" checked={mostrarCompletos} onChange={(e) => setMostrarCompletos(e.target.checked)} /> Mostrar también los completos
-          </label>
-        </div>
-        <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>
-          Sin estos datos el exportador PAB bloquea el pago. Los cambios se guardan al salir de cada campo. Documento y cuenta: solo números (NIT sin dígito de verificación).
-        </p>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-            <thead><tr style={{ borderBottom: '2px solid #C4A747' }}>
-              <th style={th}>Tipo</th><th style={th}>Nombre</th><th style={th}>Tipo doc.</th><th style={th}>Documento</th><th style={th}>Banco</th><th style={th}>Tipo cuenta</th><th style={th}>N° cuenta</th><th style={th}>Pendiente</th>
-            </tr></thead>
-            <tbody>
-              {visibles.map(f => (
-                <tr key={f.origen + f.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
-                  <td style={td}>{f.origen === 'Tercero' ? '🤝' : '👤'} {f.origen}</td>
-                  <td style={td}>{f.nombre}</td>
-                  <td style={{ ...td, minWidth: '140px' }}>
-                    <SelectTipoDocumento value={f.tipoDocumento} placeholder="—" style={inputSm} onChange={(v) => actualizar(f, 'tipoDocumento', v || null)} />
-                  </td>
-                  <td style={{ ...td, minWidth: '120px' }}>
-                    <input key={f.documento} type="text" defaultValue={f.documento || ''} style={inputSm}
-                      onBlur={(e) => { const v = limpiarDocumento(e.target.value.trim(), f.tipoDocumento); e.target.value = v; if (v !== (f.documento || '')) actualizar(f, 'documento', v); }} />
-                  </td>
-                  <td style={{ ...td, minWidth: '170px' }}>
-                    <SelectBanco value={f.codigoBanco} placeholder="—" style={inputSm} onChange={(v) => actualizar(f, 'codigoBanco', v)} />
-                    {!f.codigoBanco && f.bancoTexto && <div style={{ fontSize: '0.7rem', color: '#C4622D', marginTop: '0.2rem' }}>Antes: "{f.bancoTexto}"</div>}
-                  </td>
-                  <td style={{ ...td, minWidth: '110px' }}>
-                    <select value={f.tipoCuenta || ''} style={inputSm} onChange={(e) => actualizar(f, 'tipoCuenta', e.target.value)}>
-                      <option value="">—</option>
-                      <option value="Ahorros">Ahorros</option>
-                      <option value="Corriente">Corriente</option>
-                    </select>
-                  </td>
-                  <td style={{ ...td, minWidth: '130px' }}>
-                    <input key={f.numeroCuenta} type="text" defaultValue={f.numeroCuenta || ''} style={inputSm}
-                      onBlur={(e) => { const v = limpiarNumeroCuenta(e.target.value.trim()); e.target.value = v; if (v !== (f.numeroCuenta || '')) actualizar(f, 'numeroCuenta', v); }} />
-                  </td>
-                  <td style={{ ...td, color: f.problemas.length ? '#CC4B4B' : '#2F9E52', fontSize: '0.75rem' }}>
-                    {f.problemas.length ? f.problemas.join(' · ') : 'Listo'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <Card className={cn('gap-4 px-0 py-6', incompletas.length > 0 && 'border-l-4 border-l-[#C4622D]')}>
+        <CardHeader className="sm:px-7">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle className="text-lg">
+              {incompletas.length === 0 ? '✅ Datos bancarios completos' : `⚠️ Datos bancarios incompletos (${incompletas.length} de ${filas.length})`}
+            </CardTitle>
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+              <input type="checkbox" className={claseCheckbox} checked={mostrarCompletos} onChange={(e) => setMostrarCompletos(e.target.checked)} /> Mostrar también los completos
+            </label>
+          </div>
+          <CardDescription>
+            Sin estos datos el exportador PAB bloquea el pago. Los cambios se guardan al salir de cada campo. Documento y cuenta: solo números (NIT sin dígito de verificación).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="sm:px-7">
+          <div className="overflow-hidden rounded-lg border border-solid border-border">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Tipo</TableHead><TableHead>Nombre</TableHead><TableHead>Tipo doc.</TableHead><TableHead>Documento</TableHead><TableHead>Banco</TableHead><TableHead>Tipo cuenta</TableHead><TableHead>N° cuenta</TableHead><TableHead>Pendiente</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visibles.length === 0 && (
+                  <TableRow className="hover:bg-transparent"><TableCell colSpan={8} className="py-6 text-center text-muted-foreground">Nada pendiente.</TableCell></TableRow>
+                )}
+                {visibles.map(f => (
+                  <TableRow key={f.origen + f.id}>
+                    <TableCell><Badge variant={f.origen === 'Tercero' ? 'info' : 'secondary'}>{f.origen === 'Tercero' ? '🤝' : '👤'} {f.origen}</Badge></TableCell>
+                    <TableCell className="whitespace-nowrap font-medium">{f.nombre}</TableCell>
+                    <TableCell className="min-w-[140px]">
+                      <SelectTipoDocumento value={f.tipoDocumento} placeholder="—" style={estiloCampoCompacto} onChange={(v) => actualizar(f, 'tipoDocumento', v || null)} />
+                    </TableCell>
+                    <TableCell className="min-w-[120px]">
+                      <Input key={f.documento} aria-label={`Documento de ${f.nombre}`} defaultValue={f.documento || ''} className="h-8 text-xs"
+                        onBlur={(e) => { const v = limpiarDocumento(e.target.value.trim(), f.tipoDocumento); e.target.value = v; if (v !== (f.documento || '')) actualizar(f, 'documento', v); }} />
+                    </TableCell>
+                    <TableCell className="min-w-[170px]">
+                      <SelectBanco value={f.codigoBanco} placeholder="—" style={estiloCampoCompacto} onChange={(v) => actualizar(f, 'codigoBanco', v)} />
+                      {!f.codigoBanco && f.bancoTexto && <div className="mt-1 text-[0.7rem] text-[#C4622D]">Antes: "{f.bancoTexto}"</div>}
+                    </TableCell>
+                    <TableCell className="min-w-[120px]">
+                      <Select aria-label={`Tipo de cuenta de ${f.nombre}`} value={f.tipoCuenta || ''} className="h-8 text-xs" onChange={(e) => actualizar(f, 'tipoCuenta', e.target.value)}>
+                        <option value="">—</option>
+                        <option value="Ahorros">Ahorros</option>
+                        <option value="Corriente">Corriente</option>
+                      </Select>
+                    </TableCell>
+                    <TableCell className="min-w-[130px]">
+                      <Input key={f.numeroCuenta} aria-label={`Número de cuenta de ${f.nombre}`} defaultValue={f.numeroCuenta || ''} className="h-8 text-xs"
+                        onBlur={(e) => { const v = limpiarNumeroCuenta(e.target.value.trim()); e.target.value = v; if (v !== (f.numeroCuenta || '')) actualizar(f, 'numeroCuenta', v); }} />
+                    </TableCell>
+                    <TableCell className={cn('min-w-[200px] text-xs', f.problemas.length ? 'text-destructive' : 'text-success')}>
+                      {f.problemas.length ? f.problemas.join(' · ') : <span className="inline-flex items-center gap-1"><CheckCircle2 size={14} /> Listo</span>}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };
