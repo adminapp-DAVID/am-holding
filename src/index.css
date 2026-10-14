@@ -1,5 +1,81 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
+/* ============================================================================================
+   Tailwind CSS v4 + tokens de shadcn/ui (etapa 1 del sistema de diseño).
+   SIN el "preflight" (reset de estilos de Tailwind) a propósito: la app actual usa estilos en
+   línea y el reset cambiaría márgenes, títulos y botones. Se activará cuando los módulos ya
+   estén migrados a los componentes nuevos. Mientras tanto, las clases de Tailwind y los
+   componentes de shadcn ya se pueden usar.
+   ============================================================================================ */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@custom-variant dark (&:is(.dark *));
+
+/* Paleta AM Holding como tokens de shadcn (dorado, crema y tinta). */
+:root {
+  --radius: 0.625rem;
+  --background: #F8F6F1;
+  --foreground: #221E15;
+  --card: #FFFFFF;
+  --card-foreground: #221E15;
+  --popover: #FFFFFF;
+  --popover-foreground: #221E15;
+  --primary: #C4A747;
+  --primary-foreground: #221E15;
+  --secondary: #EADFC4;
+  --secondary-foreground: #633806;
+  --muted: #F0ECE2;
+  --muted-foreground: #6B6458;
+  --accent: #EADFC4;
+  --accent-foreground: #633806;
+  --destructive: #CC4B4B;
+  --success: #2F9E52;
+  --warning: #D6A419;
+  --border: #E6E0D2;
+  --input: #E6E0D2;
+  --ring: #C4A747;
+  --chart-1: #C4A747;
+  --chart-2: #2F9E52;
+  --chart-3: #3B72D9;
+  --chart-4: #CC4B4B;
+  --chart-5: #8F8877;
+}
+
+@theme inline {
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+}
+
 * {
   box-sizing: border-box;
 }
