@@ -4751,7 +4751,7 @@ const App = () => {
   const [editandoConceptoFinanzas, setEditandoConceptoFinanzas] = useState(null); // { tabla, id, texto, fecha, ceco, valor, valorDestino }
   const [guardandoConceptoFinanzas, setGuardandoConceptoFinanzas] = useState(false);
   const handleGuardarConceptoFinanzas = async () => {
-    const { tabla, id, texto, fecha, ceco, valor: valorTexto, valorDestino: valorDestinoTexto, tieneValorDestino, permiteNeutro, neutro, moneda, monedaOriginal } = editandoConceptoFinanzas || {};
+    const { tabla, id, texto, fecha, ceco, valor: valorTexto, valorDestino: valorDestinoTexto, tieneValorDestino, permiteNeutro, neutro, moneda, monedaOriginal, permiteVinculo, presupuestoItemId, presupuestoItemIdOriginal } = editandoConceptoFinanzas || {};
     // Moneda real del pago (solo Gastos): Neutro siempre queda en COP; si no, se guarda la elegida
     // en el editor, pero solo cuando cambió — para no escribir moneda_pago en registros que nunca la tuvieron.
     const monedaFinal = permiteNeutro ? (neutro ? 'COP' : moneda) : null;
@@ -4768,10 +4768,15 @@ const App = () => {
     try {
       const cecoId = await resolverCecoId(ceco);
       if (!cecoId) { alert('❌ No se encontró el CECO ' + ceco); return; }
-      const { data, error } = await supabase.from(tabla).update({ detalle, fecha, ceco_id: cecoId, valor, ...(tieneValorDestino ? { valor_destino: valorDestino } : {}), ...(permiteNeutro ? { neutro: !!neutro } : {}), ...(cambiaMoneda ? { moneda_pago: monedaFinal } : {}) }).eq('id', id).select('id');
+      // Vínculo a Presupuesto (mismas reglas que tenía la columna del historial): solo si cambió; al vincular a un concepto con Colaborador
+      // asignado, el gasto queda también con ese responsable.
+      const cambiaVinculo = !!permiteVinculo && (presupuestoItemId || '') !== (presupuestoItemIdOriginal || '');
+      const conceptoVinculo = cambiaVinculo && presupuestoItemId ? presupuestoItems.find(p => p.id === presupuestoItemId) : null;
+      const vinculoPatch = cambiaVinculo ? { presupuesto_item_id: presupuestoItemId || null, ...(conceptoVinculo?.responsableId ? { responsable_id: conceptoVinculo.responsableId } : {}) } : {};
+      const { data, error } = await supabase.from(tabla).update({ detalle, fecha, ceco_id: cecoId, valor, ...(tieneValorDestino ? { valor_destino: valorDestino } : {}), ...(permiteNeutro ? { neutro: !!neutro } : {}), ...(cambiaMoneda ? { moneda_pago: monedaFinal } : {}), ...vinculoPatch }).eq('id', id).select('id');
       if (error) { alert('❌ No se pudo guardar: ' + error.message); return; }
       if (!data || data.length === 0) { alert('❌ No se pudo guardar: tu rol no tiene permiso para editar este registro.'); return; }
-      const cambios = { detalle, fecha, ceco, valor, ...(tieneValorDestino ? { valorDestino } : {}), ...(permiteNeutro ? { neutro: !!neutro } : {}), ...(cambiaMoneda ? { moneda: monedaFinal } : {}) };
+      const cambios = { detalle, fecha, ceco, valor, ...(tieneValorDestino ? { valorDestino } : {}), ...(permiteNeutro ? { neutro: !!neutro } : {}), ...(cambiaMoneda ? { moneda: monedaFinal } : {}), ...(cambiaVinculo ? { presupuestoItemId: presupuestoItemId || null, ...(conceptoVinculo?.responsableId ? { responsableId: conceptoVinculo.responsableId } : {}) } : {}) };
       if (tabla === 'ingresos') setIngresos(prev => prev.map(i => (i.id === id ? { ...i, ...cambios } : i)));
       else setGastos(prev => prev.map(g => (g.id === id ? { ...g, ...cambios } : g)));
       setEditandoConceptoFinanzas(null);
@@ -4790,36 +4795,6 @@ const App = () => {
       alert('❌ No se pudo actualizar: ' + error.message);
       setGastos(anteriores);
     }
-  };
-
-  // Vincular/desvincular un gasto ya registrado a un concepto de Presupuesto desde la tabla de Gastos.
-  // El CECO del gasto ya NO se toca aquí (antes se ajustaba solo al del concepto si eran distintos) —
-  // a pedido del usuario, el CECO que quedó guardado en el gasto manda siempre y no cambia solo por
-  // vincularlo a un concepto de otro CECO. Los id de presupuestoItems son uuid de Postgres — NUNCA se
-  // parsean con parseInt/Number.
-  // Vincula (o desvincula) un Gasto ya existente a un concepto de Presupuesto desde el
-  // desplegable de Historial de Finanzas. Al vincular a un concepto que SÍ tiene Colaborador
-  // asignado (Gestión de Conceptos), el Gasto se queda también con ese responsable_id — para
-  // que la columna "Colaborador" de Finanzas no quede vacía solo porque se vinculó desde acá en
-  // vez de haberse creado con la fila de Presupuesto ya elegida. Al desvincular no se toca el
-  // responsable_id (por si se había puesto a mano, sin depender del vínculo).
-  const handleVincularPresupuesto = async (id, valorSeleccionado) => {
-    const nuevoId = valorSeleccionado || null;
-    const conceptoElegido = nuevoId ? presupuestoItems.find(p => p.id === nuevoId) : null;
-    const nuevoResponsableId = conceptoElegido?.responsableId || null;
-
-    const anteriores = gastos;
-    setGastos(gastos.map(g => (g.id === id ? { ...g, presupuestoItemId: nuevoId, ...(nuevoResponsableId ? { responsableId: nuevoResponsableId } : {}) } : g)));
-
-    const patch = { presupuesto_item_id: nuevoId, ...(nuevoResponsableId ? { responsable_id: nuevoResponsableId } : {}) };
-    const { error } = await supabase.from('gastos').update(patch).eq('id', id);
-    if (error) {
-      console.error('Error vinculando presupuesto:', error);
-      alert('❌ No se pudo vincular: ' + error.message);
-      setGastos(anteriores);
-      return;
-    }
-    if (nuevoId) alert('✅ Gasto vinculado a Presupuesto' + (nuevoResponsableId ? ' — Colaborador actualizado' : ''));
   };
 
   const handleDeleteGasto = async (id) => {
@@ -8966,13 +8941,12 @@ const App = () => {
                     <TableHead>Detalle</TableHead>
                     <TableHead className="text-right">Valor</TableHead>
                     <TableHead className="text-center">Soportes</TableHead>
-                    <TableHead className="text-center">Presupuesto</TableHead>
                     {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <TableHead className="text-center">Acción</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                     {registrosFinanzas.length === 0 ? (
-                      <TableRow className="hover:bg-transparent"><TableCell colSpan={10} className="py-8 text-center text-muted-foreground">Sin registros para este filtro.</TableCell></TableRow>
+                      <TableRow className="hover:bg-transparent"><TableCell colSpan={9} className="py-8 text-center text-muted-foreground">Sin registros para este filtro.</TableCell></TableRow>
                     ) : registrosFinanzas.map(r => {
                       const esGasto = r.tipo === 'Gasto';
                       const esTraslado = r.tipo === 'Traslado';
@@ -9038,6 +9012,25 @@ const App = () => {
                                     ⚪ Neutro (COP)
                                   </label>
                                 )}
+                                {editandoConceptoFinanzas.permiteVinculo && (() => {
+                                  // Vínculo a Presupuesto (antes era una columna del historial): conceptos activos
+                                  // del MISMO CECO elegido en el editor y de la misma empresa; si ya estaba vinculado
+                                  // a uno de otro CECO, se mantiene en la lista para no perder la selección.
+                                  const ed = editandoConceptoFinanzas;
+                                  const mismos = presupuestoItems.filter(p => p.activo !== false && p.empresa === ed.empresa && p.ceco === ed.ceco);
+                                  const actual = ed.presupuestoItemId ? presupuestoItems.find(p => p.id === ed.presupuestoItemId) : null;
+                                  const opciones = (actual && !mismos.some(p => p.id === actual.id) ? [...mismos, actual] : mismos)
+                                    .slice().sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+                                  if (!opciones.length) return null;
+                                  return (
+                                    <div className="w-[170px]">
+                                      <Select value={ed.presupuestoItemId} onChange={(e) => setEditandoConceptoFinanzas({ ...ed, presupuestoItemId: e.target.value })} title="Vincular a un concepto de Presupuesto (marca ese mes como pagado)" aria-label="Vincular a Presupuesto" className={cn('h-8 border-primary text-xs', ed.presupuestoItemId && 'bg-success/10')}>
+                                        <option value="">📅 Sin vincular</option>
+                                        {opciones.map(p => <option key={p.id} value={p.id}>📅 {p.nombre}{p.ceco !== ed.ceco ? ` · ${p.ceco}` : ''}</option>)}
+                                      </Select>
+                                    </div>
+                                  );
+                                })()}
                                 <Input autoFocus type="text" aria-label="Concepto" value={editandoConceptoFinanzas.texto} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, texto: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') handleGuardarConceptoFinanzas(); if (e.key === 'Escape') setEditandoConceptoFinanzas(null); }} className="h-8 min-w-[140px] flex-1 border-primary text-xs" />
                                 <Button variant="ghost" size="icon" disabled={guardandoConceptoFinanzas} onClick={handleGuardarConceptoFinanzas} title="Guardar" aria-label="Guardar" className="size-8 text-success"><Check size={16} /></Button>
                                 <Button variant="ghost" size="icon" onClick={() => setEditandoConceptoFinanzas(null)} title="Cancelar" aria-label="Cancelar" className="size-8 text-muted-foreground"><X size={16} /></Button>
@@ -9046,7 +9039,7 @@ const App = () => {
                               <div className="flex items-start gap-1">
                                 <div className="flex-1"><TextoResumido texto={r.detalle} /></div>
                                 {puedeEditarConceptoFinanzas && (
-                                  <Button variant="ghost" size="icon" onClick={() => setEditandoConceptoFinanzas({ tabla: esIngreso ? 'ingresos' : 'gastos', id: r.id, texto: r.detalle || '', fecha: r.fecha || '', ceco: r.ceco || '', valor: String((esIngreso ? r : (gastos.find(g => g.id === r.id) || r)).valor ?? '').replace('.', ','), tieneValorDestino: esTraslado && r.valorDestino != null, permiteNeutro: !esIngreso && !esTraslado, neutro: !!r.neutro, moneda: r.moneda || getMoneda(r.empresa), monedaOriginal: r.moneda || getMoneda(r.empresa), valorDestino: String(r.valorDestino ?? '').replace('.', ','), opcionesCeco: esIngreso ? cecosIngreso : (esTraslado ? cecosTraslado : cecosGasto) })} title="Editar fecha, CECO, valor y concepto (solo en Finanzas)" aria-label="Editar" className="size-7 shrink-0 text-[#6C63D1]"><Pencil size={14} /></Button>
+                                  <Button variant="ghost" size="icon" onClick={() => setEditandoConceptoFinanzas({ tabla: esIngreso ? 'ingresos' : 'gastos', id: r.id, texto: r.detalle || '', fecha: r.fecha || '', ceco: r.ceco || '', valor: String((esIngreso ? r : (gastos.find(g => g.id === r.id) || r)).valor ?? '').replace('.', ','), tieneValorDestino: esTraslado && r.valorDestino != null, permiteNeutro: !esIngreso && !esTraslado, neutro: !!r.neutro, permiteVinculo: esGasto && (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa'), empresa: r.empresa, presupuestoItemId: r.presupuestoItemId || '', presupuestoItemIdOriginal: r.presupuestoItemId || '', moneda: r.moneda || getMoneda(r.empresa), monedaOriginal: r.moneda || getMoneda(r.empresa), valorDestino: String(r.valorDestino ?? '').replace('.', ','), opcionesCeco: esIngreso ? cecosIngreso : (esTraslado ? cecosTraslado : cecosGasto) })} title="Editar fecha, CECO, valor y concepto (solo en Finanzas)" aria-label="Editar" className="size-7 shrink-0 text-[#6C63D1]"><Pencil size={14} /></Button>
                                 )}
                               </div>
                             )}
@@ -9064,6 +9057,9 @@ const App = () => {
                             )}
                             {r.presupuestoItemId && r.observaciones === OBSERVACIONES_GASTO_DESDE_PRESUPUESTO && (
                               <div className="text-[0.7rem] text-[#6C63D1]">🔗 Generado desde Presupuesto</div>
+                            )}
+                            {r.presupuestoItemId && r.observaciones !== OBSERVACIONES_GASTO_DESDE_PRESUPUESTO && (
+                              <div className="text-[0.7rem] text-[#6C63D1]">📅 Vinculado a Presupuesto: {presupuestoItems.find(p => p.id === r.presupuestoItemId)?.nombre || 'concepto'}</div>
                             )}
                             {r.observaciones && r.observaciones.startsWith(OBSERVACIONES_GASTO_LOTE_TERCERO) && (
                               <div className="text-[0.7rem] text-[#6C63D1]">🧾 Factura de tercero (lote)</div>
@@ -9119,33 +9115,6 @@ const App = () => {
                               </label>
                             )}
                             </div>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {!esGasto ? (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            ) : (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') ? (() => {
-                              // Columna "Presupuesto" en Historial de Finanzas: solo muestra conceptos del
-                              // MISMO CECO que este gasto (a diferencia de getPresupuestoCandidatos, que busca en
-                              // toda la empresa). Si el gasto ya estaba vinculado a un concepto de otro CECO
-                              // (vínculo hecho antes de este cambio), se agrega igual para no perder la selección.
-                              const candidatosMismoCeco = presupuestoItems.filter(p => p.activo !== false && p.empresa === r.empresa && p.ceco === r.ceco);
-                              const vinculadoActual = r.presupuestoItemId ? presupuestoItems.find(p => p.id === r.presupuestoItemId) : null;
-                              const candidatosVinculo = (vinculadoActual && !candidatosMismoCeco.some(p => p.id === vinculadoActual.id)
-                                ? [...candidatosMismoCeco, vinculadoActual]
-                                : candidatosMismoCeco
-                              ).slice().sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
-                              if (!candidatosVinculo.length) return <span className="text-xs text-muted-foreground">—</span>;
-                              return (
-                                <div className="mx-auto w-[160px]">
-                                  <Select aria-label="Vincular a presupuesto" value={r.presupuestoItemId || ''} onChange={(e) => handleVincularPresupuesto(r.id, e.target.value)} className={cn('h-8 text-xs', r.presupuestoItemId && 'bg-success/10')}>
-                                    <option value="">Sin vincular</option>
-                                    {candidatosVinculo.map(p => <option key={p.id} value={p.id}>{p.nombre}{p.ceco !== r.ceco ? ` · ${p.ceco}` : ''}</option>)}
-                                  </Select>
-                                </div>
-                              );
-                            })() : (
-                              r.presupuestoItemId ? <span className="text-xs text-success">✅ Vinculado</span> : <span className="text-xs text-muted-foreground">—</span>
-                            )}
                           </TableCell>
                           {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
                             <TableCell className="text-center">
