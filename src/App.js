@@ -4748,6 +4748,72 @@ const App = () => {
   // Editar Fecha, CECO, Concepto y Valor de un registro de Finanzas — Administrador, Coordinadora y
   // Gerente. No toca la Solicitud ni el concepto de Presupuesto de origen; el cambio queda en Auditoría.
   const puedeEditarConceptoFinanzas = ['Administrador', 'Coordinadora Administrativa', 'Gerente'].includes(user?.rol);
+  // "🔗 Generado desde Solicitudes" (Finanzas): abre la Solicitud original. Administrador y
+  // Coordinadora pueden corregir su concepto desde ahí: se actualiza la Solicitud y también el
+  // detalle del Gasto/Ingreso que generó, para que ambos digan lo mismo.
+  const [verSolicitudOrigen, setVerSolicitudOrigen] = useState(null); // { solicitud, concepto, guardando }
+  const puedeGestionarSolicitudOrigen = user?.rol === 'Administrador' || user?.rol === 'Coordinadora Administrativa';
+
+  const handleVerSolicitudOrigen = async (solicitudId) => {
+    const { data, error } = await supabase
+      .from('solicitudes')
+      .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, lote_pago_id, motivo_devolucion, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
+      .eq('id', solicitudId)
+      .maybeSingle();
+    if (error) { console.error('Error cargando la solicitud de origen:', error); alert('❌ No se pudo abrir la solicitud: ' + error.message); return; }
+    if (!data) { alert('La solicitud de origen ya no existe (o tu rol no puede verla).'); return; }
+    const solicitud = solicitudDBToLocal(data);
+    setVerSolicitudOrigen({ solicitud, concepto: solicitud.detalle || '', guardando: false });
+  };
+
+  const handleGuardarConceptoSolicitudOrigen = async () => {
+    const actual = verSolicitudOrigen;
+    if (!actual || !puedeGestionarSolicitudOrigen) return;
+    const detalle = (actual.concepto || '').trim();
+    if (!detalle) { alert('El concepto no puede quedar vacío'); return; }
+    if (detalle === (actual.solicitud.detalle || '').trim()) { setVerSolicitudOrigen(null); return; }
+    setVerSolicitudOrigen({ ...actual, guardando: true });
+    try {
+      const { data, error } = await supabase.from('solicitudes').update({ detalle }).eq('id', actual.solicitud.id).select('id');
+      if (error || !data || data.length === 0) {
+        alert('❌ No se pudo actualizar la solicitud: ' + (error?.message || 'tu rol no tiene permiso para editarla.'));
+        setVerSolicitudOrigen({ ...actual, guardando: false });
+        return;
+      }
+      // Mismo concepto en los movimientos de Finanzas que salieron de esta solicitud.
+      const [rg, ri] = await Promise.all([
+        supabase.from('gastos').update({ detalle }).eq('solicitud_origen_id', actual.solicitud.id).select('id'),
+        supabase.from('ingresos').update({ detalle }).eq('solicitud_origen_id', actual.solicitud.id).select('id'),
+      ]);
+      if (rg.error || ri.error) console.error('Error actualizando el concepto en Finanzas:', rg.error || ri.error);
+      setSolicitudes(prev => prev.map(x => (x.id === actual.solicitud.id ? { ...x, detalle } : x)));
+      setGastos(prev => prev.map(g => (g.solicitudOrigenId === actual.solicitud.id ? { ...g, detalle } : g)));
+      setIngresos(prev => prev.map(i => (i.solicitudOrigenId === actual.solicitud.id ? { ...i, detalle } : i)));
+      setVerSolicitudOrigen(null);
+    } catch (e) {
+      console.error(e);
+      setVerSolicitudOrigen({ ...actual, guardando: false });
+    }
+  };
+
+  // Al eliminar en Finanzas un Gasto/Ingreso generado desde una Solicitud, la Solicitud vuelve a
+  // "Pendiente" y pierde el vínculo (gasto/ingreso_generado_id y lote), para que se pueda corregir
+  // y pagar de nuevo — antes quedaba en "Pagado" sin ningún movimiento en Finanzas.
+  const devolverSolicitudOrigenAPendiente = async (solicitudId, columnaVinculo) => {
+    const { data, error } = await supabase
+      .from('solicitudes')
+      .update({ estado: 'Pendiente', [columnaVinculo]: null, lote_pago_id: null })
+      .eq('id', solicitudId)
+      .select('id');
+    if (error || !data || data.length === 0) {
+      console.error('No se pudo devolver la solicitud a Pendiente:', error);
+      alert('⚠️ El registro se eliminó, pero la solicitud de origen no se pudo devolver a Pendiente: ' + (error?.message || 'sin permiso') + '. Cámbiala a mano en Solicitudes.');
+      return false;
+    }
+    setSolicitudes(prev => prev.map(x => (x.id === solicitudId ? { ...x, estado: 'Pendiente', [columnaVinculo === 'gasto_generado_id' ? 'gastoGeneradoId' : 'ingresoGeneradoId']: '', lotePagoId: '' } : x)));
+    return true;
+  };
+
   const [editandoConceptoFinanzas, setEditandoConceptoFinanzas] = useState(null); // { tabla, id, texto, fecha, ceco, valor, valorDestino }
   const [guardandoConceptoFinanzas, setGuardandoConceptoFinanzas] = useState(false);
   const handleGuardarConceptoFinanzas = async () => {
@@ -4798,31 +4864,39 @@ const App = () => {
   };
 
   const handleDeleteGasto = async (id) => {
-    if (!window.confirm('¿Eliminar gasto?')) return;
+    const origen = gastos.find(g => g.id === id)?.solicitudOrigenId || '';
+    if (!window.confirm(origen
+      ? '¿Eliminar gasto?\n\nSe generó desde una Solicitud: al eliminarlo, esa Solicitud vuelve a "Pendiente" para corregirla y pagarla de nuevo.'
+      : '¿Eliminar gasto?')) return;
     await eliminarSoportesDeEntidad('gasto', id);
-    const { error } = await supabase.from('gastos').delete().eq('id', id);
-    if (error) {
+    const { data, error } = await supabase.from('gastos').delete().eq('id', id).select('id');
+    if (error || !data || data.length === 0) {
       console.error('Error eliminando gasto:', error);
-      alert('❌ No se pudo eliminar el gasto: ' + error.message);
+      alert('❌ No se pudo eliminar el gasto: ' + (error?.message || 'tu rol no tiene permiso.'));
       return;
     }
-    setGastos(gastos.filter(g => g.id !== id));
+    setGastos(prev => prev.filter(g => g.id !== id));
+    if (origen) await devolverSolicitudOrigenAPendiente(origen, 'gasto_generado_id');
   };
 
   const handleDeleteIngreso = async (id) => {
-    if (!window.confirm('¿Eliminar ingreso?')) return;
+    const origen = ingresos.find(i => i.id === id)?.solicitudOrigenId || '';
+    if (!window.confirm(origen
+      ? '¿Eliminar ingreso?\n\nSe generó desde una Solicitud: al eliminarlo, esa Solicitud vuelve a "Pendiente" para corregirla y pagarla de nuevo.'
+      : '¿Eliminar ingreso?')) return;
     // Desde que una Legalización con diferencia en contra genera automáticamente un Ingreso
     // que reutiliza el MISMO archivo (bucket_path) del soporte ya subido a la Solicitud (Opción
     // C extendida), hay que usar el borrado seguro — igual que Gasto/Solicitud — para no
     // destruir un archivo que la Solicitud todavía necesita.
     await eliminarSoportesDeEntidad('ingreso', id);
-    const { error } = await supabase.from('ingresos').delete().eq('id', id);
-    if (error) {
+    const { data, error } = await supabase.from('ingresos').delete().eq('id', id).select('id');
+    if (error || !data || data.length === 0) {
       console.error('Error eliminando ingreso:', error);
-      alert('❌ No se pudo eliminar el ingreso: ' + error.message);
+      alert('❌ No se pudo eliminar el ingreso: ' + (error?.message || 'tu rol no tiene permiso.'));
       return;
     }
-    setIngresos(ingresos.filter(i => i.id !== id));
+    setIngresos(prev => prev.filter(i => i.id !== id));
+    if (origen) await devolverSolicitudOrigenAPendiente(origen, 'ingreso_generado_id');
   };
 
   // PRESUPUESTO — CRUD de conceptos recurrentes mensuales y techos anuales por CECO
@@ -9053,7 +9127,7 @@ const App = () => {
                               <Badge variant="outline" className="mt-1 text-[0.65rem]" title="Registrado en COP; no suma en los gastos de la empresa">⚪ Gasto Neutro</Badge>
                             )}
                             {r.solicitudOrigenId && (
-                              <div className="text-[0.7rem] text-[#6C63D1]">🔗 Generado desde Solicitudes</div>
+                              <button type="button" onClick={() => handleVerSolicitudOrigen(r.solicitudOrigenId)} title="Ver la solicitud original" className="block cursor-pointer border-0 bg-transparent p-0 text-left font-[inherit] text-[0.7rem] text-[#6C63D1] underline-offset-2 hover:underline">🔗 Generado desde Solicitudes</button>
                             )}
                             {r.presupuestoItemId && r.observaciones === OBSERVACIONES_GASTO_DESDE_PRESUPUESTO && (
                               <div className="text-[0.7rem] text-[#6C63D1]">🔗 Generado desde Presupuesto</div>
@@ -10703,6 +10777,50 @@ const App = () => {
             </div>
           </div>
         )}
+
+        {/* MODAL SOLICITUD DE ORIGEN — desde "🔗 Generado desde Solicitudes" en Finanzas */}
+        {verSolicitudOrigen && (() => {
+          const so = verSolicitudOrigen.solicitud;
+          const valorSo = so.tipo === 'Pago a Tercero' ? formatMoneyByMoneda(parseFloat(so.valor) || 0, so.moneda || getMoneda(so.empresa)) : formatMoney(so.tipo === 'Anticipo' ? parseFloat(so.valor) : so.totalCalculado || 0, so.empresa);
+          const nombreSo = colaboradoresPublico.find(c => c.id === so.responsableId)?.nombre || so.responsableNombre || '—';
+          return (
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
+              <Card className="max-h-[90vh] w-full max-w-lg gap-4 overflow-y-auto px-0 py-6">
+                <CardHeader className="sm:px-7">
+                  <CardTitle className="text-lg">🔗 Solicitud de origen</CardTitle>
+                  <CardDescription>El movimiento de Finanzas se generó al pagar esta solicitud.</CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-4 sm:px-7">
+                  <div className="grid grid-cols-2 gap-3 rounded-lg border border-solid border-border bg-background p-4 text-sm">
+                    <div><p className="m-0 text-xs text-muted-foreground">Tipo</p><p className="m-0 font-bold text-primary">{so.tipo}</p></div>
+                    <div><p className="m-0 text-xs text-muted-foreground">Estado</p><Badge variant={estadoBadge(so.estado)}>{so.estado}</Badge></div>
+                    <div><p className="m-0 text-xs text-muted-foreground">Fecha</p><p className="m-0">{so.fecha}</p></div>
+                    <div><p className="m-0 text-xs text-muted-foreground">Valor</p><p className="m-0 font-bold text-success">{valorSo}</p></div>
+                    <div><p className="m-0 text-xs text-muted-foreground">Colaborador</p><p className="m-0">{nombreSo}</p></div>
+                    <div><p className="m-0 text-xs text-muted-foreground">Empresa</p><p className="m-0">{so.empresa}</p></div>
+                    {so.terceroInfo?.nombre && <div className="col-span-2"><p className="m-0 text-xs text-muted-foreground">Tercero</p><p className="m-0">👤 {so.terceroInfo.nombre}{so.terceroInfo.dni ? ` · ${so.terceroInfo.dni}` : ''}</p></div>}
+                  </div>
+                  <CampoUI label="Concepto" htmlFor="so-concepto">
+                    {puedeGestionarSolicitudOrigen ? (
+                      <Textarea id="so-concepto" rows={2} value={verSolicitudOrigen.concepto} onChange={(e) => setVerSolicitudOrigen({ ...verSolicitudOrigen, concepto: e.target.value })} />
+                    ) : (
+                      <p className="m-0 text-sm">{so.detalle || '—'}</p>
+                    )}
+                  </CampoUI>
+                  {puedeGestionarSolicitudOrigen && <p className="m-0 -mt-2 text-xs text-muted-foreground">Al guardar se actualiza la solicitud y también el concepto de su registro en Finanzas.</p>}
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" onClick={() => handleVerSoportesSolicitud(so)}><Paperclip size={14} /> Ver soportes</Button>
+                    <div className="flex-1" />
+                    <Button variant="outline" disabled={verSolicitudOrigen.guardando} onClick={() => setVerSolicitudOrigen(null)}>Cerrar</Button>
+                    {puedeGestionarSolicitudOrigen && (
+                      <Button disabled={verSolicitudOrigen.guardando} onClick={handleGuardarConceptoSolicitudOrigen}>{verSolicitudOrigen.guardando ? 'Guardando...' : 'Guardar concepto'}</Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          );
+        })()}
 
         {/* MODAL VER SOPORTES */}
         {verSoportes && (
