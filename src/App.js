@@ -21,7 +21,7 @@ import ExportadorPABView from './ExportadorPABView';
 import NotificacionesCampana from './NotificacionesCampana';
 import AuditoriaView from './AuditoriaView';
 import TopNav from './components/TopNav';
-import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, FileDown, Eye, Plus, Check, X, Pencil, Search, Loader2, FileSpreadsheet, Upload, FilePlus2, Pause, Play } from 'lucide-react';
+import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, FileDown, Eye, Plus, Check, X, Pencil, Search, Loader2, FileSpreadsheet, Upload, FilePlus2, Pause, Play, LayoutDashboard, FileText, Banknote, DollarSign, Clock, Undo2, CheckCircle2, Building2, Users, ClipboardList, Archive } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7067,148 +7067,160 @@ const App = () => {
         )}
 
         {currentView === 'dashboard' && (
-          <div>
-            <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📊 Dashboard</h2>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+          // Etapa 3 del sistema de diseño: Dashboard migrado a los componentes de
+          // src/components/ui/ (mismos datos y permisos que antes; solo cambia la presentación).
+          <div className="flex flex-col gap-6">
+            <h2 className="m-0 flex items-center gap-2 text-xl font-extrabold"><LayoutDashboard size={22} className="text-primary" /> Dashboard</h2>
+
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:[grid-template-columns:repeat(auto-fit,minmax(230px,1fr))]">
               {[
-                { icon: '📄', label: 'Total Solicitudes', value: totalSolicitudes, color: '#C4A747' },
-                { icon: '💵', label: 'Monto Total (COP)', value: formatMoneyByMoneda(totalMontoCOP, 'COP'), color: '#2F9E52', compact: true },
-                { icon: '💵', label: 'Monto Total ARKO (USD)', value: formatMoneyByMoneda(totalMontoUSD, 'USD'), color: '#2F9E52', compact: true },
-                { icon: '⏳', label: 'Pendiente', value: statsEstado.Pendiente, color: '#CC4B4B' },
-                { icon: '🔎', label: 'Aprobado', value: statsEstado.Aprobado, color: '#D6A419' },
-                { icon: '↩️', label: 'Devuelto', value: statsEstado.Devuelto, color: '#C4622D' },
-                { icon: '✅', label: 'Pagado', value: statsEstado.Pagado, color: '#2F9E52' },
-                { icon: '📎', label: 'Legalizado', value: statsEstado.Legalizado, color: '#6C63D1' },
-              ].map((card, idx) => (
-                <div key={idx} style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '12px', padding: '1.25rem 1.5rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.6rem', overflow: 'hidden' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
-                    <span style={{ fontSize: '0.95rem', lineHeight: 1, flexShrink: 0 }}>{card.icon}</span>
-                    <p style={{ color: '#6B6458', margin: 0, fontSize: '0.78rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.label}</p>
-                  </div>
-                  <h3 style={{
-                    color: card.color,
-                    margin: 0,
-                    fontSize: card.compact ? 'clamp(1.05rem, 2vw, 1.6rem)' : 'clamp(1.5rem, 2.5vw, 2.25rem)',
-                    fontWeight: 800,
-                    lineHeight: 1.15,
-                    wordBreak: 'break-word',
-                    overflowWrap: 'anywhere',
-                    fontVariantNumeric: 'tabular-nums',
-                    minWidth: 0
-                  }}>{card.value}</h3>
-                </div>
-              ))}
+                { icon: FileText, label: 'Total Solicitudes', value: totalSolicitudes, color: '#C4A747' },
+                { icon: Banknote, label: 'Monto Total (COP)', value: formatMoneyByMoneda(totalMontoCOP, 'COP'), color: '#2F9E52', compact: true },
+                { icon: DollarSign, label: 'Monto Total ARKO (USD)', value: formatMoneyByMoneda(totalMontoUSD, 'USD'), color: '#2F9E52', compact: true },
+                { icon: Clock, label: 'Pendiente', value: statsEstado.Pendiente, color: '#CC4B4B' },
+                { icon: Search, label: 'Aprobado', value: statsEstado.Aprobado, color: '#D6A419' },
+                { icon: Undo2, label: 'Devuelto', value: statsEstado.Devuelto, color: '#C4622D' },
+                { icon: CheckCircle2, label: 'Pagado', value: statsEstado.Pagado, color: '#2F9E52' },
+                { icon: Paperclip, label: 'Legalizado', value: statsEstado.Legalizado, color: '#6C63D1' },
+              ].map((card, idx) => {
+                const Icono = card.icon;
+                return (
+                  <Card key={idx} className="min-w-0 gap-2 overflow-hidden px-3.5 py-4 sm:gap-3 sm:px-5 sm:py-5">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: `${card.color}1F`, color: card.color }}><Icono size={16} /></span>
+                      <p className="m-0 text-[0.7rem] font-semibold uppercase leading-tight tracking-wide text-muted-foreground sm:truncate sm:text-xs">{card.label}</p>
+                    </div>
+                    <p className={cn('m-0 min-w-0 font-extrabold leading-tight tabular-nums [overflow-wrap:anywhere]', card.compact ? 'text-[clamp(1.05rem,2vw,1.6rem)]' : 'text-[clamp(1.5rem,2.5vw,2.25rem)]')} style={{ color: card.color }}>{card.value}</p>
+                  </Card>
+                );
+              })}
             </div>
 
             {statsPorEmpresa.length > 0 && (
-              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.5rem', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>Por Empresa</h3>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid #C4A747' }}>
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
-                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Solicitudes</th>
-                      <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {statsPorEmpresa.map((emp, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid #E6E0D2' }}>
-                        <td style={{ padding: '0.75rem', color: '#6B6458' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><EmpresaLogo empresa={emp.empresa} height={18} />{emp.empresa}</div></td>
-                        <td style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>{emp.cantidad}</td>
-                        <td style={{ textAlign: 'right', padding: '0.75rem', color: '#2F9E52', fontWeight: 'bold' }}>{formatMoney(emp.monto, emp.empresa)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <Card className="gap-4 px-0 py-5">
+                <CardHeader className="sm:px-6">
+                  <CardTitle className="flex items-center gap-2"><Building2 size={18} className="text-primary" /> Por Empresa</CardTitle>
+                </CardHeader>
+                <CardContent className="sm:px-6">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead>Empresa</TableHead>
+                        <TableHead className="text-center">Solicitudes</TableHead>
+                        <TableHead className="text-right">Monto</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {statsPorEmpresa.map((emp, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell className="text-muted-foreground"><div className="flex items-center gap-2"><EmpresaLogo empresa={emp.empresa} height={18} />{emp.empresa}</div></TableCell>
+                          <TableCell className="text-center font-semibold text-primary">{emp.cantidad}</TableCell>
+                          <TableCell className="whitespace-nowrap text-right font-bold text-success">{formatMoney(emp.monto, emp.empresa)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
             )}
 
             {topResponsables.length > 0 && (
-              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.5rem', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>👥 Top Colaboradores</h3>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid #C4A747' }}>
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>
-                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Solicitudes</th>
-                      <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {topResponsables.map((resp, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid #E6E0D2' }}>
-                        <td style={{ padding: '0.75rem', color: '#6B6458' }}>{resp.nombre}</td>
-                        <td style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>{resp.cantidad}</td>
-                        <td style={{ textAlign: 'right', padding: '0.75rem', color: '#2F9E52', fontWeight: 'bold' }}>{formatMoney(resp.monto, resp.empresa)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <Card className="gap-4 px-0 py-5">
+                <CardHeader className="sm:px-6">
+                  <CardTitle className="flex items-center gap-2"><Users size={18} className="text-primary" /> Top Colaboradores</CardTitle>
+                </CardHeader>
+                <CardContent className="sm:px-6">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead>Colaborador</TableHead>
+                        <TableHead className="text-center">Solicitudes</TableHead>
+                        <TableHead className="text-right">Monto</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {topResponsables.map((resp, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell className="text-muted-foreground">{resp.nombre}</TableCell>
+                          <TableCell className="text-center font-semibold text-primary">{resp.cantidad}</TableCell>
+                          <TableCell className="whitespace-nowrap text-right font-bold text-success">{formatMoney(resp.monto, resp.empresa)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
             )}
 
             {ultimasSolicitudes.length > 0 && (
-              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.5rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>📋 Últimas Solicitudes</h3>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid #C4A747' }}>
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                      {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
-                      <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th>
-                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ultimasSolicitudes.map(s => (
-                      <tr key={s.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
-                        <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.fecha}</td>
-                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={colaboradoresPublico.find(c => c.id === s.responsableId)?.foto_url} nombre={colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre} size={22} />{colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—'}</div></td>}
-                        <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
-                        <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{s.tipo === 'Pago a Tercero' ? formatMoneyByMoneda(parseFloat(s.valor) || 0, s.moneda || getMoneda(s.empresa)) : formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
-                        <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                          <span style={{ backgroundColor: getColorEstado(s.estado), color: '#221E15', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{s.estado}</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <Card className="gap-4 px-0 py-5">
+                <CardHeader className="sm:px-6">
+                  <CardTitle className="flex items-center gap-2"><ClipboardList size={18} className="text-primary" /> Últimas Solicitudes</CardTitle>
+                </CardHeader>
+                <CardContent className="sm:px-6">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead>Fecha</TableHead>
+                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <TableHead>Colaborador</TableHead>}
+                        <TableHead>Tipo</TableHead>
+                        <TableHead className="text-right">Monto</TableHead>
+                        <TableHead className="text-center">Estado</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {ultimasSolicitudes.map(s => (
+                        <TableRow key={s.id}>
+                          <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{s.fecha}</TableCell>
+                          {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <TableCell className="text-xs"><div className="flex items-center gap-2"><ColaboradorAvatar foto={colaboradoresPublico.find(c => c.id === s.responsableId)?.foto_url} nombre={colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre} size={22} />{colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—'}</div></TableCell>}
+                          <TableCell className="whitespace-nowrap font-bold text-primary">{s.tipo}</TableCell>
+                          <TableCell className="whitespace-nowrap text-right font-bold text-success">{s.tipo === 'Pago a Tercero' ? formatMoneyByMoneda(parseFloat(s.valor) || 0, s.moneda || getMoneda(s.empresa)) : formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</TableCell>
+                          <TableCell className="text-center"><Badge variant={estadoBadge(s.estado)}>{s.estado}</Badge></TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
             )}
 
             {/* REPORTES Y DESCARGAS */}
             {(isReadOnly || user?.rol === 'Administrador' || user?.rol === 'Coordinadora Administrativa') && (
-              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginTop: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>📥 Reportes y Descargas</h3>
-                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: '1.25rem' }}>
-                  <div>
-                    <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.4rem' }}>Desde</label>
-                    <input type="date" value={filtroFechaInicio} onChange={(e) => setFiltroFechaInicio(e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458' }} />
+              <Card className="gap-4 px-0 py-6">
+                <CardHeader className="sm:px-6">
+                  <CardTitle className="flex items-center gap-2"><FileDown size={18} className="text-primary" /> Reportes y Descargas</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-4 sm:px-6">
+                  <div className="flex flex-wrap items-end gap-3">
+                    <CampoUI label="Desde" htmlFor="rep-desde" className="w-[calc(50%-0.375rem)] sm:w-40">
+                      <Input id="rep-desde" type="date" value={filtroFechaInicio} onChange={(e) => setFiltroFechaInicio(e.target.value)} />
+                    </CampoUI>
+                    <CampoUI label="Hasta" htmlFor="rep-hasta" className="w-[calc(50%-0.375rem)] sm:w-40">
+                      <Input id="rep-hasta" type="date" value={filtroFechaFin} onChange={(e) => setFiltroFechaFin(e.target.value)} />
+                    </CampoUI>
+                    <p className="m-0 flex-[1_1_220px] text-xs text-muted-foreground">Las 3 descargas usan este rango de fechas (es el mismo del Dashboard Financiero) y solo incluyen lo que tu rol puede ver.</p>
                   </div>
-                  <div>
-                    <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.4rem' }}>Hasta</label>
-                    <input type="date" value={filtroFechaFin} onChange={(e) => setFiltroFechaFin(e.target.value)} style={{ padding: '0.6rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458' }} />
+                  <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(250px,1fr))]">
+                    {[
+                      { onClick: downloadReporteFinanzas, icon: FileSpreadsheet, titulo: 'Descargar Reporte Finanzas (Excel)', detalle: 'Gastos, Pagos a Tercero, Traslados e Ingresos del período' },
+                      { onClick: downloadReporteSolicitudes, icon: ClipboardList, titulo: 'Descargar Reporte Solicitudes (Excel)', detalle: 'Solicitudes del período con su estado' },
+                      { onClick: downloadSoportesZIP, icon: progresoZip ? Loader2 : Archive, titulo: progresoZip ? `Descargando soportes… ${progresoZip.hechos}/${progresoZip.total || '?'}` : 'Descargar Soportes (ZIP)', detalle: 'Soportes del período de Solicitudes, Finanzas y Cuentas de cobro, por carpetas', disabled: !!progresoZip, cargando: !!progresoZip },
+                    ].map(r => {
+                      const Icono = r.icon;
+                      return (
+                        <button key={r.detalle} type="button" onClick={r.onClick} disabled={r.disabled}
+                          className={cn('flex cursor-pointer items-start gap-3 rounded-lg border border-solid border-border bg-background p-4 text-left font-[inherit] transition-colors hover:border-primary hover:bg-secondary/30 disabled:opacity-70', r.cargando && 'cursor-wait')}>
+                          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground"><Icono size={18} className={cn(r.cargando && 'animate-spin')} /></span>
+                          <span className="flex flex-col gap-1">
+                            <span className="text-sm font-bold text-foreground">{r.titulo}</span>
+                            <span className="text-xs text-muted-foreground">{r.detalle}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
-                  <p style={{ color: '#8F8877', fontSize: '0.75rem', margin: 0, flex: '1 1 220px' }}>Las 3 descargas usan este rango de fechas (es el mismo del Dashboard Financiero) y solo incluyen lo que tu rol puede ver.</p>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem' }}>
-                  <button onClick={downloadReporteFinanzas} style={{ padding: '1rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#C4A747', fontWeight: 'bold', cursor: 'pointer', textAlign: 'left' }}>
-                    📊 Descargar Reporte Finanzas (Excel)
-                    <p style={{ fontSize: '0.8rem', color: '#6B6458', margin: '0.5rem 0 0 0' }}>Gastos, Pagos a Tercero, Traslados e Ingresos del período</p>
-                  </button>
-                  <button onClick={downloadReporteSolicitudes} style={{ padding: '1rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#C4A747', fontWeight: 'bold', cursor: 'pointer', textAlign: 'left' }}>
-                    📋 Descargar Reporte Solicitudes (Excel)
-                    <p style={{ fontSize: '0.8rem', color: '#6B6458', margin: '0.5rem 0 0 0' }}>Solicitudes del período con su estado</p>
-                  </button>
-                  <button onClick={downloadSoportesZIP} disabled={!!progresoZip} style={{ padding: '1rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#C4A747', fontWeight: 'bold', cursor: progresoZip ? 'wait' : 'pointer', textAlign: 'left', opacity: progresoZip ? 0.7 : 1 }}>
-                    {progresoZip ? `⏳ Descargando soportes… ${progresoZip.hechos}/${progresoZip.total || '?'}` : '📦 Descargar Soportes (ZIP)'}
-                    <p style={{ fontSize: '0.8rem', color: '#6B6458', margin: '0.5rem 0 0 0' }}>Soportes del período de Solicitudes, Finanzas y Cuentas de cobro, por carpetas</p>
-                  </button>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             )}
           </div>
         )}
