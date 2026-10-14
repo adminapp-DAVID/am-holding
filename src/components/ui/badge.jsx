@@ -2,7 +2,9 @@ import * as React from 'react';
 import { cva } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
-// Etiquetas de estado. `estadoBadge` traduce los estados de la app a una variante.
+// Etiquetas de estado. `estadoBadge` traduce los estados de la app a una variante, con los
+// mismos colores que ya usa la app (getColorEstado en App.js): Pendiente rojo, Aprobado
+// amarillo, Devuelto naranja, Pagado verde, Legalizado morado.
 const badgeVariants = cva(
   'inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-solid px-2.5 py-0.5 text-xs font-semibold',
   {
@@ -15,6 +17,8 @@ const badgeVariants = cva(
         warning: 'border-transparent bg-warning/20 text-[#8A6A0C]',
         destructive: 'border-transparent bg-destructive/15 text-destructive',
         info: 'border-transparent bg-chart-3/15 text-chart-3',
+        orange: 'border-transparent bg-[#C4622D]/15 text-[#C4622D]',
+        purple: 'border-transparent bg-[#6C63D1]/15 text-[#6C63D1]',
         muted: 'border-transparent bg-muted text-muted-foreground',
       },
     },
@@ -23,11 +27,11 @@ const badgeVariants = cva(
 );
 
 const VARIANTE_POR_ESTADO = {
-  Pendiente: 'warning',
-  Aprobado: 'info',
+  Pendiente: 'destructive',
+  Aprobado: 'warning',
   Pagado: 'success',
-  Legalizado: 'success',
-  Devuelto: 'destructive',
+  Legalizado: 'purple',
+  Devuelto: 'orange',
   Rechazado: 'destructive',
 };
 

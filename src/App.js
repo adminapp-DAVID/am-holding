@@ -21,6 +21,16 @@ import ExportadorPABView from './ExportadorPABView';
 import NotificacionesCampana from './NotificacionesCampana';
 import AuditoriaView from './AuditoriaView';
 import TopNav from './components/TopNav';
+import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, FileDown, Eye } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Select } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Badge, badgeVariants, estadoBadge } from '@/components/ui/badge';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { CODIGO_BANCO_EXTERIOR, inferirCodigoBanco, limpiarNumeroCuenta, limpiarDocumento } from './datosBancarios';
 
 // Logo por empresa. Para sumar ARKO, sube el archivo a src/assets/logos/,
@@ -9922,182 +9932,196 @@ const App = () => {
         })()}
 
         {currentView === 'cuentasCobro' && (
-          <div>
-            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-              {canApprove ? (
-                <button onClick={() => setMostrarNuevaCuentaCobro(!mostrarNuevaCuentaCobro)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', width: '100%' }}>
-                  <h2 style={{ color: '#C4A747', margin: mostrarNuevaCuentaCobro ? '0 0 1.5rem 0' : 0 }}>{mostrarNuevaCuentaCobro ? '▾' : '▸'} ➕ Nueva Cuenta de Cobro <span style={{ color: '#8F8877', fontSize: '0.8rem', fontWeight: 'normal' }}>(mi propia cuenta — clic para {mostrarNuevaCuentaCobro ? 'ocultar' : 'mostrar'})</span></h2>
-                </button>
-              ) : (
-                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nueva Cuenta de Cobro</h2>
-              )}
-              {(!canApprove || mostrarNuevaCuentaCobro) && (<>
+          // Etapa 3 del sistema de diseño: primer módulo migrado a los componentes de
+          // src/components/ui/ (misma lógica y handlers que antes; solo cambia la presentación).
+          <div className="flex flex-col gap-6">
+            <Card className="gap-5 px-0 py-6 sm:py-7">
+              <CardHeader className="sm:px-7">
+                {canApprove ? (
+                  <button type="button" onClick={() => setMostrarNuevaCuentaCobro(!mostrarNuevaCuentaCobro)} className="flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left font-[inherit]">
+                    {mostrarNuevaCuentaCobro ? <ChevronDown size={18} className="text-primary" /> : <ChevronRight size={18} className="text-primary" />}
+                    <CardTitle className="text-lg">Nueva Cuenta de Cobro</CardTitle>
+                    <span className="text-xs text-muted-foreground">(mi propia cuenta — clic para {mostrarNuevaCuentaCobro ? 'ocultar' : 'mostrar'})</span>
+                  </button>
+                ) : (
+                  <CardTitle className="text-lg">Nueva Cuenta de Cobro</CardTitle>
+                )}
+              </CardHeader>
+              {(!canApprove || mostrarNuevaCuentaCobro) && (
+              <CardContent className="flex flex-col gap-4 sm:px-7">
 
               {/* DATOS AUTOMÁTICOS DEL COLABORADOR LOGUEADO — ya no hay que elegir a quién pertenece */}
-              <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem', marginBottom: '1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
-                <div><span style={{ color: '#8F8877', fontSize: '0.75rem' }}>Colaborador</span><p style={{ margin: 0, fontWeight: 'bold', color: '#221E15' }}>{user.nombre}</p></div>
-                <div><span style={{ color: '#8F8877', fontSize: '0.75rem' }}>C.C</span><p style={{ margin: 0, fontWeight: 'bold', color: user.cedula ? '#221E15' : '#CC4B4B' }}>{user.cedula || 'Falta en tu perfil'}</p></div>
-                <div>
-                  <span style={{ color: '#8F8877', fontSize: '0.75rem' }}>Empresa a la que le facturas</span>
-                  <select value={newCuentaCobro.empresa || user.empresa || ''} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, empresa: e.target.value})} style={{ width: '100%', padding: '0.4rem 0.5rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#221E15', fontWeight: 'bold', boxSizing: 'border-box', marginTop: '0.15rem' }}>
+              <div className="grid gap-3 rounded-lg border border-solid border-border bg-background p-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+                <div><span className="text-xs text-muted-foreground">Colaborador</span><p className="m-0 font-bold">{user.nombre}</p></div>
+                <div><span className="text-xs text-muted-foreground">C.C</span><p className={cn('m-0 font-bold', !user.cedula && 'text-destructive')}>{user.cedula || 'Falta en tu perfil'}</p></div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="cc-empresa" className="font-normal">Empresa a la que le facturas</Label>
+                  <Select id="cc-empresa" value={newCuentaCobro.empresa || user.empresa || ''} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, empresa: e.target.value})} className="h-8 font-bold">
                     {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
-                  </select>
+                  </Select>
                 </div>
-                <div><span style={{ color: '#8F8877', fontSize: '0.75rem' }}>Cargo</span><p style={{ margin: 0, fontWeight: 'bold', color: user.cargo ? '#221E15' : '#CC4B4B' }}>{user.cargo || 'Falta en tu perfil'}</p></div>
+                <div><span className="text-xs text-muted-foreground">Cargo</span><p className={cn('m-0 font-bold', !user.cargo && 'text-destructive')}>{user.cargo || 'Falta en tu perfil'}</p></div>
               </div>
-              <p style={{ color: '#6B6458', fontSize: '0.75rem', margin: '-0.5rem 0 1rem 0' }}>💡 Si le facturas a más de una empresa de la holding, crea una Cuenta de Cobro por cada una eligiéndola aquí.</p>
+              <p className="m-0 -mt-2 text-xs text-muted-foreground">💡 Si le facturas a más de una empresa de la holding, crea una Cuenta de Cobro por cada una eligiéndola aquí.</p>
               {(!user.cedula || !user.cargo || !user.banco || !user.numeroCuenta) && (
-                <p style={{ color: '#CC4B4B', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>⚠️ Completa tu Cédula, Cargo y Datos Bancarios en el módulo Colaboradores antes de crear tu Cuenta de Cobro.</p>
+                <p className="m-0 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">⚠️ Completa tu Cédula, Cargo y Datos Bancarios en el módulo Colaboradores antes de crear tu Cuenta de Cobro.</p>
               )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Mes que está cobrando</label>
-                  <select value={newCuentaCobro.mes} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, mes: parseInt(e.target.value)})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+              <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="cc-mes">Mes que está cobrando</Label>
+                  <Select id="cc-mes" value={newCuentaCobro.mes} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, mes: parseInt(e.target.value)})}>
                     {MESES_ES.map((m, idx) => <option key={m} value={idx + 1}>{m.charAt(0).toUpperCase() + m.slice(1)}</option>)}
-                  </select>
+                  </Select>
                 </div>
-                <div>
-                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Año</label>
-                  <input type="number" value={newCuentaCobro.anio} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, anio: parseInt(e.target.value) || newCuentaCobro.anio})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }} />
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="cc-anio">Año</Label>
+                  <Input id="cc-anio" type="number" value={newCuentaCobro.anio} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, anio: parseInt(e.target.value) || newCuentaCobro.anio})} />
                 </div>
-                <div>
-                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Ciudad</label>
-                  <input type="text" value={newCuentaCobro.ciudad} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, ciudad: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }} />
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="cc-ciudad">Ciudad</Label>
+                  <Input id="cc-ciudad" type="text" value={newCuentaCobro.ciudad} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, ciudad: e.target.value})} />
                 </div>
-                <div>
-                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Valor</label>
-                  <input type="number" placeholder="Valor" value={newCuentaCobro.monto} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, monto: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }} />
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="cc-valor">Valor</Label>
+                  <Input id="cc-valor" type="number" placeholder="Valor" value={newCuentaCobro.monto} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, monto: e.target.value})} />
                 </div>
               </div>
 
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Funciones (texto entre paréntesis del PDF)</label>
-                <textarea value={newCuentaCobro.funciones || user.funciones || ''} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, funciones: e.target.value})} rows={2} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', resize: 'vertical', fontFamily: 'inherit' }} />
-                {!user.funciones && <p style={{ color: '#8F8877', fontSize: '0.75rem', margin: '0.35rem 0 0 0' }}>💡 Si guardas esto en tu perfil (Colaboradores), no tendrás que escribirlo cada mes.</p>}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="cc-funciones">Funciones (texto entre paréntesis del PDF)</Label>
+                <Textarea id="cc-funciones" value={newCuentaCobro.funciones || user.funciones || ''} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, funciones: e.target.value})} rows={2} />
+                {!user.funciones && <p className="m-0 text-xs text-muted-foreground">💡 Si guardas esto en tu perfil (Colaboradores), no tendrás que escribirlo cada mes.</p>}
               </div>
 
               {/* CARGA DE SOPORTES */}
-              <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem', marginBottom: '1rem' }}>
-                <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>📎 Soportes (PDF u otros archivos)</label>
-                <input type="file" multiple onChange={handleAddSoporteCuentaCobro} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '1rem', boxSizing: 'border-box', cursor: 'pointer' }} />
+              <div className="flex flex-col gap-2 rounded-lg border border-solid border-border bg-background p-4">
+                <Label htmlFor="cc-soportes" className="text-foreground"><Paperclip size={14} /> Soportes (PDF u otros archivos)</Label>
+                <Input id="cc-soportes" type="file" multiple onChange={handleAddSoporteCuentaCobro} className="h-auto cursor-pointer py-2 text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1 file:font-[inherit] file:text-xs file:font-semibold file:text-secondary-foreground" />
 
                 {soportesCuentaCobroTemp.length > 0 && (
-                  <div style={{ marginTop: '1rem' }}>
-                    <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.8rem' }}>Archivos cargados: {soportesCuentaCobroTemp.length}</p>
+                  <div className="mt-2 flex flex-col gap-2">
+                    <p className="m-0 text-xs text-muted-foreground">Archivos cargados: {soportesCuentaCobroTemp.length}</p>
                     {soportesCuentaCobroTemp.map(soporte => (
-                      <div key={soporte.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ flex: 1 }}>
-                          <p style={{ color: '#C4A747', margin: '0 0 0.25rem 0', fontSize: '0.8rem', fontWeight: 'bold' }}>{soporte.nombre}</p>
-                          <p style={{ color: '#6B6458', margin: 0, fontSize: '0.75rem' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
+                      <div key={soporte.id} className="flex items-center justify-between gap-2 rounded-md border border-solid border-border bg-card px-3 py-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="m-0 truncate text-sm font-semibold">{soporte.nombre}</p>
+                          <p className="m-0 text-xs text-muted-foreground">{(soporte.tamaño / 1024).toFixed(2)} KB</p>
                         </div>
-                        <button onClick={() => handleRemoveSoporteCuentaCobro(soporte.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem', padding: '0.5rem' }}>🗑️</button>
+                        <Button variant="ghost" size="icon" onClick={() => handleRemoveSoporteCuentaCobro(soporte.id)} className="text-destructive" title="Quitar archivo" aria-label="Quitar archivo"><Trash2 size={16} /></Button>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
-              <button onClick={handleAddCuentaCobro} disabled={isReadOnly || guardandoCuentaCobro} style={{ width: '100%', padding: '0.75rem', backgroundColor: isReadOnly || guardandoCuentaCobro ? '#D8D2C2' : '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: isReadOnly || guardandoCuentaCobro ? 'not-allowed' : 'pointer', opacity: isReadOnly || guardandoCuentaCobro ? 0.5 : 1 }}>{guardandoCuentaCobro ? '⏳ Guardando...' : 'Crear Cuenta de Cobro'}</button>
-              </>)}
-            </div>
+              <Button size="lg" onClick={handleAddCuentaCobro} disabled={isReadOnly || guardandoCuentaCobro} className="w-full">{guardandoCuentaCobro ? '⏳ Guardando...' : 'Crear Cuenta de Cobro'}</Button>
+              </CardContent>
+              )}
+            </Card>
 
-            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-              <h2 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>💳 Cuentas de Cobro ({cuentasCobroUsuario.length})</h2>
+            <Card className="gap-4 px-0 py-6 sm:py-7">
+              <CardHeader className="sm:px-7">
+                <CardTitle className="text-lg">💳 Cuentas de Cobro ({cuentasCobroUsuario.length})</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4 sm:px-7">
               {/* Filtros: Mes cobrado y Empresa */}
-              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-                <select value={filtroCuentasMes} onChange={(e) => setFiltroCuentasMes(e.target.value)} style={{ padding: '0.5rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', fontSize: '0.85rem' }}>
-                  <option value="Todos">📅 Todos los meses</option>
-                  {mesesCuentasCobro.map(k => { const [y, m] = k.split('-').map(Number); return <option key={k} value={k}>{MESES_ES[m - 1].charAt(0).toUpperCase() + MESES_ES[m - 1].slice(1)} {y}</option>; })}
-                </select>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="w-full sm:w-56">
+                  <Select aria-label="Filtrar por mes cobrado" value={filtroCuentasMes} onChange={(e) => setFiltroCuentasMes(e.target.value)}>
+                    <option value="Todos">📅 Todos los meses</option>
+                    {mesesCuentasCobro.map(k => { const [y, m] = k.split('-').map(Number); return <option key={k} value={k}>{MESES_ES[m - 1].charAt(0).toUpperCase() + MESES_ES[m - 1].slice(1)} {y}</option>; })}
+                  </Select>
+                </div>
                 {empresasCuentasCobro.length > 1 && (
-                  <select value={filtroCuentasEmpresa} onChange={(e) => setFiltroCuentasEmpresa(e.target.value)} style={{ padding: '0.5rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', fontSize: '0.85rem' }}>
-                    <option value="Todas">🏢 Todas las empresas</option>
-                    {empresasCuentasCobro.map(e => <option key={e} value={e}>{e}</option>)}
-                  </select>
+                  <div className="w-full sm:w-72">
+                    <Select aria-label="Filtrar por empresa" value={filtroCuentasEmpresa} onChange={(e) => setFiltroCuentasEmpresa(e.target.value)}>
+                      <option value="Todas">🏢 Todas las empresas</option>
+                      {empresasCuentasCobro.map(e => <option key={e} value={e}>{e}</option>)}
+                    </Select>
+                  </div>
                 )}
                 {(filtroCuentasMes !== 'Todos' || filtroCuentasEmpresa !== 'Todas' || filtroCuentasEstado !== 'Todos') && (
-                  <button onClick={() => { setFiltroCuentasMes('Todos'); setFiltroCuentasEmpresa('Todas'); setFiltroCuentasEstado('Todos'); }} style={{ padding: '0.5rem 0.9rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', fontSize: '0.8rem', cursor: 'pointer' }}>🔄 Limpiar filtros</button>
+                  <Button variant="outline" onClick={() => { setFiltroCuentasMes('Todos'); setFiltroCuentasEmpresa('Todas'); setFiltroCuentasEstado('Todos'); }}><RotateCcw size={14} /> Limpiar filtros</Button>
                 )}
               </div>
               {/* Filtro por estado, con el conteo de cada uno (sobre el mes y empresa elegidos) */}
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+              <div className="flex flex-wrap gap-2">
                 {['Todos', ...estadosCuentaCobro].map(e => {
                   const n = e === 'Todos' ? cuentasCobroPorMesEmpresa.length : cuentasCobroPorMesEmpresa.filter(c => c.estado === e).length;
                   const activo = filtroCuentasEstado === e;
                   return (
-                    <button key={e} onClick={() => setFiltroCuentasEstado(e)} style={{ padding: '0.45rem 0.9rem', borderRadius: '999px', border: `1px solid ${activo ? '#C4A747' : '#E6E0D2'}`, backgroundColor: activo ? '#C4A747' : '#FFFFFF', color: activo ? '#221E15' : '#6B6458', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}>
+                    <Button key={e} size="sm" variant={activo ? 'default' : 'outline'} onClick={() => setFiltroCuentasEstado(e)} className={cn('rounded-full', !activo && 'text-muted-foreground')} aria-pressed={activo}>
                       {e} ({n})
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
-              {cargandoCuentasCobro && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando cuentas de cobro...</p>}
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                  <thead style={{ backgroundColor: '#F8F6F1' }}>
-                    <tr style={{ borderBottom: '2px solid #C4A747' }}>
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Número</th>
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Mes cobrado</th>
-                      {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
-                      <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Monto</th>
-                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
-                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cuentasCobroFiltradas.map(c => (
-                      <tr key={c.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
-                        <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{c.fecha}</td>
-                        <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{c.numero}</td>
-                        <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{c.mes ? `${MESES_ES[c.mes - 1]} ${c.anio}` : '—'}</td>
-                        {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={responsables.find(r => r.nombre === c.responsableNombre)?.foto} nombre={c.responsableNombre} size={22} />{c.responsableNombre}</div></td>}
-                        <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><EmpresaLogo empresa={c.empresa} height={16} />{c.empresa}</div></td>
-                        <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(c.monto, c.empresa)}</td>
-                        <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                          {canApprove ? (
-                            <select value={c.estado} onChange={(e) => handleUpdateCuentaCobro(c.id, 'estado', e.target.value)} disabled={isReadOnly || !canApprove} style={{ backgroundColor: getColorEstado(c.estado), color: '#332D1E', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: isReadOnly || !canApprove ? 'not-allowed' : 'pointer', fontSize: '0.8rem', opacity: isReadOnly || !canApprove ? 0.6 : 1 }}>
-                              {estadosCuentaCobro.map(e => <option key={e} value={e}>{e}</option>)}
-                            </select>
-                          ) : (
-                            <span style={{ backgroundColor: getColorEstado(c.estado), color: '#221E15', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{c.estado}</span>
-                          )}
-                        </td>
-                        <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+              {cargandoCuentasCobro && <p className="m-0 text-sm text-muted-foreground">Cargando cuentas de cobro...</p>}
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Número</TableHead>
+                    <TableHead>Mes cobrado</TableHead>
+                    {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <TableHead>Colaborador</TableHead>}
+                    <TableHead>Empresa</TableHead>
+                    <TableHead className="text-right">Monto</TableHead>
+                    <TableHead className="text-center">Estado</TableHead>
+                    <TableHead className="text-center">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {cuentasCobroFiltradas.map(c => (
+                    <TableRow key={c.id}>
+                      <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{c.fecha}</TableCell>
+                      <TableCell className="whitespace-nowrap font-bold text-primary">{c.numero}</TableCell>
+                      <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{c.mes ? `${MESES_ES[c.mes - 1]} ${c.anio}` : '—'}</TableCell>
+                      {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <TableCell className="text-xs"><div className="flex items-center gap-2"><ColaboradorAvatar foto={responsables.find(r => r.nombre === c.responsableNombre)?.foto} nombre={c.responsableNombre} size={22} />{c.responsableNombre}</div></TableCell>}
+                      <TableCell className="text-xs"><div className="flex items-center gap-2"><EmpresaLogo empresa={c.empresa} height={16} />{c.empresa}</div></TableCell>
+                      <TableCell className="whitespace-nowrap text-right font-bold text-success">{formatMoney(c.monto, c.empresa)}</TableCell>
+                      <TableCell className="text-center">
+                        {canApprove ? (
+                          <select aria-label="Cambiar estado" value={c.estado} onChange={(e) => handleUpdateCuentaCobro(c.id, 'estado', e.target.value)} disabled={isReadOnly || !canApprove} className={cn(badgeVariants({ variant: estadoBadge(c.estado) }), 'cursor-pointer py-1 font-[inherit] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60')}>
+                            {estadosCuentaCobro.map(e => <option key={e} value={e}>{e}</option>)}
+                          </select>
+                        ) : (
+                          <Badge variant={estadoBadge(c.estado)}>{c.estado}</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-center gap-1">
                           {c.responsableCedula && (
-                            <button onClick={() => handleGenerarPDFCuentaCobro(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#C4A747', fontSize: '1rem', marginRight: '0.5rem' }} title="Descargar PDF">📄</button>
+                            <Button variant="ghost" size="icon" onClick={() => handleGenerarPDFCuentaCobro(c)} title="Descargar PDF" aria-label="Descargar PDF"><FileDown size={16} /></Button>
                           )}
                           {c.cantidadSoportes > 0 && (
-                            <button onClick={() => handleVistaRapidaCuentaCobro(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#C4A747', fontSize: '1rem', marginRight: '0.5rem' }} title="Vista previa de la cuenta de cobro">🔍</button>
+                            <Button variant="ghost" size="icon" onClick={() => handleVistaRapidaCuentaCobro(c)} title="Vista previa de la cuenta de cobro" aria-label="Vista previa de la cuenta de cobro"><Eye size={16} /></Button>
                           )}
                           {c.cantidadSoportes > 0 ? (
-                            <button onClick={() => handleVerSoportesCuentaCobro(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }} title="Ver soportes">📎 {c.cantidadSoportes}</button>
+                            <Button variant="ghost" size="sm" onClick={() => handleVerSoportesCuentaCobro(c)} className="text-success" title="Ver soportes"><Paperclip size={14} /> {c.cantidadSoportes}</Button>
                           ) : (
-                            <span style={{ color: '#6B6458', fontSize: '0.8rem', marginRight: '0.5rem' }}>—</span>
+                            <span className="px-2 text-xs text-muted-foreground">—</span>
                           )}
                           {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
-                            <button onClick={() => handleDeleteCuentaCobro(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }} title="Eliminar">
-                              🗑️
-                            </button>
+                            <Button variant="ghost" size="icon" onClick={() => handleDeleteCuentaCobro(c.id)} className="text-destructive" title="Eliminar" aria-label="Eliminar"><Trash2 size={16} /></Button>
                           )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {cuentasCobroUsuario.length === 0 && (
-                  <div style={{ padding: '2rem', textAlign: 'center', color: '#6B6458' }}>
-                    Sin cuentas de cobro registradas
-                  </div>
-                )}
-                {cuentasCobroUsuario.length > 0 && cuentasCobroFiltradas.length === 0 && (
-                  <div style={{ padding: '2rem', textAlign: 'center', color: '#6B6458' }}>
-                    No hay cuentas de cobro con estos filtros
-                  </div>
-                )}
-              </div>
-            </div>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {cuentasCobroUsuario.length === 0 && (
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">Sin cuentas de cobro registradas</TableCell>
+                    </TableRow>
+                  )}
+                  {cuentasCobroUsuario.length > 0 && cuentasCobroFiltradas.length === 0 && (
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">No hay cuentas de cobro con estos filtros</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+              </CardContent>
+            </Card>
           </div>
         )}
 
