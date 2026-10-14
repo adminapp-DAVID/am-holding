@@ -21,7 +21,7 @@ import ExportadorPABView from './ExportadorPABView';
 import NotificacionesCampana from './NotificacionesCampana';
 import AuditoriaView from './AuditoriaView';
 import TopNav from './components/TopNav';
-import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, FileDown, Eye, Plus, Check, X, Pencil, Search, Loader2, FileSpreadsheet, Upload, FilePlus2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, FileDown, Eye, Plus, Check, X, Pencil, Search, Loader2, FileSpreadsheet, Upload, FilePlus2, Pause, Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9448,17 +9448,19 @@ const App = () => {
         )}
 
         {currentView === 'presupuesto' && !puedeVerFinanzas && (
-          <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', textAlign: 'center', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
-            <h2 style={{ color: '#C4A747' }}>📅 Presupuesto</h2>
-            <p style={{ color: '#6B6458' }}>No tienes acceso a este módulo.</p>
-            <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>Ir al Dashboard</button>
-          </div>
+          <Card className="items-center px-6 py-8 text-center">
+            <CardTitle className="text-lg">📅 Presupuesto</CardTitle>
+            <p className="m-0 text-muted-foreground">No tienes acceso a este módulo.</p>
+            <Button onClick={() => setCurrentView('dashboard')}>Ir al Dashboard</Button>
+          </Card>
         )}
 
         {currentView === 'presupuesto' && puedeVerFinanzas && (() => {
+          // Etapa 3 del sistema de diseño: Presupuesto migrado a los componentes de
+          // src/components/ui/ (misma lógica, handlers y permisos que antes; solo cambia la presentación).
           const puedeEditarPresupuesto = user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa';
-          const inputStyle = { padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' };
-          const cardStyle = { backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '8px', padding: '1.25rem' };
+          // Recuadro gris de las tarjetas de totales y de los formularios de cada pestaña.
+          const claseRecuadro = 'rounded-lg border border-solid border-border bg-background p-5';
           // Filtro Pagado/Pendiente/Todos de la tabla Mensual — no afecta las tarjetas de totales
           // (esas siguen mostrando el total real de la Empresa/Mes/Año elegidos arriba).
           const presupuestoMensualFiltrado = presupuestoMensualDetalle.filter(item =>
@@ -9467,81 +9469,87 @@ const App = () => {
           // Gestión de Conceptos: filtrado por la Empresa de arriba salvo que se active "Todas".
           const conceptosGestionFiltrados = (gestionConceptosTodasEmpresas ? presupuestoItems : presupuestoItems.filter(p => p.empresa === filtroPresupuesto.empresa))
             .slice().sort((a, b) => (a.empresa || '').localeCompare(b.empresa || '') || (a.nombre || '').localeCompare(b.nombre || ''));
+          const pestanas = [
+            { id: 'mensual', label: '📆 Mensual: Pagado/Pendiente' },
+            { id: 'anual', label: '📊 Ejecución Anual por CECO' },
+            ...(user.rol !== 'Gerente' ? [{ id: 'deducciones', label: '💵 Deducciones' }, { id: 'gestion', label: '⚙️ Gestión de Conceptos' }] : []),
+          ];
 
           return (
-            <div>
-              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
-                <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📅 Presupuesto</h2>
-                {cargandoPresupuesto && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando presupuesto...</p>}
+            <Card className="gap-5 px-0 py-6 sm:py-7">
+              <CardHeader className="sm:px-7">
+                <CardTitle className="text-lg">📅 Presupuesto</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-5 sm:px-7">
+                {cargandoPresupuesto && <p className="m-0 text-sm text-muted-foreground">Cargando presupuesto...</p>}
 
                 {/* FILTROS */}
-                <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem', marginBottom: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                  <div>
-                    <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Empresa</label>
-                    <select value={filtroPresupuesto.empresa} onChange={(e) => setFiltroPresupuesto({...filtroPresupuesto, empresa: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF', minWidth: '220px' }}>
+                <div className="flex flex-wrap items-end gap-3 rounded-lg border border-solid border-border bg-background p-4">
+                  <CampoUI label="Empresa" htmlFor="pp-empresa" className="w-full sm:w-64">
+                    <Select id="pp-empresa" value={filtroPresupuesto.empresa} onChange={(e) => setFiltroPresupuesto({...filtroPresupuesto, empresa: e.target.value})}>
                       {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Mes</label>
-                    <select value={filtroPresupuesto.mes} onChange={(e) => setFiltroPresupuesto({...filtroPresupuesto, mes: parseInt(e.target.value)})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
+                    </Select>
+                  </CampoUI>
+                  <CampoUI label="Mes" htmlFor="pp-mes" className="w-[calc(50%-0.375rem)] sm:w-40">
+                    <Select id="pp-mes" value={filtroPresupuesto.mes} onChange={(e) => setFiltroPresupuesto({...filtroPresupuesto, mes: parseInt(e.target.value)})}>
                       {nombresMeses.map((nombre, idx) => <option key={idx} value={idx + 1}>{nombre}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Año</label>
-                    <input type="number" value={filtroPresupuesto.anio} onChange={(e) => setFiltroPresupuesto({...filtroPresupuesto, anio: parseInt(e.target.value) || filtroPresupuesto.anio})} style={{ ...inputStyle, backgroundColor: '#FFFFFF', width: '100px' }} />
-                  </div>
+                    </Select>
+                  </CampoUI>
+                  <CampoUI label="Año" htmlFor="pp-anio" className="w-[calc(50%-0.375rem)] sm:w-28">
+                    <Input id="pp-anio" type="number" value={filtroPresupuesto.anio} onChange={(e) => setFiltroPresupuesto({...filtroPresupuesto, anio: parseInt(e.target.value) || filtroPresupuesto.anio})} />
+                  </CampoUI>
                 </div>
 
                 {/* TABS */}
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-                  <button onClick={() => setPresupuestoTab('mensual')} style={{ padding: '0.6rem 1.25rem', backgroundColor: presupuestoTab === 'mensual' ? '#C4A747' : '#E6E0D2', color: presupuestoTab === 'mensual' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>📆 Mensual: Pagado/Pendiente</button>
-                  <button onClick={() => setPresupuestoTab('anual')} style={{ padding: '0.6rem 1.25rem', backgroundColor: presupuestoTab === 'anual' ? '#C4A747' : '#E6E0D2', color: presupuestoTab === 'anual' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>📊 Ejecución Anual por CECO</button>
-                  {user.rol !== 'Gerente' && <button onClick={() => setPresupuestoTab('deducciones')} style={{ padding: '0.6rem 1.25rem', backgroundColor: presupuestoTab === 'deducciones' ? '#C4A747' : '#E6E0D2', color: presupuestoTab === 'deducciones' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>💵 Deducciones</button>}
-                  {user.rol !== 'Gerente' && <button onClick={() => setPresupuestoTab('gestion')} style={{ padding: '0.6rem 1.25rem', backgroundColor: presupuestoTab === 'gestion' ? '#C4A747' : '#E6E0D2', color: presupuestoTab === 'gestion' ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>⚙️ Gestión de Conceptos</button>}
+                <div role="tablist" className="flex flex-wrap gap-1 rounded-lg bg-muted p-1">
+                  {pestanas.map(t => (
+                    <button key={t.id} type="button" role="tab" aria-selected={presupuestoTab === t.id} onClick={() => setPresupuestoTab(t.id)}
+                      className={cn('flex-1 cursor-pointer whitespace-nowrap rounded-md border-0 px-3 py-2 font-[inherit] text-sm font-semibold transition-colors', presupuestoTab === t.id ? 'bg-card text-foreground shadow-sm' : 'bg-transparent text-muted-foreground hover:text-foreground')}>
+                      {t.label}
+                    </button>
+                  ))}
                 </div>
 
                 {/* ===== TAB MENSUAL ===== */}
                 {presupuestoTab === 'mensual' && (
                   presupuestoMensualDetalle.length === 0 ? (
-                    <p style={{ color: '#6B6458' }}>Aún no hay conceptos de presupuesto cargados para <strong>{filtroPresupuesto.empresa}</strong>. Ve a la pestaña "Gestión de Conceptos" para agregarlos.</p>
+                    <p className="m-0 text-muted-foreground">Aún no hay conceptos de presupuesto cargados para <strong>{filtroPresupuesto.empresa}</strong>. Ve a la pestaña "Gestión de Conceptos" para agregarlos.</p>
                   ) : (
-                    <div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-                        <div style={cardStyle}>
-                          <p style={{ color: '#6B6458', fontSize: '0.8rem', margin: '0 0 0.5rem 0' }}>Total Presupuestado</p>
-                          <h3 style={{ color: '#221E15', margin: 0 }}>{formatMoney(presupuestoMensualTotales.totalPresupuestado, filtroPresupuesto.empresa)}</h3>
+                    <div className="flex flex-col gap-4">
+                      <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]">
+                        <div className={claseRecuadro}>
+                          <p className="m-0 mb-2 text-xs text-muted-foreground">Total Presupuestado</p>
+                          <p className="m-0 text-xl font-extrabold">{formatMoney(presupuestoMensualTotales.totalPresupuestado, filtroPresupuesto.empresa)}</p>
                         </div>
-                        <div style={{ ...cardStyle, borderLeft: '4px solid #2F9E52' }}>
-                          <p style={{ color: '#6B6458', fontSize: '0.8rem', margin: '0 0 0.5rem 0' }}>Pagado ({presupuestoMensualTotales.itemsPagados})</p>
-                          <h3 style={{ color: '#2F9E52', margin: 0 }}>{formatMoney(presupuestoMensualTotales.totalPagado, filtroPresupuesto.empresa)}</h3>
-                          <p style={{ color: '#6B6458', fontSize: '0.75rem', margin: '0.35rem 0 0 0' }}>{presupuestoMensualTotales.totalPresupuestado > 0 ? ((presupuestoMensualTotales.totalPagado / presupuestoMensualTotales.totalPresupuestado) * 100).toFixed(1) : '0.0'}%</p>
+                        <div className={cn(claseRecuadro, 'border-l-4 border-l-success')}>
+                          <p className="m-0 mb-2 text-xs text-muted-foreground">Pagado ({presupuestoMensualTotales.itemsPagados})</p>
+                          <p className="m-0 text-xl font-extrabold text-success">{formatMoney(presupuestoMensualTotales.totalPagado, filtroPresupuesto.empresa)}</p>
+                          <p className="m-0 mt-1 text-xs text-muted-foreground">{presupuestoMensualTotales.totalPresupuestado > 0 ? ((presupuestoMensualTotales.totalPagado / presupuestoMensualTotales.totalPresupuestado) * 100).toFixed(1) : '0.0'}%</p>
                         </div>
-                        <div style={{ ...cardStyle, borderLeft: '4px solid #CC4B4B' }}>
-                          <p style={{ color: '#6B6458', fontSize: '0.8rem', margin: '0 0 0.5rem 0' }}>Pendiente ({presupuestoMensualTotales.itemsPendientes})</p>
-                          <h3 style={{ color: '#CC4B4B', margin: 0 }}>{formatMoney(presupuestoMensualTotales.totalPendiente, filtroPresupuesto.empresa)}</h3>
-                          <p style={{ color: '#6B6458', fontSize: '0.75rem', margin: '0.35rem 0 0 0' }}>{presupuestoMensualTotales.totalPresupuestado > 0 ? ((presupuestoMensualTotales.totalPendiente / presupuestoMensualTotales.totalPresupuestado) * 100).toFixed(1) : '0.0'}%</p>
+                        <div className={cn(claseRecuadro, 'border-l-4 border-l-destructive')}>
+                          <p className="m-0 mb-2 text-xs text-muted-foreground">Pendiente ({presupuestoMensualTotales.itemsPendientes})</p>
+                          <p className="m-0 text-xl font-extrabold text-destructive">{formatMoney(presupuestoMensualTotales.totalPendiente, filtroPresupuesto.empresa)}</p>
+                          <p className="m-0 mt-1 text-xs text-muted-foreground">{presupuestoMensualTotales.totalPresupuestado > 0 ? ((presupuestoMensualTotales.totalPendiente / presupuestoMensualTotales.totalPresupuestado) * 100).toFixed(1) : '0.0'}%</p>
                         </div>
                         {presupuestoMensualTotales.totalDeducciones > 0 && (
-                          <div style={{ ...cardStyle, borderLeft: '4px solid #3B72D9' }}>
-                            <p style={{ color: '#6B6458', fontSize: '0.8rem', margin: '0 0 0.5rem 0' }}>Neto a Pagar</p>
-                            <h3 style={{ color: '#3B72D9', margin: 0 }}>{formatMoney(presupuestoMensualTotales.totalNeto, filtroPresupuesto.empresa)}</h3>
-                            <p style={{ color: '#6B6458', fontSize: '0.75rem', margin: '0.35rem 0 0 0' }}>−{formatMoney(presupuestoMensualTotales.totalDeducciones, filtroPresupuesto.empresa)} en deducciones</p>
+                          <div className={cn(claseRecuadro, 'border-l-4 border-l-chart-3')}>
+                            <p className="m-0 mb-2 text-xs text-muted-foreground">Neto a Pagar</p>
+                            <p className="m-0 text-xl font-extrabold text-chart-3">{formatMoney(presupuestoMensualTotales.totalNeto, filtroPresupuesto.empresa)}</p>
+                            <p className="m-0 mt-1 text-xs text-muted-foreground">−{formatMoney(presupuestoMensualTotales.totalDeducciones, filtroPresupuesto.empresa)} en deducciones</p>
                           </div>
                         )}
                       </div>
 
-                      <div style={{ width: '100%', height: '10px', backgroundColor: '#E6E0D2', borderRadius: '6px', overflow: 'hidden', marginBottom: '1.5rem' }}>
-                        <div style={{ width: `${presupuestoMensualTotales.totalPresupuestado > 0 ? (presupuestoMensualTotales.totalPagado / presupuestoMensualTotales.totalPresupuestado) * 100 : 0}%`, height: '100%', backgroundColor: '#2F9E52' }} />
+                      <div className="h-2.5 w-full overflow-hidden rounded-full bg-border">
+                        <div className="h-full bg-success" style={{ width: `${presupuestoMensualTotales.totalPresupuestado > 0 ? (presupuestoMensualTotales.totalPagado / presupuestoMensualTotales.totalPresupuestado) * 100 : 0}%` }} />
                       </div>
 
                       {puedeEditarPresupuesto && presupuestoMensualTotales.itemsPendientes > 0 && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-                          <button onClick={() => setConfirmarPagoLotePresupuesto({ items: presupuestoMensualDetalle.filter(i => seleccionPresupuestoValida.includes(i.id)), cuenta: '', fecha: new Date().toISOString().split('T')[0], comprobantes: {} })} disabled={seleccionPresupuestoValida.length === 0} style={{ padding: '0.6rem 1.25rem', backgroundColor: seleccionPresupuestoValida.length === 0 ? '#D8D2C2' : '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: seleccionPresupuestoValida.length === 0 ? 'not-allowed' : 'pointer', fontSize: '0.85rem' }}>
-                            ✅ Marcar Pagado {seleccionPresupuestoValida.length > 0 ? `(${seleccionPresupuestoValida.length})` : ''}
-                          </button>
-                          <span style={{ color: '#8F8877', fontSize: '0.8rem' }}>Marca las casillas de los conceptos que ya pagaste para registrarlos juntos en Finanzas.</span>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <Button onClick={() => setConfirmarPagoLotePresupuesto({ items: presupuestoMensualDetalle.filter(i => seleccionPresupuestoValida.includes(i.id)), cuenta: '', fecha: new Date().toISOString().split('T')[0], comprobantes: {} })} disabled={seleccionPresupuestoValida.length === 0}>
+                            <Check size={16} /> Marcar Pagado {seleccionPresupuestoValida.length > 0 ? `(${seleccionPresupuestoValida.length})` : ''}
+                          </Button>
+                          <span className="text-xs text-muted-foreground">Marca las casillas de los conceptos que ya pagaste para registrarlos juntos en Finanzas.</span>
                         </div>
                       )}
                       {(() => {
@@ -9552,115 +9560,113 @@ const App = () => {
                         const pendientesTotales = presupuestoMensualDetalle.filter(i => !i.pagado).length;
                         if (pendientesTotales === 0) return null;
                         return (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '0.75rem 1rem' }}>
-                            <span style={{ color: '#221E15', fontSize: '0.85rem' }}>
+                          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-solid border-border bg-background px-4 py-3">
+                            <span className="text-sm">
                               👍 Aprobación del mes: <strong>{aprobados}</strong> de <strong>{pendientesTotales}</strong> pendientes aprobados
-                              {sinAprobar.some(i => i.aprobacionDesactualizada) && <span style={{ color: '#C4622D' }}> · ⚠️ {sinAprobar.filter(i => i.aprobacionDesactualizada).length} requieren reaprobar</span>}
-                              {bloqueadosCC > 0 && <span style={{ color: '#8F8877' }}> · 🔒 {bloqueadosCC} honorario(s) esperan su cuenta de cobro aprobada</span>}
+                              {sinAprobar.some(i => i.aprobacionDesactualizada) && <span className="text-[#C4622D]"> · ⚠️ {sinAprobar.filter(i => i.aprobacionDesactualizada).length} requieren reaprobar</span>}
+                              {bloqueadosCC > 0 && <span className="text-muted-foreground"> · 🔒 {bloqueadosCC} honorario(s) esperan su cuenta de cobro aprobada</span>}
                             </span>
                             {puedeEditarPresupuesto && aprobables.length > 0 && (
-                              <button disabled={guardandoAprobacionPresupuesto} onClick={() => handleAprobarPresupuesto(sinAprobar)} style={{ padding: '0.5rem 1rem', backgroundColor: '#2F9E52', color: '#FFFFFF', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoAprobacionPresupuesto ? 'wait' : 'pointer', opacity: guardandoAprobacionPresupuesto ? 0.6 : 1 }}>
+                              <Button variant="success" size="sm" disabled={guardandoAprobacionPresupuesto} onClick={() => handleAprobarPresupuesto(sinAprobar)} className={cn(guardandoAprobacionPresupuesto && 'cursor-wait')}>
                                 👍 Aprobar {aprobables.length === 1 ? 'el pendiente' : `los ${aprobables.length} pendientes`} del mes
-                              </button>
+                              </Button>
                             )}
-                            <span style={{ color: '#8F8877', fontSize: '0.75rem' }}>Solo lo aprobado se podrá exportar al banco. Si cambia el valor o una deducción, hay que volver a aprobar.</span>
+                            <span className="text-xs text-muted-foreground">Solo lo aprobado se podrá exportar al banco. Si cambia el valor o una deducción, hay que volver a aprobar.</span>
                           </div>
                         );
                       })()}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-                        <label style={{ color: '#6B6458', fontSize: '0.8rem' }}>Mostrar:</label>
-                        <select value={filtroEstadoMensual} onChange={(e) => setFiltroEstadoMensual(e.target.value)} style={{ padding: '0.5rem 0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', fontSize: '0.85rem' }}>
-                          <option value="todos">Todos ({presupuestoMensualDetalle.length})</option>
-                          <option value="pendientes">Solo Pendientes ({presupuestoMensualTotales.itemsPendientes})</option>
-                          <option value="pagados">Solo Pagados ({presupuestoMensualTotales.itemsPagados})</option>
-                        </select>
+                      <div className="flex items-center gap-3">
+                        <Label htmlFor="pp-mostrar" className="font-normal">Mostrar:</Label>
+                        <div className="w-60">
+                          <Select id="pp-mostrar" value={filtroEstadoMensual} onChange={(e) => setFiltroEstadoMensual(e.target.value)}>
+                            <option value="todos">Todos ({presupuestoMensualDetalle.length})</option>
+                            <option value="pendientes">Solo Pendientes ({presupuestoMensualTotales.itemsPendientes})</option>
+                            <option value="pagados">Solo Pagados ({presupuestoMensualTotales.itemsPagados})</option>
+                          </Select>
+                        </div>
                       </div>
-                      <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                          <thead>
-                            <tr style={{ borderBottom: '2px solid #E6E0D2' }}>
-                              {puedeEditarPresupuesto && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}></th>}
-                              <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Concepto</th>
-                              <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
-                              <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>
-                              <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor del Mes</th>
-                              <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Deducciones</th>
-                              <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Neto a Pagar</th>
-                              <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Día Límite</th>
-                              <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
-                              <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Aprobación</th>
-                            </tr>
-                          </thead>
-                          <tbody>
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="hover:bg-transparent">
+                            {puedeEditarPresupuesto && <TableHead className="text-center"></TableHead>}
+                            <TableHead>Concepto</TableHead>
+                            <TableHead>CECO</TableHead>
+                            <TableHead>Colaborador</TableHead>
+                            <TableHead className="text-right">Valor del Mes</TableHead>
+                            <TableHead className="text-right">Deducciones</TableHead>
+                            <TableHead className="text-right">Neto a Pagar</TableHead>
+                            <TableHead className="text-center">Día Límite</TableHead>
+                            <TableHead className="text-center">Estado</TableHead>
+                            <TableHead className="text-center">Aprobación</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
                             {presupuestoMensualFiltrado.map(item => (
-                              <tr key={item.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                              <TableRow key={item.id}>
                                 {puedeEditarPresupuesto && (
-                                  <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                                  <TableCell className="text-center">
                                     {!item.pagado && (
-                                      <input type="checkbox" checked={seleccionPresupuestoValida.includes(item.id)} onChange={(e) => {
+                                      <input type="checkbox" aria-label={`Seleccionar ${item.nombre}`} className={claseCheckbox} checked={seleccionPresupuestoValida.includes(item.id)} onChange={(e) => {
                                         setSeleccionPresupuestoPendientes(prev => e.target.checked ? [...prev, item.id] : prev.filter(id => id !== item.id));
                                       }} />
                                     )}
-                                  </td>
+                                  </TableCell>
                                 )}
-                                <td style={{ padding: '0.75rem', color: '#221E15' }}>{item.nombre}</td>
-                                <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{cecos.find(c => c.codigo === item.ceco)?.nombre || item.ceco}</td>
-                                <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{item.responsableNombre || '—'}</td>
-                                <td style={{ padding: '0.75rem', textAlign: 'right', color: '#221E15' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.4rem' }}>
+                                <TableCell className="min-w-[160px]">{item.nombre}</TableCell>
+                                <TableCell className="text-xs text-muted-foreground">{cecos.find(c => c.codigo === item.ceco)?.nombre || item.ceco}</TableCell>
+                                <TableCell className="text-xs text-muted-foreground">{item.responsableNombre || '—'}</TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
                                     {item.esValorReal ? (
-                                      <span title="Valor real ingresado al registrar el pago en Finanzas" style={{ fontSize: '0.7rem', color: '#2F9E52' }}>💰 real</span>
-                                    ) : (item.ajustado && <span title={`Valor base: ${formatMoney(item.valorMensual, item.empresa)}`} style={{ fontSize: '0.7rem', color: '#3B72D9' }}>✏️ ajustado</span>)}
+                                      <span title="Valor real ingresado al registrar el pago en Finanzas" className="text-[0.7rem] text-success">💰 real</span>
+                                    ) : (item.ajustado && <span title={`Valor base: ${formatMoney(item.valorMensual, item.empresa)}`} className="text-[0.7rem] text-chart-3">✏️ ajustado</span>)}
                                     {formatMoney(item.valorEsperado, filtroPresupuesto.empresa)}
                                     {puedeEditarPresupuesto && !item.esValorReal && (
-                                      <button onClick={() => handleEditarValorMes(item)} title="Ajustar el valor ESTIMADO de este mes (deja de usarse en cuanto se registre el pago real en Finanzas)" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '0.85rem' }}>✏️</button>
+                                      <Button variant="ghost" size="icon" onClick={() => handleEditarValorMes(item)} title="Ajustar el valor ESTIMADO de este mes (deja de usarse en cuanto se registre el pago real en Finanzas)" aria-label="Ajustar valor del mes" className="size-7 text-[#6C63D1]"><Pencil size={14} /></Button>
                                     )}
                                   </div>
-                                </td>
-                                <td style={{ padding: '0.75rem', textAlign: 'right', color: item.totalDeducciones > 0 ? '#CC4B4B' : '#AFA897' }}>
+                                </TableCell>
+                                <TableCell className={cn('whitespace-nowrap text-right', item.totalDeducciones > 0 ? 'text-destructive' : 'text-muted-foreground')}>
                                   {item.totalDeducciones > 0 ? `−${formatMoney(item.totalDeducciones, filtroPresupuesto.empresa)}` : '—'}
-                                </td>
-                                <td style={{ padding: '0.75rem', textAlign: 'right', color: '#221E15', fontWeight: item.totalDeducciones > 0 ? 'bold' : 'normal' }}>
+                                </TableCell>
+                                <TableCell className={cn('whitespace-nowrap text-right', item.totalDeducciones > 0 && 'font-bold')}>
                                   {formatMoney(item.netoAPagar, filtroPresupuesto.empresa)}
-                                </td>
-                                <td style={{ padding: '0.75rem', textAlign: 'center', color: '#6B6458' }}>{item.diaLimitePago || '-'}</td>
-                                <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                                  <span style={{ padding: '0.3rem 0.75rem', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold', backgroundColor: item.pagado ? 'rgba(47,158,82,0.12)' : 'rgba(204,75,75,0.12)', color: item.pagado ? '#2F9E52' : '#CC4B4B' }}>
-                                    {item.pagado ? '✅ Pagado' : '⏳ Pendiente'}
-                                  </span>
-                                </td>
-                                <td style={{ padding: '0.75rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                </TableCell>
+                                <TableCell className="text-center text-muted-foreground">{item.diaLimitePago || '-'}</TableCell>
+                                <TableCell className="text-center">
+                                  <Badge variant={item.pagado ? 'success' : 'destructive'}>{item.pagado ? '✅ Pagado' : '⏳ Pendiente'}</Badge>
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap text-center">
                                   {item.pagado ? (
-                                    <span style={{ color: '#AFA897' }}>—</span>
+                                    <span className="text-muted-foreground">—</span>
                                   ) : item.aprobado ? (
-                                    <span title={item.aprobacion?.aprobadoAt ? `Aprobado el ${new Date(item.aprobacion.aprobadoAt).toLocaleDateString('es-CO')}` : ''} style={{ color: '#2F9E52', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                                    <span title={item.aprobacion?.aprobadoAt ? `Aprobado el ${new Date(item.aprobacion.aprobadoAt).toLocaleDateString('es-CO')}` : ''} className="inline-flex flex-wrap items-center justify-center text-xs font-bold text-success">
                                       👍 Aprobado
-                                      {lotePorClave[`presupuesto:${item.id}:${filtroPresupuesto.anio}-${filtroPresupuesto.mes}`] && <span style={{ display: 'block', color: '#3B72D9', fontSize: '0.7rem' }}>📤 Exportado · lote #{lotePorClave[`presupuesto:${item.id}:${filtroPresupuesto.anio}-${filtroPresupuesto.mes}`]}</span>}
-                                      {puedeEditarPresupuesto && <button onClick={() => handleQuitarAprobacionPresupuesto(item)} title="Quitar aprobación" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#AFA897', marginLeft: '0.3rem' }}>✕</button>}
+                                      {puedeEditarPresupuesto && <Button variant="ghost" size="icon" onClick={() => handleQuitarAprobacionPresupuesto(item)} title="Quitar aprobación" aria-label="Quitar aprobación" className="ml-0.5 size-6 text-muted-foreground"><X size={13} /></Button>}
+                                      {lotePorClave[`presupuesto:${item.id}:${filtroPresupuesto.anio}-${filtroPresupuesto.mes}`] && <span className="block w-full text-[0.7rem] text-chart-3">📤 Exportado · lote #{lotePorClave[`presupuesto:${item.id}:${filtroPresupuesto.anio}-${filtroPresupuesto.mes}`]}</span>}
                                     </span>
                                   ) : !item.requisitoCuentaCobro?.ok ? (
-                                    <span style={{ color: '#8F8877', fontSize: '0.75rem' }} title="Los honorarios se aprueban solo cuando la Cuenta de Cobro del mes está Aprobada">
+                                    <span className="text-xs text-muted-foreground" title="Los honorarios se aprueban solo cuando la Cuenta de Cobro del mes está Aprobada">
                                       🔒 {item.requisitoCuentaCobro.motivo}
                                     </span>
                                   ) : item.aprobacionDesactualizada ? (
-                                    <span style={{ color: '#C4622D', fontSize: '0.75rem' }} title={`Aprobado por ${formatMoney(item.aprobacion.valorNeto, filtroPresupuesto.empresa)}; el neto actual es otro`}>
+                                    <span className="inline-flex items-center gap-1.5 text-xs text-[#C4622D]" title={`Aprobado por ${formatMoney(item.aprobacion.valorNeto, filtroPresupuesto.empresa)}; el neto actual es otro`}>
                                       ⚠️ Cambió el valor
-                                      {puedeEditarPresupuesto && <button disabled={guardandoAprobacionPresupuesto} onClick={() => handleAprobarPresupuesto([item])} style={{ marginLeft: '0.4rem', padding: '0.2rem 0.5rem', backgroundColor: '#C4622D', color: '#FFFFFF', border: 'none', borderRadius: '3px', fontSize: '0.7rem', cursor: 'pointer' }}>Reaprobar</button>}
+                                      {puedeEditarPresupuesto && <Button size="sm" disabled={guardandoAprobacionPresupuesto} onClick={() => handleAprobarPresupuesto([item])} className="h-6 bg-[#C4622D] px-2 text-[0.7rem] text-white hover:bg-[#C4622D]/90">Reaprobar</Button>}
                                     </span>
                                   ) : puedeEditarPresupuesto && item.netoAPagar > 0 ? (
-                                    <button disabled={guardandoAprobacionPresupuesto} onClick={() => handleAprobarPresupuesto([item])} style={{ padding: '0.25rem 0.6rem', backgroundColor: '#FFFFFF', color: '#2F9E52', border: '1px solid #2F9E52', borderRadius: '3px', fontSize: '0.75rem', cursor: 'pointer' }}>Aprobar</button>
+                                    <Button variant="outline" size="sm" disabled={guardandoAprobacionPresupuesto} onClick={() => handleAprobarPresupuesto([item])} className="h-7 border-success text-success">Aprobar</Button>
                                   ) : (
-                                    <span style={{ color: '#8F8877', fontSize: '0.75rem' }}>Sin aprobar</span>
+                                    <span className="text-xs text-muted-foreground">Sin aprobar</span>
                                   )}
-                                </td>
-                              </tr>
+                                </TableCell>
+                              </TableRow>
                             ))}
                             {presupuestoMensualFiltrado.length === 0 && (
-                              <tr><td colSpan={puedeEditarPresupuesto ? 10 : 9} style={{ padding: '1.5rem', textAlign: 'center', color: '#8F8877', fontSize: '0.85rem' }}>No hay conceptos {filtroEstadoMensual === 'pagados' ? 'pagados' : 'pendientes'} este mes.</td></tr>
+                              <TableRow className="hover:bg-transparent"><TableCell colSpan={puedeEditarPresupuesto ? 10 : 9} className="py-8 text-center text-sm text-muted-foreground">No hay conceptos {filtroEstadoMensual === 'pagados' ? 'pagados' : 'pendientes'} este mes.</TableCell></TableRow>
                             )}
-                          </tbody>
-                        </table>
-                      </div>
+                        </TableBody>
+                      </Table>
                     </div>
                   )
                 )}
@@ -9669,96 +9675,107 @@ const App = () => {
                 {presupuestoTab === 'deducciones' && user.rol !== 'Gerente' && (() => {
                   const deduccionesEmpresa = deducciones.filter(d => presupuestoItems.find(p => p.id === d.presupuestoItemId)?.empresa === filtroPresupuesto.empresa);
                   return (
-                  <div>
-                    <h3 style={{ color: '#221E15', margin: '0 0 0.5rem 0' }}>Deducciones — Préstamos y Otros Descuentos</h3>
-                    <p style={{ color: '#6B6458', fontSize: '0.85rem', marginBottom: '1.5rem' }}>Se restan del valor del mes del concepto seleccionado y se ven reflejadas como "Neto a Pagar" en la pestaña Mensual. Un préstamo deja de descontarse automáticamente en cuanto su saldo llega a $0 — no hace falta desactivarlo a mano.</p>
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <h3 className="m-0 mb-1 text-base font-bold">Deducciones — Préstamos y Otros Descuentos</h3>
+                      <p className="m-0 text-sm text-muted-foreground">Se restan del valor del mes del concepto seleccionado y se ven reflejadas como "Neto a Pagar" en la pestaña Mensual. Un préstamo deja de descontarse automáticamente en cuanto su saldo llega a $0 — no hace falta desactivarlo a mano.</p>
+                    </div>
 
                     {puedeEditarPresupuesto && (
-                      <div style={{ ...cardStyle, marginBottom: '1.5rem' }}>
-                        <h4 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>{editingDeduccionId ? '✏️ Editar Deducción' : '➕ Nueva Deducción'}</h4>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                          <select value={newDeduccion.presupuestoItemId} onChange={(e) => setNewDeduccion({...newDeduccion, presupuestoItemId: e.target.value || ''})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
-                            <option value="">-- Selecciona persona/concepto --</option>
-                            {presupuestoItems.filter(p => p.empresa === filtroPresupuesto.empresa).map(p => (
-                              <option key={p.id} value={p.id}>{p.nombre}</option>
-                            ))}
-                          </select>
-                          <select value={newDeduccion.tipo} onChange={(e) => setNewDeduccion({...newDeduccion, tipo: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
-                            <option value="Préstamo">Préstamo</option>
-                            <option value="Seguridad Social (PS)">Seguridad Social (PS)</option>
-                            <option value="Otro">Otro descuento (recurrente)</option>
-                          </select>
-                          <div>
-                            <label style={{ display: 'block', color: '#6B6458', fontSize: '0.75rem', marginBottom: '0.3rem' }}>Empieza a descontar desde</label>
-                            <input type="date" value={newDeduccion.fechaInicio} onChange={(e) => setNewDeduccion({...newDeduccion, fechaInicio: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
-                          </div>
-                          <input type="number" placeholder="Valor de la cuota mensual" value={newDeduccion.valorCuota} onChange={(e) => setNewDeduccion({...newDeduccion, valorCuota: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
+                      <div className={cn(claseRecuadro, 'flex flex-col gap-4')}>
+                        <h4 className="m-0 text-sm font-bold">{editingDeduccionId ? '✏️ Editar Deducción' : 'Nueva Deducción'}</h4>
+                        <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+                          <CampoUI label="Persona / Concepto" htmlFor="ded-item">
+                            <Select id="ded-item" value={newDeduccion.presupuestoItemId} onChange={(e) => setNewDeduccion({...newDeduccion, presupuestoItemId: e.target.value || ''})}>
+                              <option value="">-- Selecciona persona/concepto --</option>
+                              {presupuestoItems.filter(p => p.empresa === filtroPresupuesto.empresa).map(p => (
+                                <option key={p.id} value={p.id}>{p.nombre}</option>
+                              ))}
+                            </Select>
+                          </CampoUI>
+                          <CampoUI label="Tipo" htmlFor="ded-tipo">
+                            <Select id="ded-tipo" value={newDeduccion.tipo} onChange={(e) => setNewDeduccion({...newDeduccion, tipo: e.target.value})}>
+                              <option value="Préstamo">Préstamo</option>
+                              <option value="Seguridad Social (PS)">Seguridad Social (PS)</option>
+                              <option value="Otro">Otro descuento (recurrente)</option>
+                            </Select>
+                          </CampoUI>
+                          <CampoUI label="Empieza a descontar desde" htmlFor="ded-inicio">
+                            <Input id="ded-inicio" type="date" value={newDeduccion.fechaInicio} onChange={(e) => setNewDeduccion({...newDeduccion, fechaInicio: e.target.value})} />
+                          </CampoUI>
+                          <CampoUI label="Cuota mensual" htmlFor="ded-cuota">
+                            <Input id="ded-cuota" type="number" placeholder="Valor de la cuota mensual" value={newDeduccion.valorCuota} onChange={(e) => setNewDeduccion({...newDeduccion, valorCuota: e.target.value})} />
+                          </CampoUI>
                           {newDeduccion.tipo === 'Préstamo' && (
-                            <input type="number" placeholder="Saldo total del préstamo" value={newDeduccion.saldoTotal} onChange={(e) => setNewDeduccion({...newDeduccion, saldoTotal: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
+                            <CampoUI label="Saldo total del préstamo" htmlFor="ded-saldo">
+                              <Input id="ded-saldo" type="number" placeholder="Saldo total del préstamo" value={newDeduccion.saldoTotal} onChange={(e) => setNewDeduccion({...newDeduccion, saldoTotal: e.target.value})} />
+                            </CampoUI>
                           )}
                         </div>
-                        <input type="text" placeholder="Observaciones (opcional)" value={newDeduccion.observaciones} onChange={(e) => setNewDeduccion({...newDeduccion, observaciones: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF', width: '100%', boxSizing: 'border-box', marginBottom: '1rem' }} />
-                        <div style={{ display: 'flex', gap: '1rem' }}>
-                          <button onClick={handleAddDeduccion} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
-                            {editingDeduccionId ? 'Guardar Cambios' : '+ Agregar Deducción'}
-                          </button>
+                        <CampoUI label="Observaciones" htmlFor="ded-obs">
+                          <Input id="ded-obs" type="text" placeholder="Observaciones (opcional)" value={newDeduccion.observaciones} onChange={(e) => setNewDeduccion({...newDeduccion, observaciones: e.target.value})} />
+                        </CampoUI>
+                        <div className="flex gap-3">
+                          <Button onClick={handleAddDeduccion}>
+                            {editingDeduccionId ? 'Guardar Cambios' : <><Plus size={16} /> Agregar Deducción</>}
+                          </Button>
                           {editingDeduccionId && (
-                            <button onClick={handleCancelEditDeduccion} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Cancelar</button>
+                            <Button variant="outline" onClick={handleCancelEditDeduccion}>Cancelar</Button>
                           )}
                         </div>
                       </div>
                     )}
 
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead>
-                          <tr style={{ borderBottom: '2px solid #E6E0D2' }}>
-                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Persona / Concepto</th>
-                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Cuota Mensual</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Saldo Total</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Saldo Pendiente ({filtroPresupuesto.mes}/{filtroPresupuesto.anio})</th>
-                            <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
-                            {puedeEditarPresupuesto && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
-                          </tr>
-                        </thead>
-                        <tbody>
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead>Persona / Concepto</TableHead>
+                          <TableHead>Tipo</TableHead>
+                          <TableHead className="text-right">Cuota Mensual</TableHead>
+                          <TableHead className="text-right">Saldo Total</TableHead>
+                          <TableHead className="text-right">Saldo Pendiente ({filtroPresupuesto.mes}/{filtroPresupuesto.anio})</TableHead>
+                          <TableHead className="text-center">Estado</TableHead>
+                          {puedeEditarPresupuesto && <TableHead className="text-center">Acción</TableHead>}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
                           {deduccionesEmpresa.length === 0 ? (
-                            <tr><td colSpan={puedeEditarPresupuesto ? 7 : 6} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin deducciones cargadas para {filtroPresupuesto.empresa}.</td></tr>
+                            <TableRow className="hover:bg-transparent"><TableCell colSpan={puedeEditarPresupuesto ? 7 : 6} className="py-8 text-center text-muted-foreground">Sin deducciones cargadas para {filtroPresupuesto.empresa}.</TableCell></TableRow>
                           ) : deduccionesEmpresa.map(d => {
                             const item = presupuestoItems.find(p => p.id === d.presupuestoItemId);
                             const saldoPendiente = getSaldoPendienteEnMes(d, filtroPresupuesto.anio, filtroPresupuesto.mes);
                             const transcurridos = mesesTranscurridos(d.fechaInicio, filtroPresupuesto.anio, filtroPresupuesto.mes);
                             const pagado = d.tipo === 'Préstamo' && transcurridos >= 0 && saldoPendiente === 0;
                             return (
-                              <tr key={d.id} style={{ borderBottom: '1px solid #E6E0D2', opacity: d.activo === false ? 0.5 : 1 }}>
-                                <td style={{ padding: '0.75rem', color: '#221E15' }}>{item?.nombre || '(concepto eliminado)'}</td>
-                                <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{d.tipo}</td>
-                                <td style={{ padding: '0.75rem', textAlign: 'right', color: '#221E15' }}>{formatMoney(d.valorCuota, filtroPresupuesto.empresa)}</td>
-                                <td style={{ padding: '0.75rem', textAlign: 'right', color: '#6B6458' }}>{d.tipo === 'Préstamo' ? formatMoney(d.saldoTotal, filtroPresupuesto.empresa) : '-'}</td>
-                                <td style={{ padding: '0.75rem', textAlign: 'right', color: pagado ? '#2F9E52' : '#221E15', fontWeight: 'bold' }}>{d.tipo === 'Préstamo' ? formatMoney(saldoPendiente, filtroPresupuesto.empresa) : '-'}</td>
-                                <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                              <TableRow key={d.id} className={cn(d.activo === false && 'opacity-50')}>
+                                <TableCell>{item?.nombre || '(concepto eliminado)'}</TableCell>
+                                <TableCell className="text-xs text-muted-foreground">{d.tipo}</TableCell>
+                                <TableCell className="whitespace-nowrap text-right">{formatMoney(d.valorCuota, filtroPresupuesto.empresa)}</TableCell>
+                                <TableCell className="whitespace-nowrap text-right text-muted-foreground">{d.tipo === 'Préstamo' ? formatMoney(d.saldoTotal, filtroPresupuesto.empresa) : '-'}</TableCell>
+                                <TableCell className={cn('whitespace-nowrap text-right font-bold', pagado && 'text-success')}>{d.tipo === 'Préstamo' ? formatMoney(saldoPendiente, filtroPresupuesto.empresa) : '-'}</TableCell>
+                                <TableCell className="text-center">
                                   {d.activo === false ? (
-                                    <span style={{ color: '#AFA897', fontSize: '0.8rem' }}>Inactiva</span>
+                                    <Badge variant="muted">Inactiva</Badge>
                                   ) : pagado ? (
-                                    <span style={{ color: '#2F9E52', fontSize: '0.8rem', fontWeight: 'bold' }}>✅ Pagado</span>
+                                    <Badge variant="success">✅ Pagado</Badge>
                                   ) : (
-                                    <span style={{ color: '#3B72D9', fontSize: '0.8rem', fontWeight: 'bold' }}>Activa</span>
+                                    <Badge variant="info">Activa</Badge>
                                   )}
-                                </td>
+                                </TableCell>
                                 {puedeEditarPresupuesto && (
-                                  <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                                    <button onClick={() => handleEditDeduccion(d)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.5rem' }}>✏️</button>
-                                    <button onClick={() => handleToggleDeduccionActivo(d.id)} title={d.activo === false ? 'Reactivar' : 'Desactivar'} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#D6A419', fontSize: '1rem', marginRight: '0.5rem' }}>{d.activo === false ? '▶️' : '⏸️'}</button>
-                                    <button onClick={() => handleDeleteDeduccion(d.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
-                                  </td>
+                                  <TableCell>
+                                    <div className="flex items-center justify-center">
+                                      <Button variant="ghost" size="icon" onClick={() => handleEditDeduccion(d)} title="Editar" aria-label="Editar" className="text-[#6C63D1]"><Pencil size={16} /></Button>
+                                      <Button variant="ghost" size="icon" onClick={() => handleToggleDeduccionActivo(d.id)} title={d.activo === false ? 'Reactivar' : 'Desactivar'} aria-label={d.activo === false ? 'Reactivar' : 'Desactivar'} className="text-[#8A6A0C]">{d.activo === false ? <Play size={16} /> : <Pause size={16} />}</Button>
+                                      <Button variant="ghost" size="icon" onClick={() => handleDeleteDeduccion(d.id)} title="Eliminar" aria-label="Eliminar" className="text-destructive"><Trash2 size={16} /></Button>
+                                    </div>
+                                  </TableCell>
                                 )}
-                              </tr>
+                              </TableRow>
                             );
                           })}
-                        </tbody>
-                      </table>
-                    </div>
+                      </TableBody>
+                    </Table>
                   </div>
                   );
                 })()}
@@ -9766,197 +9783,213 @@ const App = () => {
                 {/* ===== TAB ANUAL ===== */}
                 {presupuestoTab === 'anual' && (
                   presupuestoAnualDetalle.length === 0 ? (
-                    <p style={{ color: '#6B6458' }}>Aún no hay techos anuales cargados para <strong>{filtroPresupuesto.empresa}</strong> en {filtroPresupuesto.anio}. Ve a la pestaña "Gestión de Conceptos" para agregarlos.</p>
+                    <p className="m-0 text-muted-foreground">Aún no hay techos anuales cargados para <strong>{filtroPresupuesto.empresa}</strong> en {filtroPresupuesto.anio}. Ve a la pestaña "Gestión de Conceptos" para agregarlos.</p>
                   ) : (
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead>
-                          <tr style={{ borderBottom: '2px solid #E6E0D2' }}>
-                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Presupuesto Anual</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Ejecutado</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Falta por Cubrir</th>
-                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747', width: '220px' }}>% Ejecutado</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead>CECO</TableHead>
+                          <TableHead className="text-right">Presupuesto Anual</TableHead>
+                          <TableHead className="text-right">Ejecutado</TableHead>
+                          <TableHead className="text-right">Falta por Cubrir</TableHead>
+                          <TableHead className="w-[220px]">% Ejecutado</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
                           {presupuestoAnualDetalle.map(c => {
                             const pct = c.porcentaje === null ? 0 : Math.min(c.porcentaje, 100);
                             const colorBarra = c.porcentaje === null ? '#AFA897' : c.porcentaje >= 100 ? '#CC4B4B' : c.porcentaje >= 80 ? '#D6A419' : '#2F9E52';
                             return (
-                              <tr key={c.codigo} style={{ borderBottom: '1px solid #E6E0D2' }}>
-                                <td style={{ padding: '0.75rem', color: '#221E15' }}>{c.nombre}</td>
-                                <td style={{ padding: '0.75rem', textAlign: 'right', color: '#221E15' }}>{c.valorAnual > 0 ? formatMoney(c.valorAnual, filtroPresupuesto.empresa) : '-'}</td>
-                                <td style={{ padding: '0.75rem', textAlign: 'right', color: '#6B6458' }}>{formatMoney(c.ejecutado, filtroPresupuesto.empresa)}</td>
-                                <td style={{ padding: '0.75rem', textAlign: 'right', color: c.restante < 0 ? '#CC4B4B' : '#221E15', fontWeight: c.restante < 0 ? 'bold' : 'normal' }}>{c.valorAnual > 0 ? formatMoney(c.restante, filtroPresupuesto.empresa) : '-'}</td>
-                                <td style={{ padding: '0.75rem' }}>
+                              <TableRow key={c.codigo}>
+                                <TableCell className="min-w-[160px]">{c.nombre}</TableCell>
+                                <TableCell className="whitespace-nowrap text-right">{c.valorAnual > 0 ? formatMoney(c.valorAnual, filtroPresupuesto.empresa) : '-'}</TableCell>
+                                <TableCell className="whitespace-nowrap text-right text-muted-foreground">{formatMoney(c.ejecutado, filtroPresupuesto.empresa)}</TableCell>
+                                <TableCell className={cn('whitespace-nowrap text-right', c.restante < 0 && 'font-bold text-destructive')}>{c.valorAnual > 0 ? formatMoney(c.restante, filtroPresupuesto.empresa) : '-'}</TableCell>
+                                <TableCell className="min-w-[180px]">
                                   {c.porcentaje === null ? (
-                                    <span style={{ color: '#AFA897', fontSize: '0.8rem' }}>Sin techo cargado</span>
+                                    <span className="text-xs text-muted-foreground">Sin techo cargado</span>
                                   ) : (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                      <div style={{ flex: 1, height: '8px', backgroundColor: '#E6E0D2', borderRadius: '5px', overflow: 'hidden' }}>
-                                        <div style={{ width: `${pct}%`, height: '100%', backgroundColor: colorBarra }} />
+                                    <div className="flex items-center gap-2">
+                                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-border">
+                                        <div className="h-full" style={{ width: `${pct}%`, backgroundColor: colorBarra }} />
                                       </div>
-                                      <span style={{ color: colorBarra, fontSize: '0.8rem', fontWeight: 'bold', minWidth: '45px' }}>{c.porcentaje.toFixed(0)}%</span>
+                                      <span className="min-w-[45px] text-xs font-bold" style={{ color: colorBarra }}>{c.porcentaje.toFixed(0)}%</span>
                                     </div>
                                   )}
-                                </td>
-                              </tr>
+                                </TableCell>
+                              </TableRow>
                             );
                           })}
-                        </tbody>
-                      </table>
-                    </div>
+                      </TableBody>
+                    </Table>
                   )
                 )}
 
                 {/* ===== TAB GESTIÓN ===== */}
                 {presupuestoTab === 'gestion' && user.rol !== 'Gerente' && (
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem' }}>
-                      <h3 style={{ color: '#221E15', margin: 0 }}>Conceptos Recurrentes Mensuales</h3>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button onClick={() => setGestionConceptosTodasEmpresas(false)} style={{ padding: '0.5rem 1rem', backgroundColor: !gestionConceptosTodasEmpresas ? '#C4A747' : '#E6E0D2', color: !gestionConceptosTodasEmpresas ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>🏢 Solo {filtroPresupuesto.empresa}</button>
-                        <button onClick={() => setGestionConceptosTodasEmpresas(true)} style={{ padding: '0.5rem 1rem', backgroundColor: gestionConceptosTodasEmpresas ? '#C4A747' : '#E6E0D2', color: gestionConceptosTodasEmpresas ? '#221E15' : '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>🌐 Todas las empresas ({presupuestoItems.length})</button>
+                  <div className="flex flex-col gap-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <h3 className="m-0 text-base font-bold">Conceptos Recurrentes Mensuales</h3>
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant={!gestionConceptosTodasEmpresas ? 'default' : 'outline'} onClick={() => setGestionConceptosTodasEmpresas(false)} aria-pressed={!gestionConceptosTodasEmpresas}>🏢 Solo {filtroPresupuesto.empresa}</Button>
+                        <Button size="sm" variant={gestionConceptosTodasEmpresas ? 'default' : 'outline'} onClick={() => setGestionConceptosTodasEmpresas(true)} aria-pressed={gestionConceptosTodasEmpresas}>🌐 Todas las empresas ({presupuestoItems.length})</Button>
                       </div>
                     </div>
 
                     {puedeEditarPresupuesto && presupuestoItems.length === 0 && (
-                      <div style={{ backgroundColor: '#FFF8E1', border: '1px solid #C4A747', borderRadius: '6px', padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-                        <span style={{ color: '#6B6458', fontSize: '0.85rem' }}>⚠️ No hay conceptos de Presupuesto en Supabase todavía. Si ya habías cargado tu Presupuesto en este mismo navegador antes de esta actualización, puedes recuperarlo con un solo clic.</span>
-                        <button onClick={handleMigrarPresupuestoLocal} style={{ padding: '0.6rem 1.1rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>🔄 Migrar Presupuesto guardado localmente</button>
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-solid border-primary bg-[#FFF8E1] px-5 py-4">
+                        <span className="text-sm text-muted-foreground">⚠️ No hay conceptos de Presupuesto en Supabase todavía. Si ya habías cargado tu Presupuesto en este mismo navegador antes de esta actualización, puedes recuperarlo con un solo clic.</span>
+                        <Button onClick={handleMigrarPresupuestoLocal}><RotateCcw size={16} /> Migrar Presupuesto guardado localmente</Button>
                       </div>
                     )}
 
                     {puedeEditarPresupuesto && (
-                      <div style={{ ...cardStyle, marginBottom: '1.5rem' }}>
-                        <h4 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>{editingPresupuestoItemId ? '✏️ Editar Concepto' : '➕ Nuevo Concepto'}</h4>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                          <select value={newPresupuestoItem.empresa} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, empresa: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
-                            {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
-                          </select>
-                          <select value={newPresupuestoItem.ceco} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, ceco: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
-                            {cecosGasto.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
-                          </select>
-                          <input type="number" placeholder="Día límite de pago" value={newPresupuestoItem.diaLimitePago} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, diaLimitePago: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
-                          <select value={newPresupuestoItem.responsableId} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, responsableId: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
-                            <option value="">Sin vincular a colaborador</option>
-                            {[...personasFinanzas].sort((a, b) => a.nombre.localeCompare(b.nombre)).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-                          </select>
+                      <div className={cn(claseRecuadro, 'flex flex-col gap-4')}>
+                        <h4 className="m-0 text-sm font-bold">{editingPresupuestoItemId ? '✏️ Editar Concepto' : 'Nuevo Concepto'}</h4>
+                        <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+                          <CampoUI label="Empresa" htmlFor="pc-empresa">
+                            <Select id="pc-empresa" value={newPresupuestoItem.empresa} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, empresa: e.target.value})}>
+                              {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                            </Select>
+                          </CampoUI>
+                          <CampoUI label="CECO" htmlFor="pc-ceco">
+                            <Select id="pc-ceco" value={newPresupuestoItem.ceco} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, ceco: e.target.value})}>
+                              {cecosGasto.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
+                            </Select>
+                          </CampoUI>
+                          <CampoUI label="Día límite de pago" htmlFor="pc-dia">
+                            <Input id="pc-dia" type="number" placeholder="Día límite de pago" value={newPresupuestoItem.diaLimitePago} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, diaLimitePago: e.target.value})} />
+                          </CampoUI>
+                          <CampoUI label="Colaborador" htmlFor="pc-colaborador">
+                            <Select id="pc-colaborador" value={newPresupuestoItem.responsableId} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, responsableId: e.target.value})}>
+                              <option value="">Sin vincular a colaborador</option>
+                              {[...personasFinanzas].sort((a, b) => a.nombre.localeCompare(b.nombre)).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                            </Select>
+                          </CampoUI>
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: '1rem' }}>
-                          <input type="text" placeholder="Nombre / Responsable / Concepto" value={newPresupuestoItem.nombre} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, nombre: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
-                          <input type="number" placeholder="Valor mensual" value={newPresupuestoItem.valorMensual} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, valorMensual: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
-                          <button onClick={handleAddPresupuestoItem} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>{editingPresupuestoItemId ? 'Guardar Cambios' : '+ Agregar'}</button>
+                        <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-[2fr_1fr_auto]">
+                          <CampoUI label="Nombre / Responsable / Concepto" htmlFor="pc-nombre">
+                            <Input id="pc-nombre" type="text" placeholder="Nombre / Responsable / Concepto" value={newPresupuestoItem.nombre} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, nombre: e.target.value})} />
+                          </CampoUI>
+                          <CampoUI label="Valor mensual" htmlFor="pc-valor">
+                            <Input id="pc-valor" type="number" placeholder="Valor mensual" value={newPresupuestoItem.valorMensual} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, valorMensual: e.target.value})} />
+                          </CampoUI>
+                          <Button onClick={handleAddPresupuestoItem}>{editingPresupuestoItemId ? 'Guardar Cambios' : <><Plus size={16} /> Agregar</>}</Button>
                         </div>
                         {editingPresupuestoItemId && (
-                          <button onClick={handleCancelEditPresupuestoItem} style={{ marginTop: '1rem', padding: '0.75rem 1.5rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Cancelar</button>
+                          <Button variant="outline" onClick={handleCancelEditPresupuestoItem} className="self-start">Cancelar</Button>
                         )}
-                        <p style={{ color: '#8F8877', fontSize: '0.75rem', marginTop: '0.75rem', marginBottom: 0 }}>Vincular el colaborador es opcional, pero permite que el Gasto que se genere al "Marcar Pagado" en la pestaña Mensual quede con el Responsable correcto desde el primer clic.</p>
+                        <p className="m-0 text-xs text-muted-foreground">Vincular el colaborador es opcional, pero permite que el Gasto que se genere al "Marcar Pagado" en la pestaña Mensual quede con el Responsable correcto desde el primer clic.</p>
                       </div>
                     )}
 
-                    <div style={{ overflowX: 'auto', marginBottom: '2rem' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead>
-                          <tr style={{ borderBottom: '2px solid #E6E0D2' }}>
-                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
-                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
-                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Concepto</th>
-                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor Mensual</th>
-                            <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Día Límite</th>
-                            <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Activo</th>
-                            {puedeEditarPresupuesto && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
-                          </tr>
-                        </thead>
-                        <tbody>
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead>Empresa</TableHead>
+                          <TableHead>CECO</TableHead>
+                          <TableHead>Concepto</TableHead>
+                          <TableHead>Colaborador</TableHead>
+                          <TableHead className="text-right">Valor Mensual</TableHead>
+                          <TableHead className="text-center">Día Límite</TableHead>
+                          <TableHead className="text-center">Activo</TableHead>
+                          {puedeEditarPresupuesto && <TableHead className="text-center">Acción</TableHead>}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
                           {conceptosGestionFiltrados.length === 0 ? (
-                            <tr><td colSpan={puedeEditarPresupuesto ? 8 : 7} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>{gestionConceptosTodasEmpresas ? 'Sin conceptos cargados todavía.' : `Sin conceptos cargados todavía para ${filtroPresupuesto.empresa}.`}</td></tr>
+                            <TableRow className="hover:bg-transparent"><TableCell colSpan={puedeEditarPresupuesto ? 8 : 7} className="py-8 text-center text-muted-foreground">{gestionConceptosTodasEmpresas ? 'Sin conceptos cargados todavía.' : `Sin conceptos cargados todavía para ${filtroPresupuesto.empresa}.`}</TableCell></TableRow>
                           ) : conceptosGestionFiltrados.map(item => (
-                            <tr key={item.id} style={{ borderBottom: '1px solid #E6E0D2', opacity: item.activo === false ? 0.5 : 1 }}>
-                              <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{item.empresa}</td>
-                              <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{cecos.find(c => c.codigo === item.ceco)?.nombre || item.ceco}</td>
-                              <td style={{ padding: '0.75rem', color: '#221E15' }}>{item.nombre}</td>
-                              <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>
+                            <TableRow key={item.id} className={cn(item.activo === false && 'opacity-50')}>
+                              <TableCell className="text-xs text-muted-foreground"><div className="flex items-center gap-2"><EmpresaLogo empresa={item.empresa} height={16} />{item.empresa}</div></TableCell>
+                              <TableCell className="text-xs text-muted-foreground">{cecos.find(c => c.codigo === item.ceco)?.nombre || item.ceco}</TableCell>
+                              <TableCell className="min-w-[160px]">{item.nombre}</TableCell>
+                              <TableCell className="text-xs text-muted-foreground">
                                 {puedeEditarPresupuesto ? (
-                                  <select value={item.responsableId} onChange={(e) => handleUpdatePresupuestoItemResponsable(item.id, e.target.value)} style={{ padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E' }}>
+                                  <Select aria-label="Colaborador" value={item.responsableId} onChange={(e) => handleUpdatePresupuestoItemResponsable(item.id, e.target.value)} className="h-8 min-w-[160px] text-xs">
                                     <option value="">Sin vincular</option>
                                     {[...personasFinanzas].sort((a, b) => a.nombre.localeCompare(b.nombre)).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-                                  </select>
+                                  </Select>
                                 ) : (item.responsableNombre || '—')}
-                              </td>
-                              <td style={{ padding: '0.75rem', textAlign: 'right', color: '#221E15' }}>{formatMoney(item.valorMensual, item.empresa)}</td>
-                              <td style={{ padding: '0.75rem', textAlign: 'center', color: '#6B6458' }}>{item.diaLimitePago || '-'}</td>
-                              <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap text-right">{formatMoney(item.valorMensual, item.empresa)}</TableCell>
+                              <TableCell className="text-center text-muted-foreground">{item.diaLimitePago || '-'}</TableCell>
+                              <TableCell className="text-center">
                                 {puedeEditarPresupuesto ? (
-                                  <input type="checkbox" checked={item.activo !== false} onChange={(e) => handleUpdatePresupuestoItem(item.id, 'activo', e.target.checked)} />
+                                  <input type="checkbox" aria-label="Activo" className={claseCheckbox} checked={item.activo !== false} onChange={(e) => handleUpdatePresupuestoItem(item.id, 'activo', e.target.checked)} />
                                 ) : (item.activo !== false ? 'Sí' : 'No')}
-                              </td>
+                              </TableCell>
                               {puedeEditarPresupuesto && (
-                                <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                                  <button onClick={() => handleEditPresupuestoItem(item)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.5rem' }}>✏️</button>
-                                  <button onClick={() => handleDeletePresupuestoItem(item.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
-                                </td>
+                                <TableCell>
+                                  <div className="flex items-center justify-center">
+                                    <Button variant="ghost" size="icon" onClick={() => handleEditPresupuestoItem(item)} title="Editar" aria-label="Editar" className="text-[#6C63D1]"><Pencil size={16} /></Button>
+                                    <Button variant="ghost" size="icon" onClick={() => handleDeletePresupuestoItem(item.id)} title="Eliminar" aria-label="Eliminar" className="text-destructive"><Trash2 size={16} /></Button>
+                                  </div>
+                                </TableCell>
                               )}
-                            </tr>
+                            </TableRow>
                           ))}
-                        </tbody>
-                      </table>
-                    </div>
+                      </TableBody>
+                    </Table>
 
-                    <h3 style={{ color: '#221E15', marginBottom: '1rem' }}>Techos Anuales por CECO</h3>
+                    <h3 className="m-0 mt-4 text-base font-bold">Techos Anuales por CECO</h3>
 
                     {puedeEditarPresupuesto && (
-                      <div style={{ ...cardStyle, marginBottom: '1.5rem' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1.5fr 1fr 1fr auto', gap: '1rem' }}>
-                          <select value={newPresupuestoAnual.empresa} onChange={(e) => setNewPresupuestoAnual({...newPresupuestoAnual, empresa: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
-                            {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
-                          </select>
-                          <select value={newPresupuestoAnual.ceco} onChange={(e) => setNewPresupuestoAnual({...newPresupuestoAnual, ceco: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }}>
-                            {cecosGasto.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
-                          </select>
-                          <input type="number" placeholder="Año" value={newPresupuestoAnual.anio} onChange={(e) => setNewPresupuestoAnual({...newPresupuestoAnual, anio: parseInt(e.target.value) || newPresupuestoAnual.anio})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
-                          <input type="number" placeholder="Valor anual" value={newPresupuestoAnual.valorAnual} onChange={(e) => setNewPresupuestoAnual({...newPresupuestoAnual, valorAnual: e.target.value})} style={{ ...inputStyle, backgroundColor: '#FFFFFF' }} />
-                          <button onClick={handleAddPresupuestoAnual} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>+ Guardar</button>
+                      <div className={claseRecuadro}>
+                        <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-[1.5fr_1.5fr_1fr_1fr_auto]">
+                          <CampoUI label="Empresa" htmlFor="pa-empresa">
+                            <Select id="pa-empresa" value={newPresupuestoAnual.empresa} onChange={(e) => setNewPresupuestoAnual({...newPresupuestoAnual, empresa: e.target.value})}>
+                              {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                            </Select>
+                          </CampoUI>
+                          <CampoUI label="CECO" htmlFor="pa-ceco">
+                            <Select id="pa-ceco" value={newPresupuestoAnual.ceco} onChange={(e) => setNewPresupuestoAnual({...newPresupuestoAnual, ceco: e.target.value})}>
+                              {cecosGasto.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
+                            </Select>
+                          </CampoUI>
+                          <CampoUI label="Año" htmlFor="pa-anio">
+                            <Input id="pa-anio" type="number" placeholder="Año" value={newPresupuestoAnual.anio} onChange={(e) => setNewPresupuestoAnual({...newPresupuestoAnual, anio: parseInt(e.target.value) || newPresupuestoAnual.anio})} />
+                          </CampoUI>
+                          <CampoUI label="Valor anual" htmlFor="pa-valor">
+                            <Input id="pa-valor" type="number" placeholder="Valor anual" value={newPresupuestoAnual.valorAnual} onChange={(e) => setNewPresupuestoAnual({...newPresupuestoAnual, valorAnual: e.target.value})} />
+                          </CampoUI>
+                          <Button onClick={handleAddPresupuestoAnual}><Plus size={16} /> Guardar</Button>
                         </div>
                       </div>
                     )}
 
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead>
-                          <tr style={{ borderBottom: '2px solid #E6E0D2' }}>
-                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
-                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
-                            <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Año</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor Anual</th>
-                            {puedeEditarPresupuesto && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
-                          </tr>
-                        </thead>
-                        <tbody>
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead>Empresa</TableHead>
+                          <TableHead>CECO</TableHead>
+                          <TableHead className="text-center">Año</TableHead>
+                          <TableHead className="text-right">Valor Anual</TableHead>
+                          {puedeEditarPresupuesto && <TableHead className="text-center">Acción</TableHead>}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
                           {presupuestoAnual.length === 0 ? (
-                            <tr><td colSpan={puedeEditarPresupuesto ? 5 : 4} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin techos anuales cargados todavía.</td></tr>
+                            <TableRow className="hover:bg-transparent"><TableCell colSpan={puedeEditarPresupuesto ? 5 : 4} className="py-8 text-center text-muted-foreground">Sin techos anuales cargados todavía.</TableCell></TableRow>
                           ) : presupuestoAnual.map(p => (
-                            <tr key={p.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
-                              <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{p.empresa}</td>
-                              <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.85rem' }}>{cecos.find(c => c.codigo === p.ceco)?.nombre || p.ceco}</td>
-                              <td style={{ padding: '0.75rem', textAlign: 'center', color: '#221E15' }}>{p.anio}</td>
-                              <td style={{ padding: '0.75rem', textAlign: 'right', color: '#221E15' }}>{formatMoney(p.valorAnual, p.empresa)}</td>
+                            <TableRow key={p.id}>
+                              <TableCell className="text-xs text-muted-foreground"><div className="flex items-center gap-2"><EmpresaLogo empresa={p.empresa} height={16} />{p.empresa}</div></TableCell>
+                              <TableCell className="text-xs text-muted-foreground">{cecos.find(c => c.codigo === p.ceco)?.nombre || p.ceco}</TableCell>
+                              <TableCell className="text-center">{p.anio}</TableCell>
+                              <TableCell className="whitespace-nowrap text-right">{formatMoney(p.valorAnual, p.empresa)}</TableCell>
                               {puedeEditarPresupuesto && (
-                                <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                                  <button onClick={() => handleDeletePresupuestoAnual(p.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
-                                </td>
+                                <TableCell className="text-center">
+                                  <Button variant="ghost" size="icon" onClick={() => handleDeletePresupuestoAnual(p.id)} title="Eliminar" aria-label="Eliminar" className="text-destructive"><Trash2 size={16} /></Button>
+                                </TableCell>
                               )}
-                            </tr>
+                            </TableRow>
                           ))}
-                        </tbody>
-                      </table>
-                    </div>
+                      </TableBody>
+                    </Table>
                   </div>
                 )}
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           );
         })()}
 
