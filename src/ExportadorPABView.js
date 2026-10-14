@@ -70,7 +70,8 @@ const ExportadorPABView = ({
   const [mostrarBloqueados, setMostrarBloqueados] = useState(false);
   const [generando, setGenerando] = useState(false);
   const [trabajandoLote, setTrabajandoLote] = useState(null);
-  // Modal "Marcar pagado": { lote, fechaPago, comprobante, cecos: { [solicitudId]: codigo } }.
+  // Modal "Marcar pagado": { lote, fechaPago, comprobante, ajustes: { [entidad_clave]: { resultado,
+  // motivo, ceco, detalle, detalleOriginal, comprobante } }, costos: { comision, gmf, ceco } }.
   const [pagoLote, setPagoLote] = useState(null);
   const [guardandoPago, setGuardandoPago] = useState(false);
 
@@ -161,34 +162,67 @@ const ExportadorPABView = ({
 
   const itemsActivos = (lote) => [...(lote.lotes_pago_banco_items || [])].filter(i => i.activo !== false).sort((a, b) => a.orden - b.orden);
 
+  // CECO sugerido para la comisión / 4x1000: el primero que suene a gastos bancarios o financieros.
+  const cecoCostosSugerido = (cecosGasto.find(c => /banc|financ/i.test(c.nombre || '')) || {}).codigo || '';
+
   const abrirPagoLote = (lote) => {
-    const cecos = {};
-    itemsActivos(lote).filter(i => i.entidad_tipo === 'solicitud').forEach(i => { cecos[i.entidad_id] = ''; });
-    setPagoLote({ lote, fechaPago: lote.fecha_aplicacion || hoyLocal(), comprobante: null, cecos });
+    const ajustes = {};
+    itemsActivos(lote).forEach(i => {
+      const esSolicitud = i.entidad_tipo === 'solicitud';
+      const detalleOriginal = esSolicitud
+        ? ((solicitudes.find(s => String(s.id) === String(i.entidad_id))?.detalle || '').trim() || i.datos?.nombre || '')
+        : (i.datos?.meta?.nombre || i.datos?.nombre || '');
+      ajustes[i.entidad_clave] = {
+        resultado: 'Pagado', motivo: '', ceco: esSolicitud ? '' : (i.datos?.meta?.ceco || ''),
+        detalle: detalleOriginal, detalleOriginal, comprobante: null
+      };
+    });
+    setPagoLote({ lote, fechaPago: lote.fecha_aplicacion || hoyLocal(), comprobante: null, ajustes, costos: { comision: '', gmf: '', ceco: cecoCostosSugerido } });
   };
 
-  const leerComprobante = (file) => {
-    if (!file) { setPagoLote(p => ({ ...p, comprobante: null })); return; }
+  const leerArchivo = (file, alListo) => {
+    if (!file) { alListo(null); return; }
     const reader = new FileReader();
-    reader.onload = () => setPagoLote(p => ({ ...p, comprobante: { nombre: file.name, tipo: file.type, tamaño: file.size, data: reader.result } }));
+    reader.onload = () => alListo({ nombre: file.name, tipo: file.type, tamaño: file.size, data: reader.result });
     reader.readAsDataURL(file);
   };
+  const leerComprobante = (file) => leerArchivo(file, (comprobante) => setPagoLote(p => ({ ...p, comprobante })));
+  const cambiarAjuste = (clave, cambios) => setPagoLote(p => ({ ...p, ajustes: { ...p.ajustes, [clave]: { ...p.ajustes[clave], ...cambios } } }));
+  const cambiarCostos = (cambios) => setPagoLote(p => ({ ...p, costos: { ...p.costos, ...cambios } }));
 
   const confirmarPagoLote = async () => {
-    const { lote, fechaPago, comprobante, cecos } = pagoLote;
+    const { lote, fechaPago, comprobante, ajustes, costos } = pagoLote;
+    const items = itemsActivos(lote);
+    const pagados = items.filter(i => ajustes[i.entidad_clave]?.resultado !== 'Rechazado');
+    const rechazados = items.filter(i => ajustes[i.entidad_clave]?.resultado === 'Rechazado');
+    const hayCostos = (parseFloat(costos.comision) || 0) > 0 || (parseFloat(costos.gmf) || 0) > 0;
     if (!fechaPago) { alert('Elige la fecha del pago'); return; }
-    if (!comprobante) { alert('Adjunta el comprobante del banco (uno para todo el lote)'); return; }
-    if (Object.values(cecos).some(c => !c)) { alert('Elige el CECO de cada solicitud'); return; }
-    const mesesPresupuesto = [...new Set(itemsActivos(lote).filter(i => i.entidad_tipo === 'presupuesto').map(i => `${i.anio}-${String(i.mes).padStart(2, '0')}`))];
+    if (pagados.length && !comprobante) { alert('Adjunta el comprobante del banco (uno para todo el lote)'); return; }
+    if (rechazados.some(i => !(ajustes[i.entidad_clave].motivo || '').trim())) { alert('Indica el motivo de cada pago rechazado'); return; }
+    if (pagados.some(i => i.entidad_tipo === 'solicitud' && !ajustes[i.entidad_clave].ceco)) { alert('Elige el CECO de cada solicitud pagada'); return; }
+    if (hayCostos && !costos.ceco) { alert('Elige el CECO de la comisión / 4x1000'); return; }
+    if (!pagados.length && !window.confirm(`Vas a marcar los ${rechazados.length} pago(s) como rechazados por el banco: el lote queda "Rechazado" y todo vuelve a quedar libre para exportarse. ¿Continuar?`)) return;
+    const mesesPresupuesto = [...new Set(pagados.filter(i => i.entidad_tipo === 'presupuesto').map(i => `${i.anio}-${String(i.mes).padStart(2, '0')}`))];
     const otroMes = mesesPresupuesto.filter(m => m !== fechaPago.substring(0, 7));
     if (otroMes.length && !window.confirm(`La fecha de pago (${fechaPago}) es de otro mes que los conceptos de Presupuesto (${otroMes.join(', ')}). En Presupuesto el concepto queda pagado en el mes de la fecha de pago. ¿Continuar?`)) return;
+    // Solo viajan los cambios reales: el concepto corregido y el comprobante individual.
+    const ajustesPago = Object.fromEntries(pagados.map(i => {
+      const a = ajustes[i.entidad_clave];
+      const detalle = (a.detalle || '').trim();
+      return [i.entidad_clave, { ceco: a.ceco, detalle: detalle && detalle !== a.detalleOriginal ? detalle : null, comprobante: a.comprobante }];
+    }));
     setGuardandoPago(true);
     try {
-      const r = await onRegistrarPagoLote(lote, { fechaPago, comprobante, cecoPorSolicitud: cecos });
+      const r = await onRegistrarPagoLote(lote, {
+        fechaPago, comprobante, ajustes: ajustesPago,
+        rechazados: rechazados.map(i => ({ entidad_clave: i.entidad_clave, motivo: ajustes[i.entidad_clave].motivo.trim() })),
+        costos
+      });
       setPagoLote(null);
+      const textoRechazos = r.rechazados ? `\n${r.rechazados} pago(s) rechazados: quedaron libres para exportarse en otro lote.` : '';
       alert(r.fallidos.length
-        ? `⚠️ ${r.registrados} pago(s) registrados en Finanzas${r.saltados ? `, ${r.saltados} ya estaban` : ''}.\nNo se pudieron registrar:\n• ${r.fallidos.join('\n• ')}\n\nEl lote sigue en "Generado": corrige y vuelve a pulsar ✅ (lo ya registrado no se duplica).`
-        : `✅ Lote #${lote.numero} pagado: ${r.registrados} pago(s) registrados en Finanzas${r.saltados ? ` (${r.saltados} ya estaban registrados)` : ''}.`);
+        ? `⚠️ ${r.registrados} registro(s) en Finanzas${r.saltados ? `, ${r.saltados} ya estaban` : ''}.${textoRechazos}\nNo se pudieron registrar:\n• ${r.fallidos.join('\n• ')}\n\nEl lote sigue en "Generado": corrige y vuelve a pulsar ✅ (lo ya registrado no se duplica).`
+        : `✅ Lote #${lote.numero} cerrado: ${r.registrados} registro(s) en Finanzas${r.saltados ? ` (${r.saltados} ya estaban registrados)` : ''}.${textoRechazos}`);
     } catch (e) {
       console.error('Error registrando pago del lote:', e);
       alert('❌ ' + (e.message || 'Error inesperado'));
@@ -333,7 +367,11 @@ const ExportadorPABView = ({
                     <TableCell className="text-right">{l.cantidad}</TableCell>
                     <TableCell className="whitespace-nowrap text-right font-bold">{formatCOP(parseFloat(l.total) || 0)}</TableCell>
                     <TableCell>
-                      <Badge variant={l.estado === 'Pagado' ? 'success' : l.estado === 'Anulado' ? 'destructive' : 'warning'}>{l.estado}</Badge>
+                      <Badge variant={{ Pagado: 'success', 'Pagado parcial': 'orange', Rechazado: 'destructive', Anulado: 'destructive' }[l.estado] || 'warning'}>{l.estado}</Badge>
+                      {(() => {
+                        const rech = (l.lotes_pago_banco_items || []).filter(i => i.resultado === 'Rechazado');
+                        return rech.length > 0 && <div className="mt-1 text-[0.7rem] text-destructive" title={rech.map(i => `${i.datos?.nombre || i.entidad_clave}: ${i.motivo_rechazo || ''}`).join('\n')}>{rech.length} rechazado(s) por el banco</div>;
+                      })()}
                       {l.motivo_anulacion && <div className="mt-1 text-[0.7rem] text-muted-foreground">{l.motivo_anulacion}</div>}
                     </TableCell>
                     <TableCell>
@@ -349,54 +387,111 @@ const ExportadorPABView = ({
             </Table>
           )}
           <p className="m-0 text-xs text-muted-foreground">
-            <CheckCircle2 size={12} className="inline align-[-2px] text-success" /> cuando el banco confirme el pago: pide fecha, el comprobante del lote y el CECO de cada solicitud, y registra todo en Finanzas (Solicitudes quedan Pagado; Presupuesto, pagado en el mes). <Ban size={12} className="inline align-[-2px] text-destructive" /> Anular solo si el archivo no se pagó.
+            <CheckCircle2 size={12} className="inline align-[-2px] text-success" /> cuando el banco confirme el pago: pide fecha y comprobante del lote; por cada pago, si se pagó o lo rechazó el banco, su CECO y concepto; y la comisión / 4x1000. Registra todo en Finanzas (Solicitudes quedan Pagado; Presupuesto, pagado en el mes) y los rechazados quedan libres para otro lote. <Ban size={12} className="inline align-[-2px] text-destructive" /> Anular solo si el archivo no se pagó.
           </p>
         </CardContent>
       </Card>
 
       {pagoLote && (() => {
         const items = itemsActivos(pagoLote.lote);
+        const esRechazado = (i) => pagoLote.ajustes[i.entidad_clave]?.resultado === 'Rechazado';
+        const pagados = items.filter(i => !esRechazado(i));
+        const totalPagado = pagados.reduce((t, i) => t + (parseFloat(i.valor) || 0), 0);
+        const opcionesCeco = cecosGasto.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>);
         return (
           <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4">
-            <Card className="max-h-[90vh] w-full max-w-3xl gap-4 overflow-y-auto px-0 py-6">
+            <Card className="max-h-[90vh] w-full max-w-4xl gap-4 overflow-y-auto px-0 py-6">
               <CardHeader className="sm:px-7">
-                <CardTitle className="text-lg">✅ Lote #{pagoLote.lote.numero} pagado</CardTitle>
-                <CardDescription>{pagoLote.lote.empresas?.nombre} · {pagoLote.lote.config_bancaria_empresa?.nombre_cuenta} · {items.length} pago(s) por {formatCOP(parseFloat(pagoLote.lote.total) || 0)}. Se registra cada pago en Finanzas con el mismo comprobante.</CardDescription>
+                <CardTitle className="text-lg">✅ Resultado del lote #{pagoLote.lote.numero}</CardTitle>
+                <CardDescription>{pagoLote.lote.empresas?.nombre} · {pagoLote.lote.config_bancaria_empresa?.nombre_cuenta} · {items.length} pago(s) por {formatCOP(parseFloat(pagoLote.lote.total) || 0)}. Revisa contra el reporte del banco: marca los rechazados, ajusta CECO o concepto si hace falta y registra la comisión / 4x1000.</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-4 sm:px-7">
                 <div className="flex flex-wrap gap-3">
                   <Campo label="Fecha del pago *" htmlFor="pab-fecha-pago" className="w-full sm:w-44">
                     <Input id="pab-fecha-pago" type="date" value={pagoLote.fechaPago} onChange={(e) => setPagoLote({ ...pagoLote, fechaPago: e.target.value })} />
                   </Campo>
-                  <Campo label="Comprobante del banco (todo el lote) *" htmlFor="pab-comprobante" className="min-w-[220px] flex-1">
+                  <Campo label={`Comprobante del banco (todo el lote)${pagados.length ? ' *' : ''}`} htmlFor="pab-comprobante" className="min-w-[220px] flex-1">
                     <Input id="pab-comprobante" type="file" accept=".pdf,image/*" onChange={(e) => leerComprobante(e.target.files[0])} className={claseInputArchivo} />
                   </Campo>
                 </div>
-                <Table>
-                  <TableHeader><TableRow className="hover:bg-transparent"><TableHead>Pago</TableHead><TableHead className="text-right">Valor</TableHead><TableHead>CECO</TableHead></TableRow></TableHeader>
-                  <TableBody>
-                    {items.map(i => (
-                      <TableRow key={i.entidad_clave}>
-                        <TableCell className="text-xs">{i.datos?.nombre || '—'}<div className="text-[0.7rem] text-muted-foreground">{i.entidad_tipo === 'solicitud' ? `Solicitud · ${i.datos?.meta?.tipo || ''}` : `Presupuesto · ${i.datos?.meta?.nombre || ''}`}</div></TableCell>
-                        <TableCell className="whitespace-nowrap text-right">{formatCOP(parseFloat(i.valor) || 0)}</TableCell>
-                        <TableCell>
-                          {i.entidad_tipo === 'solicitud' ? (
-                            <div className="max-w-[240px]">
-                              <Select aria-label="CECO" value={pagoLote.cecos[i.entidad_id] || ''} onChange={(e) => setPagoLote({ ...pagoLote, cecos: { ...pagoLote.cecos, [i.entidad_id]: e.target.value } })} className="h-8 text-xs">
-                                <option value="">Elegir CECO…</option>
-                                {cecosGasto.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
+
+                <div className="flex flex-col gap-2">
+                  {items.map(i => {
+                    const a = pagoLote.ajustes[i.entidad_clave];
+                    const rechazado = a.resultado === 'Rechazado';
+                    const esSolicitud = i.entidad_tipo === 'solicitud';
+                    return (
+                      <div key={i.entidad_clave} className={cn('flex flex-col gap-3 rounded-lg border border-solid p-3', rechazado ? 'border-destructive/40 bg-destructive/5' : 'border-border bg-background')}>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="min-w-0 text-sm">
+                            <strong>{i.datos?.nombre || '—'}</strong> · <span className="font-bold">{formatCOP(parseFloat(i.valor) || 0)}</span>
+                            <div className="text-[0.7rem] text-muted-foreground">{esSolicitud ? `Solicitud · ${i.datos?.meta?.tipo || ''}` : `Presupuesto · ${i.datos?.meta?.nombre || ''}`} · {nombreBancoCorto(i.datos?.codigoBanco) || ''} {i.datos?.cuenta || ''}</div>
+                          </div>
+                          <div className="flex rounded-md border border-solid border-border bg-card p-0.5" role="radiogroup" aria-label={`Resultado de ${i.datos?.nombre || 'pago'}`}>
+                            {['Pagado', 'Rechazado'].map(r => (
+                              <button key={r} type="button" role="radio" aria-checked={a.resultado === r} onClick={() => cambiarAjuste(i.entidad_clave, { resultado: r })}
+                                className={cn('cursor-pointer rounded border-0 px-3 py-1 font-[inherit] text-xs font-semibold', a.resultado === r ? (r === 'Pagado' ? 'bg-success text-white' : 'bg-destructive text-white') : 'bg-transparent text-muted-foreground')}>
+                                {r}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        {rechazado ? (
+                          <Campo label="Motivo del rechazo *" htmlFor={`pab-motivo-${i.entidad_clave}`}>
+                            <Input id={`pab-motivo-${i.entidad_clave}`} placeholder="Ej: cuenta inexistente, documento no coincide…" value={a.motivo} onChange={(e) => cambiarAjuste(i.entidad_clave, { motivo: e.target.value })} className="h-8 text-xs" />
+                          </Campo>
+                        ) : (
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,1fr)]">
+                            <Campo label={esSolicitud ? 'CECO *' : 'CECO'} htmlFor={`pab-ceco-${i.entidad_clave}`}>
+                              <Select id={`pab-ceco-${i.entidad_clave}`} value={a.ceco} onChange={(e) => cambiarAjuste(i.entidad_clave, { ceco: e.target.value })} className="h-8 text-xs">
+                                <option value="">{esSolicitud ? 'Elegir CECO…' : 'El del concepto'}</option>
+                                {opcionesCeco}
                               </Select>
-                            </div>
-                          ) : <span className="text-xs text-muted-foreground">{i.datos?.meta?.ceco || 'el del concepto'}</span>}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                            </Campo>
+                            <Campo label="Concepto en Finanzas" htmlFor={`pab-detalle-${i.entidad_clave}`}>
+                              <Input id={`pab-detalle-${i.entidad_clave}`} value={a.detalle} onChange={(e) => cambiarAjuste(i.entidad_clave, { detalle: e.target.value })} className="h-8 text-xs" />
+                            </Campo>
+                            <Campo label="Comprobante individual (opcional)" htmlFor={`pab-comp-${i.entidad_clave}`}>
+                              <Input id={`pab-comp-${i.entidad_clave}`} type="file" accept=".pdf,image/*" onChange={(e) => leerArchivo(e.target.files[0], (comprobante) => cambiarAjuste(i.entidad_clave, { comprobante }))} className={cn(claseInputArchivo, 'py-1 text-xs')} />
+                            </Campo>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {pagados.length > 0 && (
+                  <div className="flex flex-col gap-3 rounded-lg border border-solid border-border bg-background p-3">
+                    <div className="text-sm font-semibold">🏦 Costos bancarios del lote <span className="font-normal text-muted-foreground">(opcional — se registran como Gasto aparte)</span></div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <Campo label="Comisión bancaria (con IVA)" htmlFor="pab-comision">
+                        <Input id="pab-comision" type="number" min="0" placeholder="0" value={pagoLote.costos.comision} onChange={(e) => cambiarCostos({ comision: e.target.value })} className="h-8 text-xs" />
+                      </Campo>
+                      <Campo label="GMF 4x1000" htmlFor="pab-gmf">
+                        <div className="flex gap-2">
+                          <Input id="pab-gmf" type="number" min="0" placeholder="0" value={pagoLote.costos.gmf} onChange={(e) => cambiarCostos({ gmf: e.target.value })} className="h-8 text-xs" />
+                          <Button type="button" size="sm" variant="outline" onClick={() => cambiarCostos({ gmf: String(Math.round(totalPagado * 0.004)) })} title="0,4% del total pagado">Calcular</Button>
+                        </div>
+                      </Campo>
+                      <Campo label="CECO de los costos" htmlFor="pab-ceco-costos">
+                        <Select id="pab-ceco-costos" value={pagoLote.costos.ceco} onChange={(e) => cambiarCostos({ ceco: e.target.value })} className="h-8 text-xs">
+                          <option value="">Elegir CECO…</option>
+                          {opcionesCeco}
+                        </Select>
+                      </Campo>
+                    </div>
+                  </div>
+                )}
+
+                <div className="text-xs text-muted-foreground">
+                  {pagados.length} pagado(s) por <strong className="text-foreground">{formatCOP(totalPagado)}</strong>
+                  {items.length - pagados.length > 0 && <> · <span className="text-destructive">{items.length - pagados.length} rechazado(s): quedan libres para otro lote</span></>}
+                </div>
                 <div className="flex gap-3">
                   <Button size="lg" variant="outline" disabled={guardandoPago} onClick={() => setPagoLote(null)}>Cancelar</Button>
                   <Button size="lg" variant="success" disabled={guardandoPago} onClick={confirmarPagoLote} className={cn('flex-1', guardandoPago && 'cursor-wait')}>
-                    {guardandoPago ? '⏳ Registrando…' : 'Confirmar pago y registrar en Finanzas'}
+                    {guardandoPago ? '⏳ Registrando…' : pagados.length ? 'Confirmar y registrar' : 'Marcar todo rechazado'}
                   </Button>
                 </div>
               </CardContent>
