@@ -5,6 +5,15 @@ import {
   construirCandidatosPAB, construirEncabezadoPAB, problemasEncabezadoPAB, generarArchivoPAB,
   descripcionLotePAB, totalesPAB, nombreArchivoPAB, TIPOS_PAGO_PAB, nombreBancoCorto
 } from './exportPAB';
+import { RotateCcw, Download, Loader2, ChevronDown, ChevronRight, CheckCircle2, Ban } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 
 // Pantalla "💸 Pagos PAB" (Administrador / Coordinadora Administrativa).
 // 1) Arma, para una empresa y su cuenta origen, todo lo APROBADO que se puede pagar:
@@ -16,11 +25,14 @@ import {
 // La app NUNCA envía nada al banco: solo genera el archivo para el Conversor de pagos.
 
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-const card = { backgroundColor: '#FFFFFF', padding: '1.5rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)', marginBottom: '1.5rem' };
-const input = { padding: '0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' };
-const label = { display: 'block', color: '#6B6458', fontSize: '0.75rem', marginBottom: '0.3rem' };
-const th = { textAlign: 'left', padding: '0.5rem', color: '#C4A747', fontSize: '0.75rem', borderBottom: '2px solid #C4A747' };
-const td = { padding: '0.5rem', fontSize: '0.8rem', borderBottom: '1px solid #E6E0D2', verticalAlign: 'top' };
+const claseCheckbox = 'size-4 cursor-pointer accent-[#C4A747]';
+const claseInputArchivo = 'h-auto cursor-pointer py-2 text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1 file:font-[inherit] file:text-xs file:font-semibold file:text-secondary-foreground';
+const Campo = ({ label, htmlFor, className, children }) => (
+  <div className={cn('flex flex-col gap-1.5', className)}>
+    <Label htmlFor={htmlFor}>{label}</Label>
+    {children}
+  </div>
+);
 
 const hoyLocal = () => {
   const d = new Date();
@@ -197,181 +209,198 @@ const ExportadorPABView = ({
   };
 
   const filaCandidato = (c, conCheck) => (
-    <tr key={c.clave} style={{ opacity: c.bloqueos.length ? 0.75 : 1 }}>
-      <td style={td}>{conCheck && <input type="checkbox" checked={!deseleccionados.includes(c.clave)} onChange={() => alternar(c.clave)} />}</td>
-      <td style={td}>{c.origen}<div style={{ color: '#8F8877', fontSize: '0.7rem' }}>{c.etiqueta}</div></td>
-      <td style={td}>{c.fila.nombre || '—'}<div style={{ color: '#8F8877', fontSize: '0.7rem' }}>{c.fila.documento}</div></td>
-      <td style={td}>{nombreBancoCorto(c.fila.codigoBanco) || '—'}<div style={{ color: '#8F8877', fontSize: '0.7rem' }}>{c.fila.cuenta} {c.fila.tipoTransaccion === 37 ? '(Ahorros)' : c.fila.tipoTransaccion === 27 ? '(Corriente)' : ''}</div></td>
-      <td style={{ ...td, textAlign: 'right', fontWeight: 'bold' }}>{formatCOP(c.fila.valor || 0)}</td>
-      <td style={{ ...td, color: c.bloqueos.length ? '#CC4B4B' : '#2F9E52', fontSize: '0.72rem' }}>{c.bloqueos.length ? c.bloqueos.join(' · ') : 'Listo'}</td>
-    </tr>
+    <TableRow key={c.clave} className={cn(c.bloqueos.length && 'opacity-75')}>
+      <TableCell className="w-8">{conCheck && <input type="checkbox" aria-label={`Exportar ${c.fila.nombre || ''}`} className={claseCheckbox} checked={!deseleccionados.includes(c.clave)} onChange={() => alternar(c.clave)} />}</TableCell>
+      <TableCell className="text-xs">{c.origen}<div className="text-[0.7rem] text-muted-foreground">{c.etiqueta}</div></TableCell>
+      <TableCell className="text-xs">{c.fila.nombre || '—'}<div className="text-[0.7rem] text-muted-foreground">{c.fila.documento}</div></TableCell>
+      <TableCell className="text-xs">{nombreBancoCorto(c.fila.codigoBanco) || '—'}<div className="text-[0.7rem] text-muted-foreground">{c.fila.cuenta} {c.fila.tipoTransaccion === 37 ? '(Ahorros)' : c.fila.tipoTransaccion === 27 ? '(Corriente)' : ''}</div></TableCell>
+      <TableCell className="whitespace-nowrap text-right font-bold">{formatCOP(c.fila.valor || 0)}</TableCell>
+      <TableCell className={cn('text-[0.72rem]', c.bloqueos.length ? 'text-destructive' : 'text-success')}>{c.bloqueos.length ? c.bloqueos.join(' · ') : <Badge variant="success">Listo</Badge>}</TableCell>
+    </TableRow>
   );
 
+  const encabezadoCandidatos = (ultima) => (
+    <TableHeader>
+      <TableRow className="hover:bg-transparent">
+        <TableHead className="w-8"></TableHead><TableHead>Origen</TableHead><TableHead>Beneficiario</TableHead><TableHead>Banco / cuenta</TableHead><TableHead className="text-right">Valor</TableHead><TableHead>{ultima}</TableHead>
+      </TableRow>
+    </TableHeader>
+  );
+
+  // Etapa 3 del sistema de diseño: misma lógica; solo cambia la presentación.
   return (
-    <div>
-      <div style={card}>
-        <h2 style={{ color: '#C4A747', margin: '0 0 0.25rem 0' }}>💸 Pagos masivos Bancolombia (PAB)</h2>
-        <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '0 0 1.25rem 0' }}>
-          Genera el Excel con la plantilla oficial del banco para pasarlo por el Conversor de pagos. Solo entra lo Aprobado; la app no envía nada al banco.
-        </p>
-        {errorConfigs && <p style={{ color: '#CC4B4B', fontSize: '0.85rem' }}>⚠️ No se pudo leer la configuración bancaria: {errorConfigs}</p>}
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div>
-            <label style={label}>Empresa</label>
-            <select value={empresa} onChange={(e) => { setConfigId(''); cambiarFiltro({ empresa: e.target.value }); }} style={input}>
-              {empresas.map(e => <option key={e} value={e}>{e}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={label}>Cuenta origen</label>
-            <select value={config?.id || ''} onChange={(e) => setConfigId(e.target.value)} style={input} disabled={configsEmpresa.length === 0}>
-              {configsEmpresa.length === 0 ? <option value="">Sin cuenta configurada</option> : configsEmpresa.map(c => <option key={c.id} value={c.id}>{c.nombre_cuenta} — {c.numero_cuenta}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={label}>Mes de Nómina / Honorarios</label>
-            <div style={{ display: 'flex', gap: '0.4rem' }}>
-              <select value={filtroPresupuesto.mes} onChange={(e) => cambiarFiltro({ mes: Number(e.target.value) })} style={input}>
-                {MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-              </select>
-              <input type="number" value={filtroPresupuesto.anio} onChange={(e) => cambiarFiltro({ anio: Number(e.target.value) })} style={{ ...input, width: '90px' }} />
-            </div>
-          </div>
-          <div>
-            <label style={label}>Fecha de aplicación</label>
-            <input type="date" value={fechaAplicacion} onChange={(e) => setFechaAplicacion(e.target.value)} style={input} />
-          </div>
-          <button onClick={onRecargarDatos} style={{ ...input, cursor: 'pointer', fontWeight: 'bold', color: '#6B6458' }}>🔄 Actualizar datos</button>
-        </div>
-        {problemasConfig.length > 0 && (
-          <p style={{ color: '#CC4B4B', fontSize: '0.85rem', marginTop: '1rem' }}>⛔ {problemasConfig.join(' · ')}. Configúrala en 🏦 Datos Bancarios.</p>
-        )}
-      </div>
-
-      <div style={card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
-          <h3 style={{ color: '#221E15', margin: 0 }}>Vista previa — {seleccionados.length} pago(s) por {formatCOP(totalGeneral)}</h3>
-          <button disabled={generando || grupos.length === 0 || problemasConfig.length > 0} onClick={handleGenerar}
-            style={{ padding: '0.75rem 1.25rem', backgroundColor: grupos.length && !problemasConfig.length ? '#2F9E52' : '#E6E0D2', color: grupos.length && !problemasConfig.length ? '#FFFFFF' : '#8F8877', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: generando ? 'wait' : 'pointer' }}>
-            {generando ? '⏳ Generando…' : `⬇️ Generar ${grupos.length || ''} archivo(s) PAB`}
-          </button>
-        </div>
-        {grupos.length === 0 && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>No hay pagos listos para exportar con estos filtros.</p>}
-        {grupos.map(g => (
-          <div key={g.tipoPago} style={{ marginBottom: '1.25rem' }}>
-            <h4 style={{ color: '#C4A747', margin: '0 0 0.5rem 0' }}>
-              {g.tipoPago} – {TIPOS_PAGO_PAB[g.tipoPago] || 'Tipo de pago'} · {g.cantidad} pago(s) · {formatCOP(g.total)}
-            </h4>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr><th style={th}></th><th style={th}>Origen</th><th style={th}>Beneficiario</th><th style={th}>Banco / cuenta</th><th style={{ ...th, textAlign: 'right' }}>Valor</th><th style={th}>Estado</th></tr></thead>
-                <tbody>{exportables.filter(c => c.tipoPago === g.tipoPago).map(c => filaCandidato(c, true))}</tbody>
-              </table>
-            </div>
-          </div>
-        ))}
-        {exportables.filter(c => deseleccionados.includes(c.clave)).length > 0 && (
-          <div style={{ marginBottom: '1rem' }}>
-            <h4 style={{ color: '#8F8877', margin: '0 0 0.5rem 0' }}>Desmarcados (no se exportarán)</h4>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}><tbody>{exportables.filter(c => deseleccionados.includes(c.clave)).map(c => filaCandidato(c, true))}</tbody></table>
-          </div>
-        )}
-        {bloqueados.length > 0 && (
-          <div>
-            <button onClick={() => setMostrarBloqueados(!mostrarBloqueados)} style={{ background: 'none', border: 'none', color: '#CC4B4B', cursor: 'pointer', fontWeight: 'bold', padding: 0 }}>
-              {mostrarBloqueados ? '▾' : '▸'} {bloqueados.length} registro(s) que no se pueden exportar (ver motivo)
-            </button>
-            {mostrarBloqueados && (
-              <div style={{ overflowX: 'auto', marginTop: '0.5rem' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead><tr><th style={th}></th><th style={th}>Origen</th><th style={th}>Beneficiario</th><th style={th}>Banco / cuenta</th><th style={{ ...th, textAlign: 'right' }}>Valor</th><th style={th}>Motivo</th></tr></thead>
-                  <tbody>{bloqueados.map(c => filaCandidato(c, false))}</tbody>
-                </table>
+    <div className="flex flex-col gap-6">
+      <Card className="gap-4 px-0 py-6">
+        <CardHeader className="sm:px-7">
+          <CardTitle className="text-lg">💸 Pagos masivos Bancolombia (PAB)</CardTitle>
+          <CardDescription>Genera el Excel con la plantilla oficial del banco para pasarlo por el Conversor de pagos. Solo entra lo Aprobado; la app no envía nada al banco.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4 sm:px-7">
+          {errorConfigs && <p className="m-0 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">⚠️ No se pudo leer la configuración bancaria: {errorConfigs}</p>}
+          <div className="flex flex-wrap items-end gap-3 rounded-lg border border-solid border-border bg-background p-4">
+            <Campo label="Empresa" htmlFor="pab-empresa" className="w-full sm:w-60">
+              <Select id="pab-empresa" value={empresa} onChange={(e) => { setConfigId(''); cambiarFiltro({ empresa: e.target.value }); }}>
+                {empresas.map(e => <option key={e} value={e}>{e}</option>)}
+              </Select>
+            </Campo>
+            <Campo label="Cuenta origen" htmlFor="pab-cuenta" className="w-full sm:w-72">
+              <Select id="pab-cuenta" value={config?.id || ''} onChange={(e) => setConfigId(e.target.value)} disabled={configsEmpresa.length === 0}>
+                {configsEmpresa.length === 0 ? <option value="">Sin cuenta configurada</option> : configsEmpresa.map(c => <option key={c.id} value={c.id}>{c.nombre_cuenta} — {c.numero_cuenta}</option>)}
+              </Select>
+            </Campo>
+            <Campo label="Mes de Nómina / Honorarios" htmlFor="pab-mes" className="w-full sm:w-auto">
+              <div className="flex gap-2">
+                <div className="w-36">
+                  <Select id="pab-mes" value={filtroPresupuesto.mes} onChange={(e) => cambiarFiltro({ mes: Number(e.target.value) })}>
+                    {MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+                  </Select>
+                </div>
+                <Input type="number" aria-label="Año" value={filtroPresupuesto.anio} onChange={(e) => cambiarFiltro({ anio: Number(e.target.value) })} className="w-24" />
               </div>
-            )}
+            </Campo>
+            <Campo label="Fecha de aplicación" htmlFor="pab-fecha" className="w-full sm:w-44">
+              <Input id="pab-fecha" type="date" value={fechaAplicacion} onChange={(e) => setFechaAplicacion(e.target.value)} />
+            </Campo>
+            <Button variant="outline" onClick={onRecargarDatos}><RotateCcw size={14} /> Actualizar datos</Button>
           </div>
-        )}
-      </div>
+          {problemasConfig.length > 0 && (
+            <p className="m-0 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">⛔ {problemasConfig.join(' · ')}. Configúrala en 🏦 Datos Bancarios.</p>
+          )}
+        </CardContent>
+      </Card>
 
-      <div style={card}>
-        <h3 style={{ color: '#221E15', margin: '0 0 1rem 0' }}>📦 Lotes generados</h3>
-        {lotes.length === 0 ? <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Todavía no hay lotes.</p> : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr><th style={th}>Lote</th><th style={th}>Empresa / cuenta</th><th style={th}>Tipo</th><th style={th}>Aplicación</th><th style={{ ...th, textAlign: 'right' }}>Pagos</th><th style={{ ...th, textAlign: 'right' }}>Total</th><th style={th}>Estado</th><th style={th}></th></tr></thead>
-              <tbody>
+      <Card className="gap-4 px-0 py-6">
+        <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 sm:px-7">
+          <CardTitle className="text-base">Vista previa — {seleccionados.length} pago(s) por {formatCOP(totalGeneral)}</CardTitle>
+          <Button variant="success" disabled={generando || grupos.length === 0 || problemasConfig.length > 0} onClick={handleGenerar} className={cn(generando && 'cursor-wait')}>
+            {generando ? <><Loader2 size={16} className="animate-spin" /> Generando…</> : <><Download size={16} /> Generar {grupos.length || ''} archivo(s) PAB</>}
+          </Button>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-5 sm:px-7">
+          {grupos.length === 0 && <p className="m-0 text-sm text-muted-foreground">No hay pagos listos para exportar con estos filtros.</p>}
+          {grupos.map(g => (
+            <div key={g.tipoPago} className="flex flex-col gap-2">
+              <h4 className="m-0 flex flex-wrap items-center gap-2 text-sm font-bold">
+                <Badge variant="secondary">{g.tipoPago}</Badge> {TIPOS_PAGO_PAB[g.tipoPago] || 'Tipo de pago'} <span className="font-normal text-muted-foreground">· {g.cantidad} pago(s) · {formatCOP(g.total)}</span>
+              </h4>
+              <Table>
+                {encabezadoCandidatos('Estado')}
+                <TableBody>{exportables.filter(c => c.tipoPago === g.tipoPago).map(c => filaCandidato(c, true))}</TableBody>
+              </Table>
+            </div>
+          ))}
+          {exportables.filter(c => deseleccionados.includes(c.clave)).length > 0 && (
+            <div className="flex flex-col gap-2">
+              <h4 className="m-0 text-sm font-bold text-muted-foreground">Desmarcados (no se exportarán)</h4>
+              <Table><TableBody>{exportables.filter(c => deseleccionados.includes(c.clave)).map(c => filaCandidato(c, true))}</TableBody></Table>
+            </div>
+          )}
+          {bloqueados.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <button type="button" onClick={() => setMostrarBloqueados(!mostrarBloqueados)} className="flex cursor-pointer items-center gap-1 self-start border-0 bg-transparent p-0 font-[inherit] text-sm font-bold text-destructive">
+                {mostrarBloqueados ? <ChevronDown size={16} /> : <ChevronRight size={16} />} {bloqueados.length} registro(s) que no se pueden exportar (ver motivo)
+              </button>
+              {mostrarBloqueados && (
+                <Table>
+                  {encabezadoCandidatos('Motivo')}
+                  <TableBody>{bloqueados.map(c => filaCandidato(c, false))}</TableBody>
+                </Table>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="gap-4 px-0 py-6">
+        <CardHeader className="sm:px-7">
+          <CardTitle className="text-base">📦 Lotes generados</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3 sm:px-7">
+          {lotes.length === 0 ? <p className="m-0 text-sm text-muted-foreground">Todavía no hay lotes.</p> : (
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Lote</TableHead><TableHead>Empresa / cuenta</TableHead><TableHead>Tipo</TableHead><TableHead>Aplicación</TableHead><TableHead className="text-right">Pagos</TableHead><TableHead className="text-right">Total</TableHead><TableHead>Estado</TableHead><TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {lotes.map(l => (
-                  <tr key={l.id} style={{ opacity: l.estado === 'Anulado' ? 0.55 : 1 }}>
-                    <td style={td}><strong>#{l.numero}</strong> ({l.secuencia})<div style={{ color: '#8F8877', fontSize: '0.7rem' }}>{new Date(l.created_at).toLocaleString('es-CO')}</div></td>
-                    <td style={td}>{l.empresas?.nombre}<div style={{ color: '#8F8877', fontSize: '0.7rem' }}>{l.config_bancaria_empresa?.nombre_cuenta}</div></td>
-                    <td style={td}>{l.tipo_pago} – {TIPOS_PAGO_PAB[l.tipo_pago] || ''}</td>
-                    <td style={td}>{l.fecha_aplicacion}</td>
-                    <td style={{ ...td, textAlign: 'right' }}>{l.cantidad}</td>
-                    <td style={{ ...td, textAlign: 'right', fontWeight: 'bold' }}>{formatCOP(parseFloat(l.total) || 0)}</td>
-                    <td style={{ ...td, color: l.estado === 'Pagado' ? '#2F9E52' : l.estado === 'Anulado' ? '#CC4B4B' : '#D6A419', fontWeight: 'bold' }}>
-                      {l.estado}{l.motivo_anulacion && <div style={{ color: '#8F8877', fontWeight: 'normal', fontSize: '0.7rem' }}>{l.motivo_anulacion}</div>}
-                    </td>
-                    <td style={{ ...td, whiteSpace: 'nowrap' }}>
-                      <button disabled={trabajandoLote === l.id} onClick={() => handleRedescargar(l)} title="Volver a descargar el mismo archivo" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>⬇️</button>
-                      {l.estado === 'Generado' && <button disabled={trabajandoLote === l.id} onClick={() => abrirPagoLote(l)} title="Marcar pagado y registrar en Finanzas" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>✅</button>}
-                      {l.estado === 'Generado' && esAdmin && <button disabled={trabajandoLote === l.id} onClick={() => handleCerrar(l, 'Anulado')} title="Anular (libera los registros)" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>🚫</button>}
-                    </td>
-                  </tr>
+                  <TableRow key={l.id} className={cn(l.estado === 'Anulado' && 'opacity-55')}>
+                    <TableCell className="whitespace-nowrap text-xs"><strong>#{l.numero}</strong> ({l.secuencia})<div className="text-[0.7rem] text-muted-foreground">{new Date(l.created_at).toLocaleString('es-CO')}</div></TableCell>
+                    <TableCell className="text-xs">{l.empresas?.nombre}<div className="text-[0.7rem] text-muted-foreground">{l.config_bancaria_empresa?.nombre_cuenta}</div></TableCell>
+                    <TableCell className="text-xs">{l.tipo_pago} – {TIPOS_PAGO_PAB[l.tipo_pago] || ''}</TableCell>
+                    <TableCell className="whitespace-nowrap text-xs">{l.fecha_aplicacion}</TableCell>
+                    <TableCell className="text-right">{l.cantidad}</TableCell>
+                    <TableCell className="whitespace-nowrap text-right font-bold">{formatCOP(parseFloat(l.total) || 0)}</TableCell>
+                    <TableCell>
+                      <Badge variant={l.estado === 'Pagado' ? 'success' : l.estado === 'Anulado' ? 'destructive' : 'warning'}>{l.estado}</Badge>
+                      {l.motivo_anulacion && <div className="mt-1 text-[0.7rem] text-muted-foreground">{l.motivo_anulacion}</div>}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center justify-end">
+                        <Button variant="ghost" size="icon" disabled={trabajandoLote === l.id} onClick={() => handleRedescargar(l)} title="Volver a descargar el mismo archivo" aria-label="Volver a descargar"><Download size={16} /></Button>
+                        {l.estado === 'Generado' && <Button variant="ghost" size="icon" disabled={trabajandoLote === l.id} onClick={() => abrirPagoLote(l)} title="Marcar pagado y registrar en Finanzas" aria-label="Marcar pagado" className="text-success"><CheckCircle2 size={16} /></Button>}
+                        {l.estado === 'Generado' && esAdmin && <Button variant="ghost" size="icon" disabled={trabajandoLote === l.id} onClick={() => handleCerrar(l, 'Anulado')} title="Anular (libera los registros)" aria-label="Anular" className="text-destructive"><Ban size={16} /></Button>}
+                      </div>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <p style={{ color: '#8F8877', fontSize: '0.75rem', margin: '0.75rem 0 0 0' }}>
-          ✅ cuando el banco confirme el pago: pide fecha, el comprobante del lote y el CECO de cada solicitud, y registra todo en Finanzas (Solicitudes quedan Pagado; Presupuesto, pagado en el mes). 🚫 Anular solo si el archivo no se pagó.
-        </p>
-      </div>
+              </TableBody>
+            </Table>
+          )}
+          <p className="m-0 text-xs text-muted-foreground">
+            <CheckCircle2 size={12} className="inline align-[-2px] text-success" /> cuando el banco confirme el pago: pide fecha, el comprobante del lote y el CECO de cada solicitud, y registra todo en Finanzas (Solicitudes quedan Pagado; Presupuesto, pagado en el mes). <Ban size={12} className="inline align-[-2px] text-destructive" /> Anular solo si el archivo no se pagó.
+          </p>
+        </CardContent>
+      </Card>
 
       {pagoLote && (() => {
         const items = itemsActivos(pagoLote.lote);
         return (
-          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
-            <div style={{ ...card, maxWidth: '720px', width: '100%', maxHeight: '90vh', overflowY: 'auto', marginBottom: 0 }}>
-              <h3 style={{ color: '#C4A747', margin: '0 0 0.25rem 0' }}>✅ Lote #{pagoLote.lote.numero} pagado</h3>
-              <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>
-                {pagoLote.lote.empresas?.nombre} · {pagoLote.lote.config_bancaria_empresa?.nombre_cuenta} · {items.length} pago(s) por {formatCOP(parseFloat(pagoLote.lote.total) || 0)}. Se registra cada pago en Finanzas con el mismo comprobante.
-              </p>
-              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-                <div>
-                  <label style={label}>Fecha del pago *</label>
-                  <input type="date" value={pagoLote.fechaPago} onChange={(e) => setPagoLote({ ...pagoLote, fechaPago: e.target.value })} style={input} />
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4">
+            <Card className="max-h-[90vh] w-full max-w-3xl gap-4 overflow-y-auto px-0 py-6">
+              <CardHeader className="sm:px-7">
+                <CardTitle className="text-lg">✅ Lote #{pagoLote.lote.numero} pagado</CardTitle>
+                <CardDescription>{pagoLote.lote.empresas?.nombre} · {pagoLote.lote.config_bancaria_empresa?.nombre_cuenta} · {items.length} pago(s) por {formatCOP(parseFloat(pagoLote.lote.total) || 0)}. Se registra cada pago en Finanzas con el mismo comprobante.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4 sm:px-7">
+                <div className="flex flex-wrap gap-3">
+                  <Campo label="Fecha del pago *" htmlFor="pab-fecha-pago" className="w-full sm:w-44">
+                    <Input id="pab-fecha-pago" type="date" value={pagoLote.fechaPago} onChange={(e) => setPagoLote({ ...pagoLote, fechaPago: e.target.value })} />
+                  </Campo>
+                  <Campo label="Comprobante del banco (todo el lote) *" htmlFor="pab-comprobante" className="min-w-[220px] flex-1">
+                    <Input id="pab-comprobante" type="file" accept=".pdf,image/*" onChange={(e) => leerComprobante(e.target.files[0])} className={claseInputArchivo} />
+                  </Campo>
                 </div>
-                <div style={{ flex: 1, minWidth: '220px' }}>
-                  <label style={label}>Comprobante del banco (todo el lote) *</label>
-                  <input type="file" accept=".pdf,image/*" onChange={(e) => leerComprobante(e.target.files[0])} style={{ ...input, width: '100%', boxSizing: 'border-box' }} />
+                <Table>
+                  <TableHeader><TableRow className="hover:bg-transparent"><TableHead>Pago</TableHead><TableHead className="text-right">Valor</TableHead><TableHead>CECO</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {items.map(i => (
+                      <TableRow key={i.entidad_clave}>
+                        <TableCell className="text-xs">{i.datos?.nombre || '—'}<div className="text-[0.7rem] text-muted-foreground">{i.entidad_tipo === 'solicitud' ? `Solicitud · ${i.datos?.meta?.tipo || ''}` : `Presupuesto · ${i.datos?.meta?.nombre || ''}`}</div></TableCell>
+                        <TableCell className="whitespace-nowrap text-right">{formatCOP(parseFloat(i.valor) || 0)}</TableCell>
+                        <TableCell>
+                          {i.entidad_tipo === 'solicitud' ? (
+                            <div className="max-w-[240px]">
+                              <Select aria-label="CECO" value={pagoLote.cecos[i.entidad_id] || ''} onChange={(e) => setPagoLote({ ...pagoLote, cecos: { ...pagoLote.cecos, [i.entidad_id]: e.target.value } })} className="h-8 text-xs">
+                                <option value="">Elegir CECO…</option>
+                                {cecosGasto.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
+                              </Select>
+                            </div>
+                          ) : <span className="text-xs text-muted-foreground">{i.datos?.meta?.ceco || 'el del concepto'}</span>}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <div className="flex gap-3">
+                  <Button size="lg" variant="outline" disabled={guardandoPago} onClick={() => setPagoLote(null)}>Cancelar</Button>
+                  <Button size="lg" variant="success" disabled={guardandoPago} onClick={confirmarPagoLote} className={cn('flex-1', guardandoPago && 'cursor-wait')}>
+                    {guardandoPago ? '⏳ Registrando…' : 'Confirmar pago y registrar en Finanzas'}
+                  </Button>
                 </div>
-              </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr><th style={th}>Pago</th><th style={{ ...th, textAlign: 'right' }}>Valor</th><th style={th}>CECO</th></tr></thead>
-                <tbody>
-                  {items.map(i => (
-                    <tr key={i.entidad_clave}>
-                      <td style={td}>{i.datos?.nombre || '—'}<div style={{ color: '#8F8877', fontSize: '0.7rem' }}>{i.entidad_tipo === 'solicitud' ? `Solicitud · ${i.datos?.meta?.tipo || ''}` : `Presupuesto · ${i.datos?.meta?.nombre || ''}`}</div></td>
-                      <td style={{ ...td, textAlign: 'right' }}>{formatCOP(parseFloat(i.valor) || 0)}</td>
-                      <td style={td}>
-                        {i.entidad_tipo === 'solicitud' ? (
-                          <select value={pagoLote.cecos[i.entidad_id] || ''} onChange={(e) => setPagoLote({ ...pagoLote, cecos: { ...pagoLote.cecos, [i.entidad_id]: e.target.value } })} style={{ ...input, padding: '0.35rem', maxWidth: '220px' }}>
-                            <option value="">Elegir CECO…</option>
-                            {cecosGasto.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
-                          </select>
-                        ) : <span style={{ color: '#6B6458' }}>{i.datos?.meta?.ceco || 'el del concepto'}</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
-                <button disabled={guardandoPago} onClick={() => setPagoLote(null)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#332D1E', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Cancelar</button>
-                <button disabled={guardandoPago} onClick={confirmarPagoLote} style={{ flex: 2, padding: '0.75rem', backgroundColor: '#2F9E52', color: '#FFFFFF', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoPago ? 'wait' : 'pointer', opacity: guardandoPago ? 0.6 : 1 }}>
-                  {guardandoPago ? '⏳ Registrando…' : 'Confirmar pago y registrar en Finanzas'}
-                </button>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           </div>
         );
       })()}
