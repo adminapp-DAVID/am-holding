@@ -24,6 +24,13 @@ export default defineConfig({
   build: {
     outDir: 'build',
     chunkSizeWarningLimit: 4000,
+    // Segunda página: catálogo de componentes del sistema de diseño (sin login ni datos).
+    rollupOptions: {
+      input: {
+        main: path.resolve(import.meta.dirname, 'index.html'),
+        sistemaDiseno: path.resolve(import.meta.dirname, 'sistema-diseno.html'),
+      },
+    },
   },
   server: { port: 3000 },
   test: {

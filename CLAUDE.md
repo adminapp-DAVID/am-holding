@@ -15,7 +15,7 @@ App React (Vite + Tailwind CSS v4 + base de shadcn/ui) de gestión financiera de
 
 ## Notas técnicas clave
 
-- Sistema de diseño (shadcn/ui, migración por etapas): Tailwind se carga SIN preflight para no alterar los estilos en línea existentes. Tokens de la paleta AM Holding en `src/index.css` (`--primary` dorado, `--background` crema…). Componentes nuevos en `src/components/ui/` (shadcn, JS sin TypeScript, alias `@/`), utilidad `cn` en `src/lib/utils.js`. Variables de entorno siguen con prefijo `REACT_APP_` (leídas con `import.meta.env`).
+- Sistema de diseño (shadcn/ui, migración por etapas): Tailwind se carga SIN preflight para no alterar los estilos en línea existentes. Tokens de la paleta AM Holding en `src/index.css` (`--primary` dorado, `--background` crema…). Componentes nuevos en `src/components/ui/` (shadcn, JS sin TypeScript, alias `@/`), utilidad `cn` en `src/lib/utils.js`. Etapa 2: ya existen Button, Input, Textarea, Select (nativo), Label, Card, Badge (`estadoBadge`), Table y Dialog (Radix); catálogo en `/sistema-diseno.html`. Sin preflight, cada componente fija borde/fuente/márgenes explícitamente. Variables de entorno siguen con prefijo `REACT_APP_` (leídas con `import.meta.env`).
 
 - Roles: Administrador, Coordinadora Administrativa, Contadora, Gerente, Responsable, Colaborador. Permisos vía `canApprove`, `canEdit`, `isReadOnly`, `puedeEditarSolicitud(s)`.
 - Supabase: un `.update()`/`.delete()` sin `.select()` devuelve `error: null` aunque RLS bloquee el cambio (0 filas). Usar `.select('id')` y verificar `data.length`.
