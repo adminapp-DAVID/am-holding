@@ -58,6 +58,18 @@ const claseBotonMorado = 'bg-[#6C63D1] text-white hover:bg-[#6C63D1]/90';
 const estiloCampoCompactoUI = { width: '100%', height: '32px', padding: '0 0.5rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '8px', color: '#221E15', fontSize: '0.8rem', fontFamily: 'inherit', boxSizing: 'border-box', minWidth: '120px' };
 const estiloCampoUI = { width: '100%', height: '36px', padding: '0 0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '8px', color: '#221E15', fontSize: '0.875rem', fontFamily: 'inherit', boxSizing: 'border-box' };
 
+// Encabezado de tabla abreviado: muestra las iniciales y, al hacer clic (o pasar el mouse),
+// el nombre completo — para columnas cuyo título ocupaba más ancho que sus valores.
+const EncabezadoAbreviado = ({ corto, largo }) => {
+  const [completo, setCompleto] = useState(false);
+  return (
+    <button type="button" onClick={() => setCompleto(!completo)} title={largo} aria-label={largo}
+      className="cursor-pointer whitespace-nowrap border-0 bg-transparent p-0 font-[inherit] text-xs font-semibold uppercase tracking-wide text-muted-foreground underline decoration-dotted underline-offset-4">
+      {completo ? largo : corto}
+    </button>
+  );
+};
+
 // Etiqueta + campo.
 const CampoUI = ({ label, htmlFor, className, children }) => (
   <div className={cn('flex flex-col gap-1.5', className)}>
@@ -8171,8 +8183,8 @@ const App = () => {
                     <TableHead>Tipo</TableHead>
                     <TableHead>Concepto</TableHead>
                     <TableHead className="text-right">Valor</TableHead>
-                    <TableHead className="text-right">Anticipo original</TableHead>
-                    <TableHead className="text-right">Dif. a Reembolsar</TableHead>
+                    <TableHead className="text-right"><EncabezadoAbreviado corto="Ant. orig." largo="Anticipo original" /></TableHead>
+                    <TableHead className="text-right"><EncabezadoAbreviado corto="Dif. reemb." largo="Diferencia a reembolsar" /></TableHead>
                     <TableHead className="text-center">Docs</TableHead>
                     <TableHead className="text-center">Estado</TableHead>
                     <TableHead className="text-center">Acciones</TableHead>
