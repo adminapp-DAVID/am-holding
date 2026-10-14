@@ -500,6 +500,9 @@ const App = () => {
   // "Legalizado" — ese estado es propio de Solicitudes). No reutilizar estadosSolicitud aquí.
   const estadosCuentaCobro = ['Pendiente', 'Aprobado', 'Pagado'];
   const [filtroCuentasEstado, setFiltroCuentasEstado] = useState('Todos');
+  // Administrador y Coordinadora gestionan las cuentas de cobro de todos: su propio formulario de
+  // "Nueva Cuenta de Cobro" arranca plegado para no confundirlo con las cuentas de los colaboradores.
+  const [mostrarNuevaCuentaCobro, setMostrarNuevaCuentaCobro] = useState(false);
   const [filtroCuentasMes, setFiltroCuentasMes] = useState('Todos'); // 'Todos' | 'AAAA-M' (mes cobrado)
   const [filtroCuentasEmpresa, setFiltroCuentasEmpresa] = useState('Todas');
   // Gastos/Ingresos — conectado a Supabase (tablas public.gastos / public.ingresos). Los soportes de cada
@@ -9854,7 +9857,14 @@ const App = () => {
         {currentView === 'cuentasCobro' && (
           <div>
             <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nueva Cuenta de Cobro</h2>
+              {canApprove ? (
+                <button onClick={() => setMostrarNuevaCuentaCobro(!mostrarNuevaCuentaCobro)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+                  <h2 style={{ color: '#C4A747', margin: mostrarNuevaCuentaCobro ? '0 0 1.5rem 0' : 0 }}>{mostrarNuevaCuentaCobro ? '▾' : '▸'} ➕ Nueva Cuenta de Cobro <span style={{ color: '#8F8877', fontSize: '0.8rem', fontWeight: 'normal' }}>(mi propia cuenta — clic para {mostrarNuevaCuentaCobro ? 'ocultar' : 'mostrar'})</span></h2>
+                </button>
+              ) : (
+                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nueva Cuenta de Cobro</h2>
+              )}
+              {(!canApprove || mostrarNuevaCuentaCobro) && (<>
 
               {/* DATOS AUTOMÁTICOS DEL COLABORADOR LOGUEADO — ya no hay que elegir a quién pertenece */}
               <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem', marginBottom: '1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
@@ -9921,6 +9931,7 @@ const App = () => {
                 )}
               </div>
               <button onClick={handleAddCuentaCobro} disabled={isReadOnly || guardandoCuentaCobro} style={{ width: '100%', padding: '0.75rem', backgroundColor: isReadOnly || guardandoCuentaCobro ? '#D8D2C2' : '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: isReadOnly || guardandoCuentaCobro ? 'not-allowed' : 'pointer', opacity: isReadOnly || guardandoCuentaCobro ? 0.5 : 1 }}>{guardandoCuentaCobro ? '⏳ Guardando...' : 'Crear Cuenta de Cobro'}</button>
+              </>)}
             </div>
 
             <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
