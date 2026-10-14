@@ -1598,7 +1598,7 @@ const App = () => {
     if (!['Administrador', 'Coordinadora Administrativa', 'Contadora'].includes(user?.rol)) return;
     const { data, error } = await supabase
       .from('lotes_pago_banco')
-      .select('id, numero, tipo_pago, secuencia, fecha_aplicacion, cantidad, total, encabezado, estado, created_at, motivo_anulacion, empresas ( nombre ), config_bancaria_empresa ( nombre_cuenta ), lotes_pago_banco_items ( entidad_clave, entidad_tipo, entidad_id, anio, mes, valor, activo, orden, datos )')
+      .select('id, numero, tipo_pago, secuencia, fecha_aplicacion, cantidad, total, encabezado, estado, created_at, motivo_anulacion, empresas ( nombre ), config_bancaria_empresa ( nombre_cuenta ), lotes_pago_banco_items ( entidad_clave, entidad_tipo, entidad_id, anio, mes, valor, activo, orden, datos, resultado, motivo_rechazo )')
       .order('numero', { ascending: false })
       .limit(200);
     if (error) {
@@ -2803,7 +2803,7 @@ const App = () => {
       if (solicitud && !solicitud.gastoGeneradoId && !solicitud.ingresoGeneradoId) {
         const { accion, monto } = calcularAccionFinanzasSolicitud(solicitud);
         if (accion !== 'ninguno') {
-          await generarMovimientoDesdeSolicitud(solicitud, { cuentaPago: opciones.cuentaPago || null, cecoCodigo: opciones.cecoCodigo || null, accion, monto, loteId: opciones.loteId || null, fechaPago: opciones.fechaPago || null, neutro: opciones.neutro || null });
+          await generarMovimientoDesdeSolicitud(solicitud, { cuentaPago: opciones.cuentaPago || null, cecoCodigo: opciones.cecoCodigo || null, accion, monto, loteId: opciones.loteId || null, fechaPago: opciones.fechaPago || null, neutro: opciones.neutro || null, detalle: opciones.detalle || null });
         }
       }
     }
@@ -2858,7 +2858,7 @@ const App = () => {
   // esto solo agrega una fila más al mismo Finanzas que ya ven Admin/Coordinadora. Anticipo y
   // Reembolso quedan vinculados al Responsable de la solicitud (no llevan Tercero); Pago a
   // Tercero sigue llevando también los datos del tercero.
-  const generarMovimientoDesdeSolicitud = async (solicitud, { cuentaPago = null, cecoCodigo = null, accion, monto, loteId = null, fechaPago = null, neutro = null } = {}) => {
+  const generarMovimientoDesdeSolicitud = async (solicitud, { cuentaPago = null, cecoCodigo = null, accion, monto, loteId = null, fechaPago = null, neutro = null, detalle = null } = {}) => {
     try {
       const { data: solActual, error: errorLectura } = await supabase
         .from('solicitudes')
@@ -2903,7 +2903,8 @@ const App = () => {
         ceco_id: cecoId,
         cuenta: cuentaPago || null,
         // Nunca vacío en Finanzas: solicitudes viejas sin Concepto quedan como "Tipo — Colaborador".
-        detalle: (solicitud.detalle || '').trim() || `${solicitud.tipo} — ${solicitud.responsableNombre || 'sin colaborador'}`,
+        // `detalle` llega solo si se corrigió al registrar el pago de un lote PAB (no cambia la solicitud).
+        detalle: (detalle || '').trim() || (solicitud.detalle || '').trim() || `${solicitud.tipo} — ${solicitud.responsableNombre || 'sin colaborador'}`,
         valor: monto,
         estado: 'Pagado',
         observaciones: observacionesPorTipo[solicitud.tipo] || 'Generado automáticamente desde Solicitudes.',
@@ -5156,19 +5157,33 @@ const App = () => {
   // ============================================================
   // LOTE PAB PAGADO (pantalla 💸 Pagos PAB → ✅): registra en Finanzas cada pago del lote con
   // los MISMOS pasos de siempre — Solicitudes: "Pagado" vía handleChangeEstado (genera su
-  // Gasto); Presupuesto: el mismo Gasto que crea "Marcar Pagado". El banco da UN comprobante
-  // por lote, así que se sube una vez y se enlaza (mismo bucket_path) a todos los registros.
-  // Es re-ejecutable: lo que ya quedó pagado se salta. El lote solo pasa a "Pagado" si todos
-  // sus registros quedaron registrados.
+  // Gasto); Presupuesto: el mismo Gasto que crea "Marcar Pagado". Soportes: Bancolombia da uno
+  // por cada pago (ajustes[clave].comprobante); el comprobante general del lote es opcional y, si
+  // viene, se sube una vez y se enlaza (mismo bucket_path) a todos los registros.
+  // Además:
+  //  • rechazados: pagos que el banco no hizo (cuenta errada, etc.) → quedan libres para otro lote.
+  //  • ajustes[clave]: CECO, concepto y comprobante individual (opcional) de cada pago.
+  //  • costos: comisión bancaria y 4x1000 del lote → un Gasto aparte por cada uno.
+  // Es re-ejecutable: lo que ya quedó pagado se salta. El lote solo se cierra si todos sus
+  // registros quedaron registrados ("Pagado parcial" si hubo rechazos).
   // ============================================================
-  const registrarPagoLotePAB = async (lote, { fechaPago, comprobante, cecoPorSolicitud }) => {
+  const registrarPagoLotePAB = async (lote, { fechaPago, comprobante, ajustes = {}, rechazados = [], costos = {} }) => {
     const cuenta = lote.config_bancaria_empresa?.nombre_cuenta || '';
-    const items = [...(lote.lotes_pago_banco_items || [])].filter(i => i.activo !== false).sort((a, b) => a.orden - b.orden);
-    const itemsSolicitud = items.filter(i => i.entidad_tipo === 'solicitud');
-    const itemsPresupuesto = items.filter(i => i.entidad_tipo === 'presupuesto');
     const fallidos = [];
     let registrados = 0;
     let saltados = 0;
+
+    // 0) Rechazos del banco primero: así esos pagos no se registran y quedan libres.
+    if (rechazados.length) {
+      const { error } = await supabase.rpc('rechazar_items_lote_pago_banco', { p_lote_id: lote.id, p_items: rechazados });
+      if (error) throw error;
+    }
+    const clavesRechazadas = new Set(rechazados.map(r => r.entidad_clave));
+    const items = [...(lote.lotes_pago_banco_items || [])]
+      .filter(i => i.activo !== false && !clavesRechazadas.has(i.entidad_clave))
+      .sort((a, b) => a.orden - b.orden);
+    const itemsSolicitud = items.filter(i => i.entidad_tipo === 'solicitud');
+    const itemsPresupuesto = items.filter(i => i.entidad_tipo === 'presupuesto');
 
     // 1) Estado actual (releído) de lo que falta pagar, para no duplicar.
     const { data: solActuales, error: errorSol } = itemsSolicitud.length
@@ -5187,37 +5202,40 @@ const App = () => {
       if ((gastosDelConcepto || []).some(g => g.fecha && g.fecha.substring(0, 7) === mesStr)) saltados++;
       else presPendientes.push(it);
     }
-    if (solPendientes.length === 0 && presPendientes.length === 0) {
-      return { registrados, saltados, fallidos, cerrado: await cerrarLotePagado(lote) };
-    }
 
     // 2) Comprobante único: se sube una vez y se enlaza a cada registro.
     let rutaComprobante = null;
-    const tamanoKb = Math.round(dataUrlToUint8Array(comprobante.data).length / 1024);
     const enlazarComprobante = async (entidadTipo, entidadId) => {
+      if (!comprobante) return;
       if (!rutaComprobante) {
         rutaComprobante = await subirSoporteEntidad(comprobante, entidadTipo, entidadId);
         if (!rutaComprobante) throw new Error('No se pudo subir el comprobante');
         return;
       }
       const { error } = await supabase.from('soportes').insert({
-        bucket_path: rutaComprobante, nombre_original: comprobante.nombre, tamano_kb: tamanoKb,
+        bucket_path: rutaComprobante, nombre_original: comprobante.nombre,
+        tamano_kb: Math.round(dataUrlToUint8Array(comprobante.data).length / 1024),
         entidad_tipo: entidadTipo, entidad_id: entidadId, subido_por: user.id
       });
       if (error) throw error;
     };
+    const subirComprobanteIndividual = async (it, entidadTipo, entidadId) => {
+      const archivo = ajustes[it.entidad_clave]?.comprobante;
+      if (archivo && !(await subirSoporteEntidad(archivo, entidadTipo, entidadId))) throw new Error('No se pudo subir su comprobante individual');
+    };
 
-    // 3) Solicitudes: el comprobante se enlaza ANTES de pagar para que el Gasto generado lo copie.
+    // 3) Solicitudes: los comprobantes se enlazan ANTES de pagar para que el Gasto generado los copie.
     for (const it of solPendientes) {
       const solicitud = solicitudes.find(s => String(s.id) === String(it.entidad_id));
       const nombre = it.datos?.nombre || solicitud?.detalle || it.entidad_id;
+      const ajuste = ajustes[it.entidad_clave] || {};
       try {
         if (estadoSol[String(it.entidad_id)] !== 'Aprobado') throw new Error(`está en "${estadoSol[String(it.entidad_id)] || 'no encontrada'}", no en Aprobado`);
         if (!solicitud) throw new Error('no está cargada en la app (pulsa 🔄 Actualizar datos)');
-        const ceco = cecoPorSolicitud[it.entidad_id];
-        if (!ceco) throw new Error('falta el CECO');
+        if (!ajuste.ceco) throw new Error('falta el CECO');
         await enlazarComprobante('solicitud', solicitud.id);
-        await handleChangeEstado(solicitud.id, 'Pagado', { cuentaPago: cuenta, cecoCodigo: ceco, loteId: lote.id, fechaPago });
+        await subirComprobanteIndividual(it, 'solicitud', solicitud.id);
+        await handleChangeEstado(solicitud.id, 'Pagado', { cuentaPago: cuenta, cecoCodigo: ajuste.ceco, loteId: lote.id, fechaPago, detalle: ajuste.detalle });
         registrados++;
       } catch (e) {
         console.error('Error pagando solicitud del lote PAB:', it.entidad_id, e);
@@ -5226,50 +5244,77 @@ const App = () => {
     }
 
     // 4) Presupuesto: mismo Gasto que "Marcar Pagado" (presupuesto_item_id + mes).
-    if (presPendientes.length) {
-      const empresaId = await resolverEmpresaId(lote.empresas?.nombre);
-      for (const it of presPendientes) {
-        const concepto = presupuestoItems.find(p => String(p.id) === String(it.entidad_id));
-        const meta = it.datos?.meta || { nombre: concepto?.nombre, ceco: concepto?.ceco, responsableId: concepto?.responsableId };
-        const nombre = meta.nombre || it.datos?.nombre || it.entidad_id;
+    const empresaId = await resolverEmpresaId(lote.empresas?.nombre);
+    for (const it of presPendientes) {
+      const concepto = presupuestoItems.find(p => String(p.id) === String(it.entidad_id));
+      const meta = it.datos?.meta || { nombre: concepto?.nombre, ceco: concepto?.ceco, responsableId: concepto?.responsableId };
+      const ajuste = ajustes[it.entidad_clave] || {};
+      const nombre = meta.nombre || it.datos?.nombre || it.entidad_id;
+      try {
+        const valor = parseFloat(it.valor) || 0;
+        const { data: nuevoGasto, error } = await supabase.from('gastos').insert({
+          fecha: fechaPago,
+          tipo: 'Gasto',
+          empresa_id: empresaId,
+          responsable_id: meta.responsableId || null,
+          ceco_id: await resolverCecoId(ajuste.ceco || meta.ceco),
+          cuenta,
+          detalle: (ajuste.detalle || '').trim() || nombre,
+          valor,
+          valor_bruto: meta.valorBruto || valor,
+          deduccion_aplicada: meta.deduccion > 0 ? meta.deduccion : null,
+          estado: 'Pagado',
+          observaciones: OBSERVACIONES_GASTO_DESDE_PRESUPUESTO,
+          presupuesto_item_id: it.entidad_id,
+          lote_pago_id: lote.id
+        }).select('id').single();
+        if (error) throw error;
+        await enlazarComprobante('gasto', nuevoGasto.id);
+        await subirComprobanteIndividual(it, 'gasto', nuevoGasto.id);
+        registrados++;
+      } catch (e) {
+        console.error('Error registrando concepto del lote PAB:', it.entidad_id, e);
+        fallidos.push(`${nombre}: ${e.message || 'error inesperado'}`);
+      }
+    }
+
+    // 5) Costos bancarios del lote (comisión y 4x1000): un Gasto por cada uno, sin duplicar.
+    const costosLote = [
+      ['comision', `Comisión bancaria — lote PAB #${lote.numero}`],
+      ['gmf', `GMF 4x1000 — lote PAB #${lote.numero}`]
+    ].filter(([k]) => (parseFloat(costos[k]) || 0) > 0);
+    if (costosLote.length) {
+      const { data: yaRegistrados, error } = await supabase.from('gastos').select('detalle').eq('lote_pago_id', lote.id);
+      if (error) throw error;
+      const cecoCostosId = await resolverCecoId(costos.ceco);
+      for (const [k, detalle] of costosLote) {
+        if ((yaRegistrados || []).some(g => g.detalle === detalle)) { saltados++; continue; }
         try {
-          const valor = parseFloat(it.valor) || 0;
-          const { data: nuevoGasto, error } = await supabase.from('gastos').insert({
-            fecha: fechaPago,
-            tipo: 'Gasto',
-            empresa_id: empresaId,
-            responsable_id: meta.responsableId || null,
-            ceco_id: await resolverCecoId(meta.ceco),
-            cuenta,
-            detalle: nombre,
-            valor,
-            valor_bruto: meta.valorBruto || valor,
-            deduccion_aplicada: meta.deduccion > 0 ? meta.deduccion : null,
-            estado: 'Pagado',
-            observaciones: OBSERVACIONES_GASTO_DESDE_PRESUPUESTO,
-            presupuesto_item_id: it.entidad_id,
-            lote_pago_id: lote.id
+          const { data: gastoCosto, error: errorCosto } = await supabase.from('gastos').insert({
+            fecha: fechaPago, tipo: 'Gasto', empresa_id: empresaId, responsable_id: null, ceco_id: cecoCostosId,
+            cuenta, detalle, valor: parseFloat(costos[k]), estado: 'Pagado',
+            observaciones: `Costo bancario del lote PAB #${lote.numero}.`, lote_pago_id: lote.id
           }).select('id').single();
-          if (error) throw error;
-          await enlazarComprobante('gasto', nuevoGasto.id);
+          if (errorCosto) throw errorCosto;
+          await enlazarComprobante('gasto', gastoCosto.id);
           registrados++;
         } catch (e) {
-          console.error('Error registrando concepto del lote PAB:', it.entidad_id, e);
-          fallidos.push(`${nombre}: ${e.message || 'error inesperado'}`);
+          console.error('Error registrando costo bancario del lote PAB:', k, e);
+          fallidos.push(`${detalle}: ${e.message || 'error inesperado'}`);
         }
       }
     }
 
     await Promise.all([cargarSolicitudes(), cargarGastos()]);
 
-    // 5) Verificación final: todas las solicitudes deben haber quedado en Pagado.
+    // 6) Verificación final: todas las solicitudes pagadas deben haber quedado en Pagado.
     if (itemsSolicitud.length) {
       const { data: verif } = await supabase.from('solicitudes').select('id, estado').in('id', itemsSolicitud.map(i => i.entidad_id));
       const noPagadas = (verif || []).filter(s => s.estado !== 'Pagado').length;
       if (noPagadas > 0 && fallidos.length === 0) fallidos.push(`${noPagadas} solicitud(es) no quedaron en Pagado`);
     }
     const cerrado = fallidos.length === 0 ? await cerrarLotePagado(lote) : false;
-    return { registrados, saltados, fallidos, cerrado };
+    return { registrados, saltados, rechazados: rechazados.length, fallidos, cerrado };
   };
 
   const cerrarLotePagado = async (lote) => {
