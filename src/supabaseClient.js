@@ -5,8 +5,8 @@
 // archivo .env local (que no se sube a git) para pruebas.
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
-const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.REACT_APP_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.REACT_APP_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('⚠️ Faltan las variables de entorno REACT_APP_SUPABASE_URL / REACT_APP_SUPABASE_ANON_KEY.');

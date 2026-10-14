@@ -39,7 +39,7 @@ const descargarBytes = (bytes, nombre) => {
 let plantillaCache = null;
 const cargarPlantilla = async () => {
   if (plantillaCache) return plantillaCache;
-  const resp = await fetch(`${process.env.PUBLIC_URL || ''}/plantillas/FORMATOPAB_CONVERSORPAGOS.xlsx`);
+  const resp = await fetch(`${import.meta.env.BASE_URL}plantillas/FORMATOPAB_CONVERSORPAGOS.xlsx`);
   if (!resp.ok) throw new Error('No se pudo cargar la plantilla oficial del banco');
   plantillaCache = await resp.arrayBuffer();
   return plantillaCache;
