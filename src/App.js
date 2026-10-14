@@ -21,9 +21,9 @@ import ExportadorPABView from './ExportadorPABView';
 import NotificacionesCampana from './NotificacionesCampana';
 import AuditoriaView from './AuditoriaView';
 import TopNav from './components/TopNav';
-import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, FileDown, Eye, Plus, Check, X, Pencil, Search, Loader2, FileSpreadsheet } from 'lucide-react';
+import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, FileDown, Eye, Plus, Check, X, Pencil, Search, Loader2, FileSpreadsheet, Upload, FilePlus2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
@@ -55,6 +55,7 @@ const claseInputArchivo = 'h-auto cursor-pointer py-2 text-muted-foreground file
 const claseSelectEstado = 'cursor-pointer py-1 font-[inherit] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60';
 const claseBotonMorado = 'bg-[#6C63D1] text-white hover:bg-[#6C63D1]/90';
 // Para CampoBanco / SelectTipoDocumento (CamposBancarios.js), que solo reciben `style`.
+const estiloCampoCompactoUI = { width: '100%', height: '32px', padding: '0 0.5rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '8px', color: '#221E15', fontSize: '0.8rem', fontFamily: 'inherit', boxSizing: 'border-box', minWidth: '120px' };
 const estiloCampoUI = { width: '100%', height: '36px', padding: '0 0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '8px', color: '#221E15', fontSize: '0.875rem', fontFamily: 'inherit', boxSizing: 'border-box' };
 
 // Etiqueta + campo.
@@ -8401,73 +8402,73 @@ const App = () => {
         })()}
 
         {currentView === 'finanzas' && !puedeVerFinanzas && (
-          <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', textAlign: 'center', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-            <p style={{ color: '#CC4B4B', fontSize: '1.1rem', fontWeight: 'bold' }}>🔒 Acceso Restringido</p>
-            <p style={{ color: '#6B6458' }}>Tu rol no tiene acceso al módulo de Finanzas.</p>
-            <button onClick={() => setCurrentView('dashboard')} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>Ir al Dashboard</button>
-          </div>
+          <Card className="items-center px-6 py-8 text-center">
+            <p className="m-0 text-lg font-bold text-destructive">🔒 Acceso Restringido</p>
+            <p className="m-0 text-muted-foreground">Tu rol no tiene acceso al módulo de Finanzas.</p>
+            <Button onClick={() => setCurrentView('dashboard')}>Ir al Dashboard</Button>
+          </Card>
         )}
 
         {currentView === 'finanzas' && puedeVerFinanzas && (
-          <div>
+          // Etapa 3 del sistema de diseño: Finanzas migrado a los componentes de
+          // src/components/ui/ (misma lógica, handlers y permisos que antes; solo cambia la presentación).
+          <div className="flex flex-col gap-6">
             {/* BOTÓN IMPORTAR (SOLO ADMIN) */}
             {user?.rol === 'Administrador' && (
-              <div style={{ backgroundColor: '#FFFFFF', padding: '1rem', borderRadius: '4px', border: '1px solid #E6E0D2', marginBottom: '2rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                <button onClick={() => setMostrarImportar(true)} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#3B72D9', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>
-                  📥 Importar Histórico
-                </button>
-                <p style={{ color: '#6B6458', margin: 0, fontSize: '0.85rem' }}>{cargandoGastos ? 'Cargando gastos desde Supabase...' : `Gastos cargados desde Supabase: ${gastos.length}`}</p>
-              </div>
+              <Card className="flex-row flex-wrap items-center gap-4 px-5 py-4">
+                <Button variant="outline" onClick={() => setMostrarImportar(true)} className="text-chart-3">
+                  <Upload size={16} /> Importar Histórico
+                </Button>
+                <p className="m-0 text-sm text-muted-foreground">{cargandoGastos ? 'Cargando gastos desde Supabase...' : `Gastos cargados desde Supabase: ${gastos.length}`}</p>
+              </Card>
             )}
 
             {/* NUEVA TRANSACCIÓN (SOLO ADMIN Y COORDINADORA) */}
             {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
-            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>➕ Nuevo Gasto/Ingreso</h2>
+            <Card className="gap-4 px-0 py-6 sm:py-7">
+              <CardHeader className="sm:px-7">
+                <CardTitle className="text-lg">Nuevo Gasto/Ingreso</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4 sm:px-7">
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Tipo</label>
-                  <select value={newGasto.tipo} onChange={(e) => {
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <CampoUI label="Tipo" htmlFor="fin-tipo">
+                  <Select id="fin-tipo" value={newGasto.tipo} onChange={(e) => {
                     // "Pago a Tercero en Lote" no es un tipo real de Gasto — es un atajo que abre
                     // su propio formulario emergente (varias facturas de distintos colaboradores,
                     // un solo pago). No cambia newGasto.tipo, para no afectar el formulario normal.
                     if (e.target.value === 'PagoTerceroLote') { handleAbrirRegistrarFacturasTercero(); return; }
                     setNewGasto({...newGasto, tipo: e.target.value}); setNewIngreso({...newIngreso, tipo: e.target.value});
-                  }} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                  }}>
                     <option value="Gasto">💸 Gasto</option>
                     <option value="Ingreso">💰 Ingreso</option>
                     <option value="Traslado">🔄 Traslado</option>
                     <option value="Pago a Tercero">🤝 Pago a Tercero</option>
                     <option value="PagoTerceroLote">🧾 Pago a Tercero en Lote (varias facturas)</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Fecha</label>
-                  <input type="date" value={newGasto.fecha} onChange={(e) => {setNewGasto({...newGasto, fecha: e.target.value}); setNewIngreso({...newIngreso, fecha: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }} />
-                </div>
+                  </Select>
+                </CampoUI>
+                <CampoUI label="Fecha" htmlFor="fin-fecha">
+                  <Input id="fin-fecha" type="date" value={newGasto.fecha} onChange={(e) => {setNewGasto({...newGasto, fecha: e.target.value}); setNewIngreso({...newIngreso, fecha: e.target.value});}} />
+                </CampoUI>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Empresa</label>
-                  <select value={newGasto.empresa} onChange={(e) => {setNewGasto({...newGasto, empresa: e.target.value, cuenta: ''}); setNewIngreso({...newIngreso, empresa: e.target.value, cuenta: ''});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+              <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]">
+                <CampoUI label="Empresa" htmlFor="fin-empresa">
+                  <Select id="fin-empresa" value={newGasto.empresa} onChange={(e) => {setNewGasto({...newGasto, empresa: e.target.value, cuenta: ''}); setNewIngreso({...newIngreso, empresa: e.target.value, cuenta: ''});}}>
                     {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
-                  </select>
-                </div>
-                
+                  </Select>
+                </CampoUI>
+
                 {newGasto.tipo === 'Traslado' ? (
                   <>
-                    <div>
-                      <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta Salida</label>
-                      <select value={newGasto.cuentaSalida} onChange={(e) => setNewGasto({...newGasto, cuentaSalida: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                    <CampoUI label="Cuenta Salida" htmlFor="fin-cuenta-salida">
+                      <Select id="fin-cuenta-salida" value={newGasto.cuentaSalida} onChange={(e) => setNewGasto({...newGasto, cuentaSalida: e.target.value})}>
                         <option value="">Seleccionar</option>
                         {(cuentasPorEmpresa[newGasto.empresa] || []).map(cuenta => <option key={cuenta} value={cuenta}>{cuenta}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta Destino</label>
-                      <select value={newGasto.cuentaDestino} onChange={(e) => setNewGasto({...newGasto, cuentaDestino: e.target.value, cuentaDestinoExternaNumero: '', cuentaDestinoExternaDetalle: ''})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                      </Select>
+                    </CampoUI>
+                    <CampoUI label="Cuenta Destino" htmlFor="fin-cuenta-destino">
+                      <Select id="fin-cuenta-destino" value={newGasto.cuentaDestino} onChange={(e) => setNewGasto({...newGasto, cuentaDestino: e.target.value, cuentaDestinoExternaNumero: '', cuentaDestinoExternaDetalle: ''})}>
                         <option value="">Seleccionar</option>
                         <option value={CUENTA_DESTINO_EXTERNA}>🏢 Empresa Externa</option>
                         {empresas.map(emp => (
@@ -8475,84 +8476,81 @@ const App = () => {
                             {(cuentasPorEmpresa[emp] || []).map(cuenta => <option key={`${emp}-${cuenta}`} value={`${emp}: ${cuenta}`}>{cuenta}</option>)}
                           </optgroup>
                         ))}
-                      </select>
+                      </Select>
                       {/* Traslado hacia una cuenta que no es de ninguna empresa de la holding
                           (ej. pagarle directo a un banco/entidad externa) — se digitan a mano
                           en vez de elegir de la lista de cuentas propias. */}
                       {newGasto.cuentaDestino === CUENTA_DESTINO_EXTERNA && (
-                        <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                          <input type="text" placeholder="Número de cuenta" value={newGasto.cuentaDestinoExternaNumero} onChange={(e) => setNewGasto({...newGasto, cuentaDestinoExternaNumero: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                          <input type="text" placeholder="Detalle (banco, titular, etc.)" value={newGasto.cuentaDestinoExternaDetalle} onChange={(e) => setNewGasto({...newGasto, cuentaDestinoExternaDetalle: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
+                        <div className="mt-1.5 flex flex-col gap-2">
+                          <Input type="text" aria-label="Número de cuenta" placeholder="Número de cuenta" value={newGasto.cuentaDestinoExternaNumero} onChange={(e) => setNewGasto({...newGasto, cuentaDestinoExternaNumero: e.target.value})} />
+                          <Input type="text" aria-label="Detalle de la cuenta externa" placeholder="Detalle (banco, titular, etc.)" value={newGasto.cuentaDestinoExternaDetalle} onChange={(e) => setNewGasto({...newGasto, cuentaDestinoExternaDetalle: e.target.value})} />
                         </div>
                       )}
-                    </div>
+                    </CampoUI>
                   </>
                 ) : (
                   <>
-                    <div>
-                      <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta</label>
+                    <CampoUI label="Cuenta" htmlFor="fin-cuenta">
                       {/* Este mismo campo se usa para Gasto/Pago a Tercero (guarda en newGasto.cuenta)
                           y para Ingreso (handleAddIngreso valida/guarda newIngreso.cuenta, un estado
                           aparte) — sin este segundo setNewIngreso, elegir una Cuenta al crear un
                           Ingreso no quedaba guardada ahí, y el guardado siempre fallaba con
                           "Cuenta es obligatoria" aunque sí se hubiera seleccionado una. */}
-                      <select value={newGasto.cuenta} onChange={(e) => { setNewGasto({...newGasto, cuenta: e.target.value}); setNewIngreso({...newIngreso, cuenta: e.target.value}); }} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                      <Select id="fin-cuenta" value={newGasto.cuenta} onChange={(e) => { setNewGasto({...newGasto, cuenta: e.target.value}); setNewIngreso({...newIngreso, cuenta: e.target.value}); }}>
                         <option value="">Seleccionar</option>
                         {(cuentasPorEmpresa[newGasto.empresa] || []).map(cuenta => <option key={cuenta} value={cuenta}>{cuenta}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Colaborador</label>
-                      <select value={newGasto.responsable} onChange={(e) => {setNewGasto({...newGasto, responsable: e.target.value}); setNewIngreso({...newIngreso, responsable: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                      </Select>
+                    </CampoUI>
+                    <CampoUI label="Colaborador" htmlFor="fin-colaborador">
+                      <Select id="fin-colaborador" value={newGasto.responsable} onChange={(e) => {setNewGasto({...newGasto, responsable: e.target.value}); setNewIngreso({...newIngreso, responsable: e.target.value});}}>
                         <option value="">Seleccionar</option>
                         {[...personasFinanzas].sort((a, b) => a.nombre.localeCompare(b.nombre)).map(r => <option key={r.id} value={r.nombre}>{r.nombre}{r.rol && r.rol !== 'Responsable' ? ` (${r.rol})` : ''}</option>)}
-                      </select>
-                    </div>
+                      </Select>
+                    </CampoUI>
                   </>
                 )}
-                
+
                 {(newGasto.tipo === 'Gasto' || newGasto.tipo === 'Pago a Tercero') && (
-                  <div>
-                    <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>CECO</label>
-                    <select value={newGasto.ceco} onChange={(e) => setNewGasto({...newGasto, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                  <CampoUI label="CECO" htmlFor="fin-ceco">
+                    <Select id="fin-ceco" value={newGasto.ceco} onChange={(e) => setNewGasto({...newGasto, ceco: e.target.value})}>
                       {cecosGasto.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo}</option>)}
-                    </select>
-                  </div>
+                    </Select>
+                  </CampoUI>
                 )}
 
                 {newGasto.tipo === 'Ingreso' && (
-                  <div>
-                    <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>CEIN (origen)</label>
-                    <select value={newIngreso.ceco} onChange={(e) => setNewIngreso({...newIngreso, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                  <CampoUI label="CEIN (origen)" htmlFor="fin-cein">
+                    <Select id="fin-cein" value={newIngreso.ceco} onChange={(e) => setNewIngreso({...newIngreso, ceco: e.target.value})}>
                       {cecosIngreso.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo}</option>)}
-                    </select>
-                  </div>
+                    </Select>
+                  </CampoUI>
                 )}
 
                 {/* Traslado elige su propio CECO, de la categoría "Traslado" en Gestión de CECOs
                     (antes quedaba fijo siempre en CEIN-003-ACPT, ahora se deja como una opción más). */}
                 {newGasto.tipo === 'Traslado' && (
-                  <div>
-                    <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>CECO</label>
-                    <select value={newGasto.ceco} onChange={(e) => setNewGasto({...newGasto, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                  <CampoUI label="CECO" htmlFor="fin-ceco-traslado">
+                    <Select id="fin-ceco-traslado" value={newGasto.ceco} onChange={(e) => setNewGasto({...newGasto, ceco: e.target.value})}>
                       <option value="">Seleccionar</option>
                       {cecosTraslado.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
-                    </select>
-                  </div>
+                    </Select>
+                  </CampoUI>
                 )}
               </div>
 
-              <input type="text" placeholder="Detalle/Descripción" value={newGasto.detalle} onChange={(e) => {setNewGasto({...newGasto, detalle: e.target.value}); setNewIngreso({...newIngreso, detalle: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', marginBottom: '1rem', boxSizing: 'border-box' }} />
+              <CampoUI label="Detalle/Descripción" htmlFor="fin-detalle">
+                <Input id="fin-detalle" type="text" placeholder="Detalle/Descripción" value={newGasto.detalle} onChange={(e) => {setNewGasto({...newGasto, detalle: e.target.value}); setNewIngreso({...newIngreso, detalle: e.target.value});}} />
+              </CampoUI>
 
               {/* PAGO A TERCERO DIRECTO DESDE FINANZAS (Opción B) — mismo bloque y mismo catálogo
                   reutilizable (public.terceros) que ya usa Solicitudes, para que un pago hecho
                   desde cualquiera de las dos pantallas quede visible en el mismo desplegable. */}
               {esPagoTerceroFinanzas && (
-                <div style={{ marginBottom: '1rem', backgroundColor: '#F8F6F1', padding: '1rem', borderRadius: '4px', border: '1px solid #E6E0D2' }}>
-                  <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0', fontSize: '1rem' }}>Información del Tercero</h3>
+                <div className="flex flex-col gap-3 rounded-lg border border-solid border-border bg-background p-4">
+                  <h3 className="m-0 text-base font-bold">Información del Tercero</h3>
 
-                  <div style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.5rem' }}>
-                    <select value={newGasto.terceroId} onChange={(e) => {
+                  <div className="flex gap-2">
+                    <Select aria-label="Tercero guardado" value={newGasto.terceroId} onChange={(e) => {
                       const id = e.target.value;
                       if (!id) {
                         setNewGasto({...newGasto, terceroId: '', terceroNombre: '', terceroDni: '', terceroTipoDocumento: '', terceroPaisOrigen: '', terceroBanco: '', terceroCodigoBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false});
@@ -8560,41 +8558,41 @@ const App = () => {
                       }
                       const t = tercerosDB.find(x => x.id === id);
                       setNewGasto({...newGasto, terceroId: id, terceroNombre: t?.nombre || '', terceroDni: t?.dni || '', terceroTipoDocumento: t?.tipo_documento || '', terceroPaisOrigen: t?.pais_origen || '', terceroBanco: t?.banco || '', terceroCodigoBanco: t?.codigo_banco || inferirCodigoBanco(t?.banco), terceroTipoCuenta: t?.tipo_cuenta || '', terceroNumeroCuenta: t?.numero_cuenta || '', guardarTercero: false, actualizarTercero: true});
-                    }} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }}>
+                    }}>
                       <option value="">➕ Nuevo tercero</option>
                       {tercerosDB.map(t => <option key={t.id} value={t.id}>{t.nombre} — {t.dni}</option>)}
-                    </select>
+                    </Select>
                     {newGasto.terceroId && (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
-                      <button type="button" onClick={() => handleEliminarTercero(newGasto.terceroId)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#CC4B4B', cursor: 'pointer', fontSize: '0.85rem' }} title="Eliminar este tercero del catálogo">
-                        🗑️
-                      </button>
+                      <Button variant="outline" size="icon" onClick={() => handleEliminarTercero(newGasto.terceroId)} className="shrink-0 text-destructive" title="Eliminar este tercero del catálogo" aria-label="Eliminar este tercero del catálogo">
+                        <Trash2 size={16} />
+                      </Button>
                     )}
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                    <input type="text" placeholder="Nombre completo *" value={newGasto.terceroNombre} onChange={(e) => setNewGasto({...newGasto, terceroNombre: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
-                    <SelectTipoDocumento value={newGasto.terceroTipoDocumento} onChange={(v) => setNewGasto({...newGasto, terceroTipoDocumento: v})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
-                    <input type="text" placeholder="Documento (NIT sin DV) *" value={newGasto.terceroDni} onChange={(e) => setNewGasto({...newGasto, terceroDni: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
-                    <input type="text" placeholder="País de origen" value={newGasto.terceroPaisOrigen} onChange={(e) => setNewGasto({...newGasto, terceroPaisOrigen: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
+                  <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]">
+                    <Input type="text" aria-label="Nombre completo" placeholder="Nombre completo *" value={newGasto.terceroNombre} onChange={(e) => setNewGasto({...newGasto, terceroNombre: e.target.value})} />
+                    <SelectTipoDocumento value={newGasto.terceroTipoDocumento} onChange={(v) => setNewGasto({...newGasto, terceroTipoDocumento: v})} style={estiloCampoUI} />
+                    <Input type="text" aria-label="Documento" placeholder="Documento (NIT sin DV) *" value={newGasto.terceroDni} onChange={(e) => setNewGasto({...newGasto, terceroDni: e.target.value})} />
+                    <Input type="text" aria-label="País de origen" placeholder="País de origen" value={newGasto.terceroPaisOrigen} onChange={(e) => setNewGasto({...newGasto, terceroPaisOrigen: e.target.value})} />
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                    <CampoBanco codigo={newGasto.terceroCodigoBanco} texto={newGasto.terceroBanco} onChange={({ codigo, texto }) => setNewGasto({...newGasto, terceroCodigoBanco: codigo, terceroBanco: texto})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
-                    <select value={newGasto.terceroTipoCuenta} onChange={(e) => setNewGasto({...newGasto, terceroTipoCuenta: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }}>
+                  <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+                    <CampoBanco codigo={newGasto.terceroCodigoBanco} texto={newGasto.terceroBanco} onChange={({ codigo, texto }) => setNewGasto({...newGasto, terceroCodigoBanco: codigo, terceroBanco: texto})} style={estiloCampoUI} />
+                    <Select aria-label="Tipo de cuenta" value={newGasto.terceroTipoCuenta} onChange={(e) => setNewGasto({...newGasto, terceroTipoCuenta: e.target.value})}>
                       <option value="">Tipo de cuenta</option>
                       <option value="Ahorros">Ahorros</option>
                       <option value="Corriente">Corriente</option>
-                    </select>
-                    <input type="text" placeholder="Número de cuenta" value={newGasto.terceroNumeroCuenta} onChange={(e) => setNewGasto({...newGasto, terceroNumeroCuenta: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
+                    </Select>
+                    <Input type="text" aria-label="Número de cuenta" placeholder="Número de cuenta" value={newGasto.terceroNumeroCuenta} onChange={(e) => setNewGasto({...newGasto, terceroNumeroCuenta: e.target.value})} />
                   </div>
 
                   {!newGasto.terceroId ? (
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#221E15', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={newGasto.guardarTercero} onChange={(e) => setNewGasto({...newGasto, guardarTercero: e.target.checked})} />
+                    <label className="flex cursor-pointer items-center gap-2 text-xs font-bold">
+                      <input type="checkbox" className={claseCheckbox} checked={newGasto.guardarTercero} onChange={(e) => setNewGasto({...newGasto, guardarTercero: e.target.checked})} />
                       💾 Guardar este tercero para futuros pagos (la próxima vez solo se ingresa el valor)
                     </label>
                   ) : (
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#221E15', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={newGasto.actualizarTercero} onChange={(e) => setNewGasto({...newGasto, actualizarTercero: e.target.checked})} />
+                    <label className="flex cursor-pointer items-center gap-2 text-xs font-bold">
+                      <input type="checkbox" className={claseCheckbox} checked={newGasto.actualizarTercero} onChange={(e) => setNewGasto({...newGasto, actualizarTercero: e.target.checked})} />
                       🔄 Actualizar los datos guardados de este tercero con lo que edité arriba
                     </label>
                   )}
@@ -8610,9 +8608,8 @@ const App = () => {
                 // hay que elegirla a propósito, no queda seleccionada sola.
                 const valorSeleccionado = newGasto.presupuestoItemId || '';
                 return (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Vincular a Presupuesto (opcional)</label>
-                    <select value={valorSeleccionado} onChange={(e) => {
+                  <CampoUI label="Vincular a Presupuesto (opcional)" htmlFor="fin-presupuesto">
+                    <Select id="fin-presupuesto" value={valorSeleccionado} onChange={(e) => {
                       const nuevoId = e.target.value || '';
                       // Si el concepto elegido ya tiene un Colaborador vinculado (Gestión de Conceptos),
                       // se rellena solo el campo Responsable de este formulario — así no toca escribirlo
@@ -8623,20 +8620,20 @@ const App = () => {
                         presupuestoItemId: nuevoId,
                         responsable: conceptoElegido?.responsableNombre ? conceptoElegido.responsableNombre : newGasto.responsable
                       });
-                    }} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
+                    }}>
                       <option value="">Sin vincular</option>
                       {candidatos.map(({ item: p }) => <option key={p.id} value={p.id}>{p.nombre}{p.ceco !== newGasto.ceco ? ` · ${p.ceco}` : ''} — {formatMoney(p.valorMensual, newGasto.empresa)}{p.id === sugeridoId ? ' (Sugerido)' : ''}</option>)}
-                    </select>
+                    </Select>
                     {sugeridoId && !valorSeleccionado && (
-                      <p style={{ fontSize: '0.75rem', color: '#6B6458', margin: '0.35rem 0 0 0' }}>💡 Por proveedor/responsable, este gasto coincide con "{candidatos[0].item.nombre}" — selecciónalo en la lista si aplica. No se vincula solo.</p>
+                      <p className="m-0 text-xs text-muted-foreground">💡 Por proveedor/responsable, este gasto coincide con "{candidatos[0].item.nombre}" — selecciónalo en la lista si aplica. No se vincula solo.</p>
                     )}
                     {valorSeleccionado && (() => {
                       const seleccionado = candidatos.find(c => c.item.id === valorSeleccionado);
                       return seleccionado && !seleccionado.mismoCeco ? (
-                        <p style={{ fontSize: '0.75rem', color: '#C4A747', margin: '0.35rem 0 0 0' }}>ℹ️ Este concepto está catalogado en {seleccionado.item.ceco}. El gasto se guardará con el CECO que elegiste arriba ({newGasto.ceco}) — no se cambia solo.</p>
+                        <p className="m-0 text-xs text-[#8A6A0C]">ℹ️ Este concepto está catalogado en {seleccionado.item.ceco}. El gasto se guardará con el CECO que elegiste arriba ({newGasto.ceco}) — no se cambia solo.</p>
                       ) : null;
                     })()}
-                  </div>
+                  </CampoUI>
                 );
               })()}
 
@@ -8653,137 +8650,130 @@ const App = () => {
                 const bruto = parseFloat(newGasto.valor) || 0;
                 const neto = Math.max(0, bruto - totalDeduccion);
                 return (
-                  <div style={{ backgroundColor: '#FBF3E5', border: '1px solid #C4A747', borderRadius: '4px', padding: '1rem', marginBottom: '1rem' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={newGasto.aplicarDeduccion !== false} onChange={(e) => setNewGasto({...newGasto, aplicarDeduccion: e.target.checked})} />
+                  <div className="rounded-lg border border-solid border-primary bg-[#FBF3E5] p-4">
+                    <label className="flex cursor-pointer items-center gap-2 text-sm font-bold">
+                      <input type="checkbox" className={claseCheckbox} checked={newGasto.aplicarDeduccion !== false} onChange={(e) => setNewGasto({...newGasto, aplicarDeduccion: e.target.checked})} />
                       💵 Se detectaron deducciones activas — aplicar al valor neto de este pago
                     </label>
                     {deduccionesItem.map(d => (
-                      <p key={d.id} style={{ margin: '0.5rem 0 0 1.6rem', fontSize: '0.8rem', color: '#6B6458' }}>
+                      <p key={d.id} className="m-0 ml-6 mt-2 text-xs text-muted-foreground">
                         {d.tipo} — {formatMoney(d.cuotaAplicada, newGasto.empresa)}{d.observaciones ? ` (${d.observaciones})` : ''}
                       </p>
                     ))}
                     {newGasto.aplicarDeduccion !== false && (
-                      <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #E6E0D2', display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                        <span style={{ color: '#6B6458' }}>Bruto: {formatMoney(bruto, newGasto.empresa)} − Deducción: {formatMoney(totalDeduccion, newGasto.empresa)}</span>
-                        <span style={{ fontWeight: 'bold', color: '#221E15' }}>Neto a Pagar: {formatMoney(neto, newGasto.empresa)}</span>
+                      <div className="mt-3 flex flex-wrap justify-between gap-2 border-0 border-t border-solid border-border pt-3 text-sm">
+                        <span className="text-muted-foreground">Bruto: {formatMoney(bruto, newGasto.empresa)} − Deducción: {formatMoney(totalDeduccion, newGasto.empresa)}</span>
+                        <span className="font-bold">Neto a Pagar: {formatMoney(neto, newGasto.empresa)}</span>
                       </div>
                     )}
                   </div>
                 );
               })()}
 
-              {/* Pago a Tercero: la moneda del pago se elige aparte, igual que en Solicitudes —
-                  no depende de la empresa que paga. Aplica tanto si el Tipo es "Pago a
-                  Tercero" como si es "Gasto" con el CECO "Pago a Terceros" elegido. */}
-              {esPagoTerceroFinanzas && (
-                <select value={newGasto.moneda} onChange={(e) => setNewGasto({...newGasto, moneda: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginBottom: '0.5rem' }}>
-                  <option value="COP">Pesos Colombianos (COP)</option>
-                  <option value="USD">Dólares (USD)</option>
-                </select>
-              )}
+              <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]">
+                {/* Pago a Tercero: la moneda del pago se elige aparte, igual que en Solicitudes —
+                    no depende de la empresa que paga. Aplica tanto si el Tipo es "Pago a
+                    Tercero" como si es "Gasto" con el CECO "Pago a Terceros" elegido. */}
+                {esPagoTerceroFinanzas && (
+                  <CampoUI label="Moneda" htmlFor="fin-moneda">
+                    <Select id="fin-moneda" value={newGasto.moneda} onChange={(e) => setNewGasto({...newGasto, moneda: e.target.value})}>
+                      <option value="COP">Pesos Colombianos (COP)</option>
+                      <option value="USD">Dólares (USD)</option>
+                    </Select>
+                  </CampoUI>
+                )}
 
-              {newGasto.tipo === 'Traslado' && <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Valor (Salida — {getMoneda(newGasto.empresa)})</label>}
-              <input type="number" placeholder={esPagoTerceroFinanzas ? `Valor a Pagar (${newGasto.moneda})` : 'Valor'} value={newGasto.valor} onChange={(e) => {setNewGasto({...newGasto, valor: e.target.value}); setNewIngreso({...newIngreso, valor: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', marginBottom: '1rem', boxSizing: 'border-box', marginTop: newGasto.tipo === 'Traslado' ? '0.5rem' : 0 }} />
+                <CampoUI label={newGasto.tipo === 'Traslado' ? `Valor (Salida — ${getMoneda(newGasto.empresa)})` : (esPagoTerceroFinanzas ? `Valor a Pagar (${newGasto.moneda})` : 'Valor')} htmlFor="fin-valor">
+                  <Input id="fin-valor" type="number" placeholder={esPagoTerceroFinanzas ? `Valor a Pagar (${newGasto.moneda})` : 'Valor'} value={newGasto.valor} onChange={(e) => {setNewGasto({...newGasto, valor: e.target.value}); setNewIngreso({...newIngreso, valor: e.target.value});}} />
+                </CampoUI>
 
-              {/* Traslado entre monedas distintas (ej. ARKO en USD hacia/desde el resto de la
-                  holding en COP): el valor que sale (arriba) y el que entra a la cuenta destino
-                  son montos distintos en monedas distintas, no la misma cifra convertida. Este
-                  campo solo aparece cuando origen y destino tienen monedas diferentes. */}
-              {newGasto.tipo === 'Traslado' && newGasto.cuentaDestino && getMoneda(newGasto.empresa) !== getMoneda(getEmpresaDestinoTraslado(newGasto.cuentaDestino, newGasto.empresa)) && (
-                <div>
-                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Valor en Cuenta Destino ({getMoneda(getEmpresaDestinoTraslado(newGasto.cuentaDestino, newGasto.empresa))})</label>
-                  <input type="number" placeholder={`Valor en ${getMoneda(getEmpresaDestinoTraslado(newGasto.cuentaDestino, newGasto.empresa))}`} value={newGasto.valorDestino} onChange={(e) => setNewGasto({...newGasto, valorDestino: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', marginBottom: '1rem', boxSizing: 'border-box', marginTop: '0.5rem' }} />
-                </div>
-              )}
-
-              <input type="text" placeholder="Observaciones" value={newGasto.observaciones} onChange={(e) => {setNewGasto({...newGasto, observaciones: e.target.value}); setNewIngreso({...newIngreso, observaciones: e.target.value});}} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', marginBottom: '1rem', boxSizing: 'border-box' }} />
-
-              {/* CARGA DE SOPORTES */}
-              <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem', marginBottom: '1rem' }}>
-                <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>📎 Soportes (Archivos)</label>
-                <input type="file" multiple onChange={handleAddSoporte} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '1rem', boxSizing: 'border-box', cursor: 'pointer' }} />
-
-                {soportesTemp.length > 0 && (
-                  <div style={{ marginTop: '1rem' }}>
-                    <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.8rem' }}>Archivos cargados: {soportesTemp.length}</p>
-                    {soportesTemp.map(soporte => (
-                      <div key={soporte.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ flex: 1 }}>
-                          <p style={{ color: '#C4A747', margin: '0 0 0.25rem 0', fontSize: '0.8rem', fontWeight: 'bold' }}>{soporte.nombre}</p>
-                          <p style={{ color: '#6B6458', margin: 0, fontSize: '0.75rem' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
-                        </div>
-                        <button onClick={() => handleRemoveSoporte(soporte.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem', padding: '0.5rem' }}>🗑️</button>
-                      </div>
-                    ))}
-                  </div>
+                {/* Traslado entre monedas distintas (ej. ARKO en USD hacia/desde el resto de la
+                    holding en COP): el valor que sale (arriba) y el que entra a la cuenta destino
+                    son montos distintos en monedas distintas, no la misma cifra convertida. Este
+                    campo solo aparece cuando origen y destino tienen monedas diferentes. */}
+                {newGasto.tipo === 'Traslado' && newGasto.cuentaDestino && getMoneda(newGasto.empresa) !== getMoneda(getEmpresaDestinoTraslado(newGasto.cuentaDestino, newGasto.empresa)) && (
+                  <CampoUI label={`Valor en Cuenta Destino (${getMoneda(getEmpresaDestinoTraslado(newGasto.cuentaDestino, newGasto.empresa))})`} htmlFor="fin-valor-destino">
+                    <Input id="fin-valor-destino" type="number" placeholder={`Valor en ${getMoneda(getEmpresaDestinoTraslado(newGasto.cuentaDestino, newGasto.empresa))}`} value={newGasto.valorDestino} onChange={(e) => setNewGasto({...newGasto, valorDestino: e.target.value})} />
+                  </CampoUI>
                 )}
               </div>
 
-              <button disabled={guardandoGasto || guardandoIngreso} onClick={newGasto.tipo === 'Ingreso' ? handleAddIngreso : handleAddGasto} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: (guardandoGasto || guardandoIngreso) ? 'not-allowed' : 'pointer', opacity: (guardandoGasto || guardandoIngreso) ? 0.6 : 1 }}>
+              <CampoUI label="Observaciones" htmlFor="fin-observaciones">
+                <Input id="fin-observaciones" type="text" placeholder="Observaciones" value={newGasto.observaciones} onChange={(e) => {setNewGasto({...newGasto, observaciones: e.target.value}); setNewIngreso({...newIngreso, observaciones: e.target.value});}} />
+              </CampoUI>
+
+              {/* CARGA DE SOPORTES */}
+              <ListaSoportesUI
+                titulo="Soportes (Archivos)"
+                inputProps={{ multiple: true, onChange: handleAddSoporte }}
+                archivos={soportesTemp}
+                resumen={`Archivos cargados: ${soportesTemp.length}`}
+                onQuitar={handleRemoveSoporte}
+              />
+
+              <Button size="lg" disabled={guardandoGasto || guardandoIngreso} onClick={newGasto.tipo === 'Ingreso' ? handleAddIngreso : handleAddGasto} className="w-full">
                 {(guardandoGasto || guardandoIngreso) ? 'Guardando...' : `Registrar ${newGasto.tipo}`}
-              </button>
-            </div>
+              </Button>
+              </CardContent>
+            </Card>
             )}
 
             {/* GESTIÓN DE CECOs (SOLO ADMIN Y COORDINADORA) — catálogo editable en Supabase */}
             {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
-            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-                <h2 style={{ color: '#C4A747', margin: 0 }}>🗂️ Gestión de CECOs ({cecosDB.length})</h2>
-                <button onClick={() => setMostrarGestionCecos(!mostrarGestionCecos)} style={{ padding: '0.5rem 1rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>
+            <Card className="gap-4 px-0 py-5">
+              <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 sm:px-7">
+                <CardTitle className="text-lg">🗂️ Gestión de CECOs ({cecosDB.length})</CardTitle>
+                <Button variant="outline" size="sm" onClick={() => setMostrarGestionCecos(!mostrarGestionCecos)}>
                   {mostrarGestionCecos ? 'Ocultar' : 'Ver / Crear CECOs'}
-                </button>
-              </div>
+                </Button>
+              </CardHeader>
               {mostrarGestionCecos && (
-                <div style={{ marginTop: '1.5rem' }}>
-                  {cargandoCecos && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando CECOs...</p>}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr auto', gap: '0.75rem', marginBottom: '1.5rem' }}>
-                    <input type="text" placeholder="Código (ej. CECO-014-XX)" value={nuevoCeco.codigo} onChange={(e) => setNuevoCeco({...nuevoCeco, codigo: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                    <input type="text" placeholder="Nombre" value={nuevoCeco.nombre} onChange={(e) => setNuevoCeco({...nuevoCeco, nombre: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                    <select value={nuevoCeco.tipo} onChange={(e) => setNuevoCeco({...nuevoCeco, tipo: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }}>
+                <CardContent className="flex flex-col gap-4 sm:px-7">
+                  {cargandoCecos && <p className="m-0 text-sm text-muted-foreground">Cargando CECOs...</p>}
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_2fr_1fr_auto]">
+                    <Input type="text" aria-label="Código del CECO" placeholder="Código (ej. CECO-014-XX)" value={nuevoCeco.codigo} onChange={(e) => setNuevoCeco({...nuevoCeco, codigo: e.target.value})} />
+                    <Input type="text" aria-label="Nombre del CECO" placeholder="Nombre" value={nuevoCeco.nombre} onChange={(e) => setNuevoCeco({...nuevoCeco, nombre: e.target.value})} />
+                    <Select aria-label="Tipo de CECO" value={nuevoCeco.tipo} onChange={(e) => setNuevoCeco({...nuevoCeco, tipo: e.target.value})}>
                       <option value="Gasto">Gasto (CECO-xxx)</option>
                       <option value="Ingreso">Ingreso (CEIN-xxx)</option>
                       <option value="Traslado">Traslado</option>
-                    </select>
-                    <button disabled={guardandoCeco} onClick={handleAddCeco} style={{ padding: '0.75rem 1.25rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoCeco ? 'not-allowed' : 'pointer', opacity: guardandoCeco ? 0.6 : 1, whiteSpace: 'nowrap' }}>+ Agregar</button>
+                    </Select>
+                    <Button disabled={guardandoCeco} onClick={handleAddCeco}><Plus size={16} /> Agregar</Button>
                   </div>
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                      <thead style={{ backgroundColor: '#F8F6F1' }}>
-                        <tr style={{ borderBottom: '2px solid #C4A747' }}>
-                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Código</th>
-                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Nombre</th>
-                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
-                          <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Activo</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[...cecosDB].sort((a, b) => a.codigo.localeCompare(b.codigo)).map(c => (
-                          <tr key={c.id} style={{ borderBottom: '1px solid #E6E0D2', opacity: c.activo === false ? 0.5 : 1 }}>
-                            <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{c.codigo}</td>
-                            <td style={{ padding: '0.75rem' }}>
-                              <input type="text" defaultValue={c.nombre} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== c.nombre) handleUpdateCeco(c.id, 'nombre', v); }} style={{ width: '100%', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box' }} />
-                            </td>
-                            <td style={{ padding: '0.75rem' }}>
-                              <select value={c.tipo} onChange={(e) => handleUpdateCeco(c.id, 'tipo', e.target.value)} style={{ padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E' }}>
-                                <option value="Gasto">Gasto</option>
-                                <option value="Ingreso">Ingreso</option>
-                                <option value="Traslado">Traslado</option>
-                              </select>
-                            </td>
-                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                              <input type="checkbox" checked={c.activo !== false} onChange={(e) => handleUpdateCeco(c.id, 'activo', e.target.checked)} />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <p style={{ fontSize: '0.75rem', color: '#8F8877', marginTop: '0.75rem' }}>Desmarcar "Activo" oculta el CECO de los desplegables sin borrarlo — los registros que ya lo usaron lo siguen mostrando normalmente.</p>
-                </div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead>Código</TableHead>
+                        <TableHead>Nombre</TableHead>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead className="text-center">Activo</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {[...cecosDB].sort((a, b) => a.codigo.localeCompare(b.codigo)).map(c => (
+                        <TableRow key={c.id} className={cn(c.activo === false && 'opacity-50')}>
+                          <TableCell className="whitespace-nowrap font-bold text-primary">{c.codigo}</TableCell>
+                          <TableCell>
+                            <Input type="text" aria-label="Nombre" defaultValue={c.nombre} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== c.nombre) handleUpdateCeco(c.id, 'nombre', v); }} className="h-8 min-w-[180px]" />
+                          </TableCell>
+                          <TableCell>
+                            <Select aria-label="Tipo" value={c.tipo} onChange={(e) => handleUpdateCeco(c.id, 'tipo', e.target.value)} className="h-8 min-w-[120px]">
+                              <option value="Gasto">Gasto</option>
+                              <option value="Ingreso">Ingreso</option>
+                              <option value="Traslado">Traslado</option>
+                            </Select>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <input type="checkbox" aria-label="Activo" className={claseCheckbox} checked={c.activo !== false} onChange={(e) => handleUpdateCeco(c.id, 'activo', e.target.checked)} />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <p className="m-0 text-xs text-muted-foreground">Desmarcar "Activo" oculta el CECO de los desplegables sin borrarlo — los registros que ya lo usaron lo siguen mostrando normalmente.</p>
+                </CardContent>
               )}
-            </div>
+            </Card>
             )}
 
             {/* GESTIÓN DE TERCEROS (SOLO ADMIN Y COORDINADORA) — Opción A de la arquitectura
@@ -8792,163 +8782,157 @@ const App = () => {
                 Gestión de CECOs: se puede crear, editar en línea y desactivar (nunca se borra
                 la fila, para no romper el vínculo con pagos históricos). */}
             {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
-            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-                <h2 style={{ color: '#C4A747', margin: 0 }}>🤝 Gestión de Terceros ({todosTerceros.length})</h2>
-                <button onClick={() => setMostrarGestionTerceros(!mostrarGestionTerceros)} style={{ padding: '0.5rem 1rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>
+            <Card className="gap-4 px-0 py-5">
+              <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 sm:px-7">
+                <CardTitle className="text-lg">🤝 Gestión de Terceros ({todosTerceros.length})</CardTitle>
+                <Button variant="outline" size="sm" onClick={() => setMostrarGestionTerceros(!mostrarGestionTerceros)}>
                   {mostrarGestionTerceros ? 'Ocultar' : 'Ver / Crear Terceros'}
-                </button>
-              </div>
+                </Button>
+              </CardHeader>
               {mostrarGestionTerceros && (
-                <div style={{ marginTop: '1.5rem' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
-                    <input type="text" placeholder="Nombre completo *" value={nuevoTercero.nombre} onChange={(e) => setNuevoTercero({...nuevoTercero, nombre: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                    <SelectTipoDocumento value={nuevoTercero.tipoDocumento} onChange={(v) => setNuevoTercero({...nuevoTercero, tipoDocumento: v})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                    <input type="text" placeholder="Documento (sin DV) *" value={nuevoTercero.dni} onChange={(e) => setNuevoTercero({...nuevoTercero, dni: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                    <input type="text" placeholder="País de origen" value={nuevoTercero.paisOrigen} onChange={(e) => setNuevoTercero({...nuevoTercero, paisOrigen: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                    <CampoBanco codigo={nuevoTercero.codigoBanco} texto={nuevoTercero.banco} onChange={({ codigo, texto }) => setNuevoTercero({...nuevoTercero, codigoBanco: codigo, banco: texto})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                    <select value={nuevoTercero.tipoCuenta} onChange={(e) => setNuevoTercero({...nuevoTercero, tipoCuenta: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }}>
+                <CardContent className="flex flex-col gap-4 sm:px-7">
+                  <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]">
+                    <Input type="text" aria-label="Nombre completo" placeholder="Nombre completo *" value={nuevoTercero.nombre} onChange={(e) => setNuevoTercero({...nuevoTercero, nombre: e.target.value})} />
+                    <SelectTipoDocumento value={nuevoTercero.tipoDocumento} onChange={(v) => setNuevoTercero({...nuevoTercero, tipoDocumento: v})} style={estiloCampoUI} />
+                    <Input type="text" aria-label="Documento" placeholder="Documento (sin DV) *" value={nuevoTercero.dni} onChange={(e) => setNuevoTercero({...nuevoTercero, dni: e.target.value})} />
+                    <Input type="text" aria-label="País de origen" placeholder="País de origen" value={nuevoTercero.paisOrigen} onChange={(e) => setNuevoTercero({...nuevoTercero, paisOrigen: e.target.value})} />
+                    <CampoBanco codigo={nuevoTercero.codigoBanco} texto={nuevoTercero.banco} onChange={({ codigo, texto }) => setNuevoTercero({...nuevoTercero, codigoBanco: codigo, banco: texto})} style={estiloCampoUI} />
+                    <Select aria-label="Tipo de cuenta" value={nuevoTercero.tipoCuenta} onChange={(e) => setNuevoTercero({...nuevoTercero, tipoCuenta: e.target.value})}>
                       <option value="">Tipo de cuenta</option>
                       <option value="Ahorros">Ahorros</option>
                       <option value="Corriente">Corriente</option>
-                    </select>
-                    <input type="text" placeholder="Número de cuenta" value={nuevoTercero.numeroCuenta} onChange={(e) => setNuevoTercero({...nuevoTercero, numeroCuenta: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                    <button disabled={guardandoTercero} onClick={handleAddTerceroFinanzas} style={{ padding: '0.75rem 1.25rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoTercero ? 'not-allowed' : 'pointer', opacity: guardandoTercero ? 0.6 : 1, whiteSpace: 'nowrap' }}>+ Agregar</button>
+                    </Select>
+                    <Input type="text" aria-label="Número de cuenta" placeholder="Número de cuenta" value={nuevoTercero.numeroCuenta} onChange={(e) => setNuevoTercero({...nuevoTercero, numeroCuenta: e.target.value})} />
+                    <Button disabled={guardandoTercero} onClick={handleAddTerceroFinanzas}><Plus size={16} /> Agregar</Button>
                   </div>
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                      <thead style={{ backgroundColor: '#F8F6F1' }}>
-                        <tr style={{ borderBottom: '2px solid #C4A747' }}>
-                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Nombre</th>
-                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo Doc.</th>
-                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Documento</th>
-                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Banco</th>
-                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo Cuenta</th>
-                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Número de Cuenta</th>
-                          <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Activo</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {todosTerceros.length === 0 ? (
-                          <tr><td colSpan={7} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin terceros guardados todavía.</td></tr>
-                        ) : [...todosTerceros].sort((a, b) => a.nombre.localeCompare(b.nombre)).map(t => (
-                          <tr key={t.id} style={{ borderBottom: '1px solid #E6E0D2', opacity: t.activo === false ? 0.5 : 1 }}>
-                            <td style={{ padding: '0.75rem' }}>
-                              <input type="text" defaultValue={t.nombre} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== t.nombre) handleUpdateTercero(t.id, 'nombre', v); }} style={{ width: '100%', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box' }} />
-                            </td>
-                            <td style={{ padding: '0.75rem' }}>
-                              <SelectTipoDocumento value={t.tipo_documento} placeholder="—" onChange={(v) => handleUpdateTercero(t.id, 'tipoDocumento', v || null)} style={{ width: '100%', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box' }} />
-                            </td>
-                            <td style={{ padding: '0.75rem' }}>
-                              <input type="text" defaultValue={t.dni} onBlur={(e) => { const v = limpiarDocumento(e.target.value.trim(), t.tipo_documento); e.target.value = v; if (v && v !== t.dni) handleUpdateTercero(t.id, 'dni', v); }} style={{ width: '100%', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box' }} />
-                            </td>
-                            <td style={{ padding: '0.75rem' }}>
-                              <SelectBanco value={t.codigo_banco} placeholder="—" onChange={(v) => handleUpdateTercero(t.id, 'codigoBanco', v)} style={{ width: '100%', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box' }} />
-                              {!t.codigo_banco && t.banco && <div style={{ fontSize: '0.7rem', color: '#C4622D', marginTop: '0.2rem' }}>Antes: "{t.banco}" — elige el banco de la lista</div>}
-                              {t.codigo_banco === CODIGO_BANCO_EXTERIOR && <input type="text" placeholder="Nombre del banco del exterior" defaultValue={t.banco || ''} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (t.banco || '')) handleUpdateTercero(t.id, 'banco', v); }} style={{ width: '100%', marginTop: '0.3rem', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box' }} />}
-                            </td>
-                            <td style={{ padding: '0.75rem' }}>
-                              <select value={t.tipo_cuenta || ''} onChange={(e) => handleUpdateTercero(t.id, 'tipoCuenta', e.target.value)} style={{ padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E' }}>
-                                <option value="">—</option>
-                                <option value="Ahorros">Ahorros</option>
-                                <option value="Corriente">Corriente</option>
-                              </select>
-                            </td>
-                            <td style={{ padding: '0.75rem' }}>
-                              <input type="text" defaultValue={t.numero_cuenta || ''} onBlur={(e) => { const v = limpiarNumeroCuenta(e.target.value.trim()); e.target.value = v; if (v !== (t.numero_cuenta || '')) handleUpdateTercero(t.id, 'numeroCuenta', v); }} style={{ width: '100%', padding: '0.4rem 0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box' }} />
-                            </td>
-                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                              <input type="checkbox" checked={t.activo !== false} onChange={(e) => handleUpdateTercero(t.id, 'activo', e.target.checked)} />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <p style={{ fontSize: '0.75rem', color: '#8F8877', marginTop: '0.75rem' }}>Desmarcar "Activo" oculta el tercero de los desplegables de Pago a Tercero (Solicitudes y Finanzas) sin borrarlo — los pagos que ya se le hicieron lo siguen mostrando normalmente.</p>
-                </div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead>Nombre</TableHead>
+                        <TableHead>Tipo Doc.</TableHead>
+                        <TableHead>Documento</TableHead>
+                        <TableHead>Banco</TableHead>
+                        <TableHead>Tipo Cuenta</TableHead>
+                        <TableHead>Número de Cuenta</TableHead>
+                        <TableHead className="text-center">Activo</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {todosTerceros.length === 0 ? (
+                        <TableRow className="hover:bg-transparent"><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">Sin terceros guardados todavía.</TableCell></TableRow>
+                      ) : [...todosTerceros].sort((a, b) => a.nombre.localeCompare(b.nombre)).map(t => (
+                        <TableRow key={t.id} className={cn(t.activo === false && 'opacity-50')}>
+                          <TableCell>
+                            <Input type="text" aria-label="Nombre" defaultValue={t.nombre} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== t.nombre) handleUpdateTercero(t.id, 'nombre', v); }} className="h-8 min-w-[160px]" />
+                          </TableCell>
+                          <TableCell>
+                            <SelectTipoDocumento value={t.tipo_documento} placeholder="—" onChange={(v) => handleUpdateTercero(t.id, 'tipoDocumento', v || null)} style={estiloCampoCompactoUI} />
+                          </TableCell>
+                          <TableCell>
+                            <Input type="text" aria-label="Documento" defaultValue={t.dni} onBlur={(e) => { const v = limpiarDocumento(e.target.value.trim(), t.tipo_documento); e.target.value = v; if (v && v !== t.dni) handleUpdateTercero(t.id, 'dni', v); }} className="h-8 min-w-[120px]" />
+                          </TableCell>
+                          <TableCell>
+                            <SelectBanco value={t.codigo_banco} placeholder="—" onChange={(v) => handleUpdateTercero(t.id, 'codigoBanco', v)} style={estiloCampoCompactoUI} />
+                            {!t.codigo_banco && t.banco && <div className="mt-1 text-[0.7rem] text-[#C4622D]">Antes: "{t.banco}" — elige el banco de la lista</div>}
+                            {t.codigo_banco === CODIGO_BANCO_EXTERIOR && <Input type="text" aria-label="Nombre del banco del exterior" placeholder="Nombre del banco del exterior" defaultValue={t.banco || ''} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (t.banco || '')) handleUpdateTercero(t.id, 'banco', v); }} className="mt-1 h-8" />}
+                          </TableCell>
+                          <TableCell>
+                            <Select aria-label="Tipo de cuenta" value={t.tipo_cuenta || ''} onChange={(e) => handleUpdateTercero(t.id, 'tipoCuenta', e.target.value)} className="h-8 min-w-[110px]">
+                              <option value="">—</option>
+                              <option value="Ahorros">Ahorros</option>
+                              <option value="Corriente">Corriente</option>
+                            </Select>
+                          </TableCell>
+                          <TableCell>
+                            <Input type="text" aria-label="Número de cuenta" defaultValue={t.numero_cuenta || ''} onBlur={(e) => { const v = limpiarNumeroCuenta(e.target.value.trim()); e.target.value = v; if (v !== (t.numero_cuenta || '')) handleUpdateTercero(t.id, 'numeroCuenta', v); }} className="h-8 min-w-[130px]" />
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <input type="checkbox" aria-label="Activo" className={claseCheckbox} checked={t.activo !== false} onChange={(e) => handleUpdateTercero(t.id, 'activo', e.target.checked)} />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <p className="m-0 text-xs text-muted-foreground">Desmarcar "Activo" oculta el tercero de los desplegables de Pago a Tercero (Solicitudes y Finanzas) sin borrarlo — los pagos que ya se le hicieron lo siguen mostrando normalmente.</p>
+                </CardContent>
               )}
-            </div>
+            </Card>
             )}
 
             {/* HISTORIAL UNIFICADO: Gastos + Traslados + Ingresos en una sola tabla, con filtro por Tipo */}
-            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
-                <h2 style={{ color: '#C4A747', margin: 0 }}>📋 Historial de Finanzas ({registrosFinanzas.length})</h2>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <Card className="gap-4 px-0 py-6 sm:py-7">
+              <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 sm:px-7">
+                <CardTitle className="text-lg">📋 Historial de Finanzas ({registrosFinanzas.length})</CardTitle>
+                <div className="flex flex-wrap items-center gap-2">
                   {['Todos', 'Gasto', 'Traslado', 'Ingreso', 'Pago a Tercero'].map(t => (
-                    <button key={t} onClick={() => setFiltroTipoFinanzas(t)} style={{ padding: '0.4rem 0.9rem', borderRadius: '4px', border: filtroTipoFinanzas === t ? '1px solid #C4A747' : '1px solid #E6E0D2', backgroundColor: filtroTipoFinanzas === t ? '#C4A747' : '#F8F6F1', color: filtroTipoFinanzas === t ? '#221E15' : '#6B6458', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}>
+                    <Button key={t} size="sm" variant={filtroTipoFinanzas === t ? 'default' : 'outline'} onClick={() => setFiltroTipoFinanzas(t)} className={cn('rounded-full', filtroTipoFinanzas !== t && 'text-muted-foreground')} aria-pressed={filtroTipoFinanzas === t}>
                       {t === 'Gasto' ? '💸 Gasto' : t === 'Traslado' ? '🔄 Traslado' : t === 'Ingreso' ? '💰 Ingreso' : t === 'Pago a Tercero' ? '🤝 Pago a Tercero' : 'Todos'}
-                    </button>
+                    </Button>
                   ))}
                   {/* Informe PDF del filtro actualmente aplicado — resumen, gráficas y tabla,
                       con vista previa antes de descargar (ver modal más abajo). */}
-                  <button onClick={handleAbrirInformeFinanzas} disabled={registrosFinanzas.length === 0} style={{ padding: '0.4rem 0.9rem', borderRadius: '4px', border: '1px solid #6C63D1', backgroundColor: registrosFinanzas.length === 0 ? '#E6E0D2' : '#6C63D1', color: '#FFFFFF', fontWeight: 'bold', fontSize: '0.8rem', cursor: registrosFinanzas.length === 0 ? 'not-allowed' : 'pointer' }}>
-                    👁️ Ver Informe
-                  </button>
+                  <Button size="sm" onClick={handleAbrirInformeFinanzas} disabled={registrosFinanzas.length === 0} className={claseBotonMorado}>
+                    <Eye size={14} /> Ver Informe
+                  </Button>
                 </div>
-              </div>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4 sm:px-7">
 
               {/* FILTROS: buscador de texto libre + Empresa/CECO + rango de fechas propio de la
                   tabla (distinto del filtro de fechas del Dashboard de arriba, que no la toca). */}
-              <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                <div style={{ flex: '1 1 220px', minWidth: '200px' }}>
-                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Buscar</label>
-                  <input type="text" placeholder="Colaborador, detalle, cuenta..." value={busquedaFinanzas} onChange={(e) => setBusquedaFinanzas(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Empresa</label>
-                  <select value={filtroFinanzasEmpresa} onChange={(e) => setFiltroFinanzasEmpresa(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }}>
+              <div className="flex flex-wrap items-end gap-3 rounded-lg border border-solid border-border bg-background p-4">
+                <CampoUI label="Buscar" htmlFor="ff-buscar" className="min-w-[200px] flex-[1_1_220px]">
+                  <div className="relative">
+                    <Search size={15} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Input id="ff-buscar" type="text" placeholder="Colaborador, detalle, cuenta..." value={busquedaFinanzas} onChange={(e) => setBusquedaFinanzas(e.target.value)} className="pl-8" />
+                  </div>
+                </CampoUI>
+                <CampoUI label="Empresa" htmlFor="ff-empresa" className="w-full sm:w-60">
+                  <Select id="ff-empresa" value={filtroFinanzasEmpresa} onChange={(e) => setFiltroFinanzasEmpresa(e.target.value)}>
                     <option value="Todas">Todas</option>
                     {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>CECO</label>
-                  <select value={filtroFinanzasCeco} onChange={(e) => setFiltroFinanzasCeco(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }}>
+                  </Select>
+                </CampoUI>
+                <CampoUI label="CECO" htmlFor="ff-ceco" className="w-full sm:w-44">
+                  <Select id="ff-ceco" value={filtroFinanzasCeco} onChange={(e) => setFiltroFinanzasCeco(e.target.value)}>
                     <option value="Todos">Todos</option>
                     {[...cecos].sort((a, b) => a.codigo.localeCompare(b.codigo)).map(c => <option key={c.codigo} value={c.codigo}>{c.codigo}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Desde</label>
-                  <input type="date" value={filtroFinanzasFechaInicio} onChange={(e) => setFiltroFinanzasFechaInicio(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Hasta</label>
-                  <input type="date" value={filtroFinanzasFechaFin} onChange={(e) => setFiltroFinanzasFechaFin(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Valor desde</label>
-                  <input type="text" inputMode="decimal" placeholder="Ej: 1.000.000" value={filtroFinanzasValorMin} onChange={(e) => setFiltroFinanzasValorMin(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', width: '140px' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Valor hasta</label>
-                  <input type="text" inputMode="decimal" placeholder="Ej: 5.000.000" value={filtroFinanzasValorMax} onChange={(e) => setFiltroFinanzasValorMax(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', width: '140px' }} />
-                </div>
-                <button onClick={() => { setBusquedaFinanzas(''); setFiltroFinanzasEmpresa('Todas'); setFiltroFinanzasCeco('Todos'); setFiltroFinanzasFechaInicio(''); setFiltroFinanzasFechaFin(''); setFiltroFinanzasValorMin(''); setFiltroFinanzasValorMax(''); }} style={{ padding: '0.75rem 1.25rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>🔄 Reiniciar</button>
+                  </Select>
+                </CampoUI>
+                <CampoUI label="Desde" htmlFor="ff-desde" className="w-full sm:w-40">
+                  <Input id="ff-desde" type="date" value={filtroFinanzasFechaInicio} onChange={(e) => setFiltroFinanzasFechaInicio(e.target.value)} />
+                </CampoUI>
+                <CampoUI label="Hasta" htmlFor="ff-hasta" className="w-full sm:w-40">
+                  <Input id="ff-hasta" type="date" value={filtroFinanzasFechaFin} onChange={(e) => setFiltroFinanzasFechaFin(e.target.value)} />
+                </CampoUI>
+                <CampoUI label="Valor desde" htmlFor="ff-valor-min" className="w-[calc(50%-0.375rem)] sm:w-36">
+                  <Input id="ff-valor-min" type="text" inputMode="decimal" placeholder="Ej: 1.000.000" value={filtroFinanzasValorMin} onChange={(e) => setFiltroFinanzasValorMin(e.target.value)} />
+                </CampoUI>
+                <CampoUI label="Valor hasta" htmlFor="ff-valor-max" className="w-[calc(50%-0.375rem)] sm:w-36">
+                  <Input id="ff-valor-max" type="text" inputMode="decimal" placeholder="Ej: 5.000.000" value={filtroFinanzasValorMax} onChange={(e) => setFiltroFinanzasValorMax(e.target.value)} />
+                </CampoUI>
+                <Button variant="outline" onClick={() => { setBusquedaFinanzas(''); setFiltroFinanzasEmpresa('Todas'); setFiltroFinanzasCeco('Todos'); setFiltroFinanzasFechaInicio(''); setFiltroFinanzasFechaFin(''); setFiltroFinanzasValorMin(''); setFiltroFinanzasValorMax(''); }}><RotateCcw size={14} /> Reiniciar</Button>
               </div>
 
-              {(cargandoGastos || cargandoIngresos) && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando...</p>}
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                  <thead style={{ backgroundColor: '#F8F6F1' }}>
-                    <tr style={{ borderBottom: '2px solid #C4A747' }}>
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
-                      {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO / Cuenta</th>
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Detalle</th>
-                      <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
-                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Soportes</th>
-                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Presupuesto</th>
-                      {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acción</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
+              {(cargandoGastos || cargandoIngresos) && <p className="m-0 text-sm text-muted-foreground">Cargando...</p>}
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <TableHead>Colaborador</TableHead>}
+                    <TableHead>Empresa</TableHead>
+                    <TableHead>CECO / Cuenta</TableHead>
+                    <TableHead>Detalle</TableHead>
+                    <TableHead className="text-right">Valor</TableHead>
+                    <TableHead className="text-center">Soportes</TableHead>
+                    <TableHead className="text-center">Presupuesto</TableHead>
+                    {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <TableHead className="text-center">Acción</TableHead>}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                     {registrosFinanzas.length === 0 ? (
-                      <tr><td colSpan={9} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin registros para este filtro.</td></tr>
+                      <TableRow className="hover:bg-transparent"><TableCell colSpan={10} className="py-8 text-center text-muted-foreground">Sin registros para este filtro.</TableCell></TableRow>
                     ) : registrosFinanzas.map(r => {
                       const esGasto = r.tipo === 'Gasto';
                       const esTraslado = r.tipo === 'Traslado';
@@ -8960,7 +8944,7 @@ const App = () => {
                       const esPagoTercero = r.tipo === 'Pago a Tercero' || !!r.terceroInfo;
                       const esSalidaTraslado = r._ladoTraslado === 'salida';
                       const esEntradaTraslado = r._ladoTraslado === 'entrada';
-                      const colorValor = esIngreso || esEntradaTraslado ? '#2F9E52' : (esSalidaTraslado ? '#CC4B4B' : (esTraslado ? '#C4A747' : '#CC4B4B'));
+                      const claseValor = esPagoTercero ? 'text-destructive' : (esIngreso || esEntradaTraslado ? 'text-success' : (esSalidaTraslado ? 'text-destructive' : (esTraslado ? 'text-primary' : 'text-destructive')));
                       const iconoTipo = esPagoTercero ? '🤝' : (esGasto ? '💸' : (esTraslado ? '🔄' : '💰'));
                       const verSoportesFn = esIngreso ? handleVerSoportesIngreso : handleVerSoportesGasto;
                       const deleteFn = esIngreso ? handleDeleteIngreso : handleDeleteGasto;
@@ -8973,108 +8957,111 @@ const App = () => {
                       const nombreColaborador = colaboradorInfo?.nombre || r.responsableNombre || '—';
                       const nombreTerceroCatalogo = !esPagoTercero && r.terceroId ? todosTerceros.find(t => t.id === r.terceroId)?.nombre : null;
                       return (
-                        <tr key={`${r.tipo}-${r.id}${r._ladoTraslado ? '-' + r._ladoTraslado : ''}`} style={{ borderBottom: '1px solid #E6E0D2' }}>
-                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{r.fecha}</td>
-                          <td style={{ padding: '0.75rem', fontSize: '0.8rem' }}>
+                        <TableRow key={`${r.tipo}-${r.id}${r._ladoTraslado ? '-' + r._ladoTraslado : ''}`}>
+                          <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{r.fecha}</TableCell>
+                          <TableCell className="whitespace-nowrap text-xs">
                             {iconoTipo} {r.tipo}
-                            {esSalidaTraslado && <span style={{ color: '#CC4B4B', fontWeight: 'bold' }}> · Salida</span>}
-                            {esEntradaTraslado && <span style={{ color: '#2F9E52', fontWeight: 'bold' }}> · Entrada</span>}
-                          </td>
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={colaboradorInfo?.foto_url} nombre={nombreColaborador} size={22} />{nombreColaborador}</div></td>}
-                          <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><EmpresaLogo empresa={r.empresa} height={16} />{r.empresa}</div></td>
-                          <td style={{ padding: '0.75rem', fontSize: '0.8rem' }}>
-                            <span style={{ color: '#C4A747', fontWeight: 'bold' }}>{r.ceco}</span>
-                            {r.cuenta && <div style={{ color: '#6B6458', fontSize: '0.75rem' }}>{r.cuenta}</div>}
-                          </td>
-                          <td style={{ padding: '0.75rem', color: '#6B6458', maxWidth: '260px' }}>
+                            {esSalidaTraslado && <span className="font-bold text-destructive"> · Salida</span>}
+                            {esEntradaTraslado && <span className="font-bold text-success"> · Entrada</span>}
+                          </TableCell>
+                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <TableCell className="text-xs"><div className="flex items-center gap-2"><ColaboradorAvatar foto={colaboradorInfo?.foto_url} nombre={nombreColaborador} size={22} />{nombreColaborador}</div></TableCell>}
+                          <TableCell className="text-xs"><div className="flex items-center gap-2"><EmpresaLogo empresa={r.empresa} height={16} />{r.empresa}</div></TableCell>
+                          <TableCell className="text-xs">
+                            <span className="whitespace-nowrap font-bold text-primary">{r.ceco}</span>
+                            {r.cuenta && <div className="text-muted-foreground">{r.cuenta}</div>}
+                          </TableCell>
+                          <TableCell className="min-w-[200px] max-w-[300px] text-muted-foreground">
                             {editandoConceptoFinanzas && editandoConceptoFinanzas.id === r.id && editandoConceptoFinanzas.tabla === (esIngreso ? 'ingresos' : 'gastos') ? (
-                              <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                                <input type="date" value={editandoConceptoFinanzas.fecha} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, fecha: e.target.value })} title="Fecha" style={{ padding: '0.3rem', border: '1px solid #C4A747', borderRadius: '4px', fontSize: '0.8rem' }} />
-                                <select value={editandoConceptoFinanzas.ceco} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, ceco: e.target.value })} title="CECO" style={{ padding: '0.3rem', border: '1px solid #C4A747', borderRadius: '4px', fontSize: '0.8rem', maxWidth: '180px' }}>
-                                  {!editandoConceptoFinanzas.opcionesCeco.some(c => c.codigo === editandoConceptoFinanzas.ceco) && <option value={editandoConceptoFinanzas.ceco}>{editandoConceptoFinanzas.ceco || 'Elegir CECO…'}</option>}
-                                  {editandoConceptoFinanzas.opcionesCeco.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
-                                </select>
-                                <input type="text" inputMode="decimal" value={editandoConceptoFinanzas.valor} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, valor: e.target.value })} title="Valor" placeholder="Valor" style={{ width: '110px', padding: '0.3rem', border: '1px solid #C4A747', borderRadius: '4px', fontSize: '0.8rem' }} />
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <Input type="date" value={editandoConceptoFinanzas.fecha} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, fecha: e.target.value })} title="Fecha" aria-label="Fecha" className="h-8 w-auto border-primary text-xs" />
+                                <div className="w-auto max-w-[180px]">
+                                  <Select value={editandoConceptoFinanzas.ceco} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, ceco: e.target.value })} title="CECO" aria-label="CECO" className="h-8 border-primary text-xs">
+                                    {!editandoConceptoFinanzas.opcionesCeco.some(c => c.codigo === editandoConceptoFinanzas.ceco) && <option value={editandoConceptoFinanzas.ceco}>{editandoConceptoFinanzas.ceco || 'Elegir CECO…'}</option>}
+                                    {editandoConceptoFinanzas.opcionesCeco.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
+                                  </Select>
+                                </div>
+                                <Input type="text" inputMode="decimal" value={editandoConceptoFinanzas.valor} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, valor: e.target.value })} title="Valor" aria-label="Valor" placeholder="Valor" className="h-8 w-[110px] border-primary text-xs" />
                                 {editandoConceptoFinanzas.tieneValorDestino && (
-                                  <input type="text" inputMode="decimal" value={editandoConceptoFinanzas.valorDestino} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, valorDestino: e.target.value })} title="Valor destino (otra moneda)" placeholder="Valor destino" style={{ width: '110px', padding: '0.3rem', border: '1px solid #C4A747', borderRadius: '4px', fontSize: '0.8rem' }} />
+                                  <Input type="text" inputMode="decimal" value={editandoConceptoFinanzas.valorDestino} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, valorDestino: e.target.value })} title="Valor destino (otra moneda)" aria-label="Valor destino" placeholder="Valor destino" className="h-8 w-[110px] border-primary text-xs" />
                                 )}
                                 {editandoConceptoFinanzas.permiteNeutro && (
-                                  <label title="Gasto Neutro: se registra en COP y no suma en los gastos de la empresa" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', color: '#6B6458', whiteSpace: 'nowrap' }}>
-                                    <input type="checkbox" checked={!!editandoConceptoFinanzas.neutro} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, neutro: e.target.checked })} />
+                                  <label title="Gasto Neutro: se registra en COP y no suma en los gastos de la empresa" className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
+                                    <input type="checkbox" className={claseCheckbox} checked={!!editandoConceptoFinanzas.neutro} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, neutro: e.target.checked })} />
                                     ⚪ Neutro (COP)
                                   </label>
                                 )}
-                                <input autoFocus type="text" value={editandoConceptoFinanzas.texto} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, texto: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') handleGuardarConceptoFinanzas(); if (e.key === 'Escape') setEditandoConceptoFinanzas(null); }} style={{ flex: 1, minWidth: '140px', padding: '0.35rem', border: '1px solid #C4A747', borderRadius: '4px', fontSize: '0.8rem' }} />
-                                <button disabled={guardandoConceptoFinanzas} onClick={handleGuardarConceptoFinanzas} title="Guardar" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>💾</button>
-                                <button onClick={() => setEditandoConceptoFinanzas(null)} title="Cancelar" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>✖️</button>
+                                <Input autoFocus type="text" aria-label="Concepto" value={editandoConceptoFinanzas.texto} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, texto: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') handleGuardarConceptoFinanzas(); if (e.key === 'Escape') setEditandoConceptoFinanzas(null); }} className="h-8 min-w-[140px] flex-1 border-primary text-xs" />
+                                <Button variant="ghost" size="icon" disabled={guardandoConceptoFinanzas} onClick={handleGuardarConceptoFinanzas} title="Guardar" aria-label="Guardar" className="size-8 text-success"><Check size={16} /></Button>
+                                <Button variant="ghost" size="icon" onClick={() => setEditandoConceptoFinanzas(null)} title="Cancelar" aria-label="Cancelar" className="size-8 text-muted-foreground"><X size={16} /></Button>
                               </div>
                             ) : (
-                              <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'flex-start' }}>
-                                <div style={{ flex: 1 }}><TextoResumido texto={r.detalle} /></div>
+                              <div className="flex items-start gap-1">
+                                <div className="flex-1"><TextoResumido texto={r.detalle} /></div>
                                 {puedeEditarConceptoFinanzas && (
-                                  <button onClick={() => setEditandoConceptoFinanzas({ tabla: esIngreso ? 'ingresos' : 'gastos', id: r.id, texto: r.detalle || '', fecha: r.fecha || '', ceco: r.ceco || '', valor: String((esIngreso ? r : (gastos.find(g => g.id === r.id) || r)).valor ?? '').replace('.', ','), tieneValorDestino: esTraslado && r.valorDestino != null, permiteNeutro: !esIngreso && !esTraslado, neutro: !!r.neutro, valorDestino: String(r.valorDestino ?? '').replace('.', ','), opcionesCeco: esIngreso ? cecosIngreso : (esTraslado ? cecosTraslado : cecosGasto) })} title="Editar fecha, CECO, valor y concepto (solo en Finanzas)" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', padding: 0 }}>✏️</button>
+                                  <Button variant="ghost" size="icon" onClick={() => setEditandoConceptoFinanzas({ tabla: esIngreso ? 'ingresos' : 'gastos', id: r.id, texto: r.detalle || '', fecha: r.fecha || '', ceco: r.ceco || '', valor: String((esIngreso ? r : (gastos.find(g => g.id === r.id) || r)).valor ?? '').replace('.', ','), tieneValorDestino: esTraslado && r.valorDestino != null, permiteNeutro: !esIngreso && !esTraslado, neutro: !!r.neutro, valorDestino: String(r.valorDestino ?? '').replace('.', ','), opcionesCeco: esIngreso ? cecosIngreso : (esTraslado ? cecosTraslado : cecosGasto) })} title="Editar fecha, CECO, valor y concepto (solo en Finanzas)" aria-label="Editar" className="size-7 shrink-0 text-[#6C63D1]"><Pencil size={14} /></Button>
                                 )}
                               </div>
                             )}
                             {esPagoTercero && r.terceroInfo?.nombre && (
-                              <div style={{ fontSize: '0.7rem', color: '#8F8877' }}>👤 {r.terceroInfo.nombre}{r.terceroInfo.dni ? ` · ${r.terceroInfo.dni}` : ''}</div>
+                              <div className="text-[0.7rem] text-muted-foreground">👤 {r.terceroInfo.nombre}{r.terceroInfo.dni ? ` · ${r.terceroInfo.dni}` : ''}</div>
                             )}
                             {nombreTerceroCatalogo && (
-                              <div style={{ fontSize: '0.7rem', color: '#8F8877' }}>🏢 {nombreTerceroCatalogo}</div>
+                              <div className="text-[0.7rem] text-muted-foreground">🏢 {nombreTerceroCatalogo}</div>
                             )}
                             {r.neutro && (
-                              <div style={{ fontSize: '0.7rem', color: '#6B6458', fontWeight: 'bold' }} title="Registrado en COP; no suma en los gastos de la empresa">⚪ Gasto Neutro</div>
+                              <Badge variant="outline" className="mt-1 text-[0.65rem]" title="Registrado en COP; no suma en los gastos de la empresa">⚪ Gasto Neutro</Badge>
                             )}
                             {r.solicitudOrigenId && (
-                              <div style={{ fontSize: '0.7rem', color: '#6C63D1' }}>🔗 Generado desde Solicitudes</div>
+                              <div className="text-[0.7rem] text-[#6C63D1]">🔗 Generado desde Solicitudes</div>
                             )}
                             {r.presupuestoItemId && r.observaciones === OBSERVACIONES_GASTO_DESDE_PRESUPUESTO && (
-                              <div style={{ fontSize: '0.7rem', color: '#6C63D1' }}>🔗 Generado desde Presupuesto</div>
+                              <div className="text-[0.7rem] text-[#6C63D1]">🔗 Generado desde Presupuesto</div>
                             )}
                             {r.observaciones && r.observaciones.startsWith(OBSERVACIONES_GASTO_LOTE_TERCERO) && (
-                              <div style={{ fontSize: '0.7rem', color: '#6C63D1' }}>🧾 Factura de tercero (lote)</div>
+                              <div className="text-[0.7rem] text-[#6C63D1]">🧾 Factura de tercero (lote)</div>
                             )}
                             {r.lotePagoId && (
-                              <button onClick={() => handleVerLotePagoGastos(r.lotePagoId)} style={{ display: 'block', marginTop: '0.15rem', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.7rem', color: '#6C63D1', fontWeight: 'bold', padding: 0 }}>
+                              <button type="button" onClick={() => handleVerLotePagoGastos(r.lotePagoId)} className="mt-0.5 block cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-[0.7rem] font-bold text-[#6C63D1] hover:underline">
                                 🔗 Pagado en lote junto con otros
                               </button>
                             )}
-                          </td>
-                          <td style={{ padding: '0.75rem', color: esPagoTercero ? '#CC4B4B' : colorValor, textAlign: 'right', fontWeight: 'bold' }}>
+                          </TableCell>
+                          <TableCell className={cn('whitespace-nowrap text-right font-bold', claseValor)}>
                             {esSalidaTraslado ? '− ' : esEntradaTraslado ? '+ ' : ''}{esPagoTercero ? formatMoneyByMoneda(parseFloat(r.valor) || 0, r.moneda || getMoneda(r.empresa)) : formatMoney(r.valor, r.empresa)}
                             {r.valorBruto != null && (
-                              <div style={{ fontSize: '0.7rem', color: '#6B6458', fontWeight: 'normal' }} title="Valor bruto antes de deducciones">
+                              <div className="text-[0.7rem] font-normal text-muted-foreground" title="Valor bruto antes de deducciones">
                                 Bruto {formatMoney(r.valorBruto, r.empresa)} · −{formatMoney(r.deduccionAplicada, r.empresa)}
                               </div>
                             )}
-                          </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-center gap-0.5">
                             {esPagoTercero && (
                               <>
-                                <button onClick={() => setVerDetalleTercero({...r, responsableNombre: nombreColaborador, moneda: r.moneda || getMoneda(r.empresa)})} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#C4A747', fontSize: '1rem', marginRight: '0.4rem' }} title="Ver Detalle del Tercero">
-                                  🔍
-                                </button>
-                                <button onClick={() => handleGenerarPDFPagoTercero({...r, responsableNombre: nombreColaborador, moneda: r.moneda || getMoneda(r.empresa)})} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.4rem' }} title="PDF">
-                                  📄
-                                </button>
+                                <Button variant="ghost" size="icon" onClick={() => setVerDetalleTercero({...r, responsableNombre: nombreColaborador, moneda: r.moneda || getMoneda(r.empresa)})} title="Ver Detalle del Tercero" aria-label="Ver Detalle del Tercero">
+                                  <Eye size={16} />
+                                </Button>
+                                <Button variant="ghost" size="icon" onClick={() => handleGenerarPDFPagoTercero({...r, responsableNombre: nombreColaborador, moneda: r.moneda || getMoneda(r.empresa)})} className="text-[#6C63D1]" title="PDF" aria-label="PDF">
+                                  <FileDown size={16} />
+                                </Button>
                               </>
                             )}
                             {(r.cantidadSoportes > 0 || r.soporteDriveLink) ? (
-                              <button onClick={() => verSoportesFn(r)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem' }}>📎 {r.soporteDriveLink ? 'Drive' : r.cantidadSoportes}</button>
+                              <Button variant="ghost" size="sm" onClick={() => verSoportesFn(r)} className="text-success" title="Ver soportes"><Paperclip size={14} /> {r.soporteDriveLink ? 'Drive' : r.cantidadSoportes}</Button>
                             ) : (
-                              <span style={{ color: '#6B6458', fontSize: '0.8rem' }}>—</span>
+                              <span className="px-2 text-xs text-muted-foreground">—</span>
                             )}
                             {/* Subir un soporte sobreviniente (o varios) a este registro ya guardado,
                                 sin abrir ningún formulario — solo Administrador/Coordinadora. */}
                             {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
-                              <label title="Agregar soporte" style={{ display: 'inline-block', marginLeft: '0.4rem', cursor: agregandoSoporteId === r.id ? 'not-allowed' : 'pointer', color: '#6C63D1', fontSize: '1rem' }}>
-                                {agregandoSoporteId === r.id ? '⏳' : '📎+'}
+                              <label title="Agregar soporte" className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'text-[#6C63D1]', agregandoSoporteId === r.id && 'cursor-not-allowed opacity-60')}>
+                                {agregandoSoporteId === r.id ? <Loader2 size={16} className="animate-spin" /> : <FilePlus2 size={16} />}
                                 <input
                                   type="file"
                                   accept="application/pdf,image/*"
                                   multiple
                                   disabled={agregandoSoporteId === r.id}
-                                  style={{ display: 'none' }}
+                                  className="hidden"
                                   onChange={(e) => {
                                     const files = e.target.files;
                                     if (files && files.length) handleAgregarSoporteHistorial(r, files);
@@ -9083,10 +9070,11 @@ const App = () => {
                                 />
                               </label>
                             )}
-                          </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
                             {!esGasto ? (
-                              <span style={{ color: '#AFA897', fontSize: '0.75rem' }}>—</span>
+                              <span className="text-xs text-muted-foreground">—</span>
                             ) : (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') ? (() => {
                               // Columna "Presupuesto" en Historial de Finanzas: solo muestra conceptos del
                               // MISMO CECO que este gasto (a diferencia de getPresupuestoCandidatos, que busca en
@@ -9098,29 +9086,31 @@ const App = () => {
                                 ? [...candidatosMismoCeco, vinculadoActual]
                                 : candidatosMismoCeco
                               ).slice().sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
-                              if (!candidatosVinculo.length) return <span style={{ color: '#AFA897', fontSize: '0.75rem' }}>—</span>;
+                              if (!candidatosVinculo.length) return <span className="text-xs text-muted-foreground">—</span>;
                               return (
-                                <select value={r.presupuestoItemId || ''} onChange={(e) => handleVincularPresupuesto(r.id, e.target.value)} style={{ padding: '0.35rem 0.5rem', backgroundColor: r.presupuestoItemId ? 'rgba(47,158,82,0.12)' : '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', fontSize: '0.75rem', maxWidth: '160px' }}>
-                                  <option value="">Sin vincular</option>
-                                  {candidatosVinculo.map(p => <option key={p.id} value={p.id}>{p.nombre}{p.ceco !== r.ceco ? ` · ${p.ceco}` : ''}</option>)}
-                                </select>
+                                <div className="mx-auto w-[160px]">
+                                  <Select aria-label="Vincular a presupuesto" value={r.presupuestoItemId || ''} onChange={(e) => handleVincularPresupuesto(r.id, e.target.value)} className={cn('h-8 text-xs', r.presupuestoItemId && 'bg-success/10')}>
+                                    <option value="">Sin vincular</option>
+                                    {candidatosVinculo.map(p => <option key={p.id} value={p.id}>{p.nombre}{p.ceco !== r.ceco ? ` · ${p.ceco}` : ''}</option>)}
+                                  </Select>
+                                </div>
                               );
                             })() : (
-                              r.presupuestoItemId ? <span style={{ color: '#2F9E52', fontSize: '0.75rem' }}>✅ Vinculado</span> : <span style={{ color: '#AFA897', fontSize: '0.75rem' }}>—</span>
+                              r.presupuestoItemId ? <span className="text-xs text-success">✅ Vinculado</span> : <span className="text-xs text-muted-foreground">—</span>
                             )}
-                          </td>
+                          </TableCell>
                           {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
-                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                              <button onClick={() => deleteFn(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
-                            </td>
+                            <TableCell className="text-center">
+                              <Button variant="ghost" size="icon" onClick={() => deleteFn(r.id)} className="text-destructive" title="Eliminar" aria-label="Eliminar"><Trash2 size={16} /></Button>
+                            </TableCell>
                           )}
-                        </tr>
+                        </TableRow>
                       );
                     })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                </TableBody>
+              </Table>
+              </CardContent>
+            </Card>
           </div>
         )}
 
