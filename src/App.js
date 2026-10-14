@@ -6195,7 +6195,14 @@ const App = () => {
   // todo a partir de `registrosFinanzas` (el filtro que se está viendo en pantalla ahora mismo).
   const construirDatosInformeFinanzas = () => {
     const datos = registrosFinanzas;
-    const monedasPresentes = [...new Set(datos.map(r => getMoneda(r.empresa)))].sort();
+    // Mismos criterios que el Dashboard Financiero: cada movimiento se agrupa en la moneda de SU
+    // EMPRESA (las de COP pagan en COP; ARKO en USD — la única excepción, FOR SEVEN en USD pagado en
+    // COP, queda como Gasto Neutro en COP). Los Pagos a Tercero sí cuentan como gasto y no suman
+    // los Gastos Neutros ni lo que sigue Pendiente (aún no pagado/recibido).
+    const monedaR = (r) => getMoneda(r.empresa);
+    const esGastoInforme = (r) => r._origen === 'gasto' && r.tipo !== 'Traslado' && !r.neutro && r.estado !== 'Pendiente';
+    const esIngresoInforme = (r) => r.tipo === 'Ingreso' && r.estado !== 'Pendiente';
+    const monedasPresentes = [...new Set(datos.map(monedaR))].sort();
 
     const filtrosTexto = [
       (filtroFinanzasFechaInicio || filtroFinanzasFechaFin) ? `Fecha: ${filtroFinanzasFechaInicio || '…'} a ${filtroFinanzasFechaFin || '…'}` : 'Fecha: histórico completo',
@@ -6213,9 +6220,9 @@ const App = () => {
     };
 
     const porMoneda = monedasPresentes.map(moneda => {
-      const filas = datos.filter(r => getMoneda(r.empresa) === moneda);
-      const ingresos = filas.filter(r => r.tipo === 'Ingreso').reduce((s, r) => s + (parseFloat(r.valor) || 0), 0);
-      const gastos = filas.filter(r => r.tipo === 'Gasto' && !r.neutro).reduce((s, r) => s + (parseFloat(r.valor) || 0), 0);
+      const filas = datos.filter(r => monedaR(r) === moneda);
+      const ingresos = filas.filter(esIngresoInforme).reduce((s, r) => s + (parseFloat(r.valor) || 0), 0);
+      const gastos = filas.filter(esGastoInforme).reduce((s, r) => s + (parseFloat(r.valor) || 0), 0);
       const trasladoSalida = filas.filter(r => r.tipo === 'Traslado' && r._ladoTraslado === 'salida').reduce((s, r) => s + (parseFloat(r.valor) || 0), 0);
       // Cada Traslado aparece como 2 filas (salida/entrada) en registrosFinanzas — se cuenta una
       // sola vez por su id real, para no duplicar el conteo de movimientos.
@@ -6228,8 +6235,8 @@ const App = () => {
         const mes = (r.fecha || '').substring(0, 7);
         if (!mes) return;
         if (!meses[mes]) meses[mes] = { ingresos: 0, gastos: 0 };
-        if (r.tipo === 'Ingreso') meses[mes].ingresos += parseFloat(r.valor) || 0;
-        if (r.tipo === 'Gasto' && !r.neutro) meses[mes].gastos += parseFloat(r.valor) || 0;
+        if (esIngresoInforme(r)) meses[mes].ingresos += parseFloat(r.valor) || 0;
+        if (esGastoInforme(r)) meses[mes].gastos += parseFloat(r.valor) || 0;
       });
       const mesesOrdenados = Object.keys(meses).sort();
       const graficaMensual = {
@@ -6240,17 +6247,17 @@ const App = () => {
         ]
       };
 
-      const empresasMoneda = empresas.filter(e => getMoneda(e) === moneda);
+      const empresasMoneda = empresas.filter(e => filas.some(r => r.empresa === e));
       const graficaEmpresa = {
         labels: empresasMoneda,
         series: [
-          { nombre: 'Ingresos', color: COLOR_INGRESO_INFORME, valores: empresasMoneda.map(e => filas.filter(r => r.empresa === e && r.tipo === 'Ingreso').reduce((s, r) => s + (parseFloat(r.valor) || 0), 0)) },
-          { nombre: 'Gastos', color: COLOR_GASTO_INFORME, valores: empresasMoneda.map(e => filas.filter(r => r.empresa === e && r.tipo === 'Gasto').reduce((s, r) => s + (parseFloat(r.valor) || 0), 0)) },
+          { nombre: 'Ingresos', color: COLOR_INGRESO_INFORME, valores: empresasMoneda.map(e => filas.filter(r => r.empresa === e && esIngresoInforme(r)).reduce((s, r) => s + (parseFloat(r.valor) || 0), 0)) },
+          { nombre: 'Gastos', color: COLOR_GASTO_INFORME, valores: empresasMoneda.map(e => filas.filter(r => r.empresa === e && esGastoInforme(r)).reduce((s, r) => s + (parseFloat(r.valor) || 0), 0)) },
         ]
       };
 
       const categoriasMap = {};
-      filas.filter(r => r.tipo === 'Gasto').forEach(r => {
+      filas.filter(esGastoInforme).forEach(r => {
         const clave = r.categoria || r.ceco || 'Sin categoría';
         categoriasMap[clave] = (categoriasMap[clave] || 0) + (parseFloat(r.valor) || 0);
       });
@@ -6273,7 +6280,7 @@ const App = () => {
       empresa: r.empresa,
       cecoCuenta: r.ceco || r.cuenta || '—',
       detalle: r.detalle || '—',
-      valorTexto: formatMoneyByMoneda(r.valor, getMoneda(r.empresa))
+      valorTexto: formatMoneyByMoneda(r.valor, r.moneda || getMoneda(r.empresa))
     }));
 
     return {
@@ -6449,19 +6456,20 @@ const App = () => {
   const gastosBase = user?.rol === 'Responsable' ? gastosUsuario : gastos;
   const ingresosBase = user?.rol === 'Responsable' ? ingresosUsuario : ingresos;
 
-  // Moneda REAL de un movimiento: un Pago a Tercero guarda su propia moneda (moneda_pago),
-  // que puede no ser la de la empresa que paga (empresa en COP pagando en USD, o ARKO pagando
-  // en COP). Sin moneda propia, se usa la de la empresa.
-  const monedaMovimiento = (m) => m.moneda || getMoneda(m.empresa);
+  // Los totales se agrupan por la moneda de la EMPRESA: las empresas en COP pagan en COP y ARKO
+  // en USD. La única excepción (FOR SEVEN: Pago a Tercero solicitado en USD y pagado en COP) se
+  // registra como Gasto Neutro en COP y no suma como gasto.
+  const monedaMovimiento = (m) => getMoneda(m.empresa);
 
   // Los Traslados viven en la tabla de gastos pero NO son gastos: mueven plata entre cuentas
   // (propias o de otra empresa de la holding). Se excluyen de Gastos/Balance/CECOs y se
   // resumen aparte en la tarjeta "Traslados".
   const enRangoDashboard = (m) => m.fecha >= filtroFechaInicio && m.fecha <= filtroFechaFin;
   // Los Gastos Neutros (ver esPagoTerceroNeutro) quedan fuera de Gastos/Balance/CECOs, igual que los traslados.
-  const gastosFiltradomat = gastosBase.filter(g => g.tipo !== 'Traslado' && !g.neutro && enRangoDashboard(g));
+  // Lo que sigue "Pendiente" (registrado pero aún no pagado/recibido) tampoco suma.
+  const gastosFiltradomat = gastosBase.filter(g => g.tipo !== 'Traslado' && !g.neutro && g.estado !== 'Pendiente' && enRangoDashboard(g));
   const neutrosFiltrados = gastosBase.filter(g => g.neutro && enRangoDashboard(g));
-  const ingresosFiltradomat = ingresosBase.filter(enRangoDashboard);
+  const ingresosFiltradomat = ingresosBase.filter(i => i.estado !== 'Pendiente' && enRangoDashboard(i));
   const trasladosFiltrados = gastosBase.filter(g => g.tipo === 'Traslado' && enRangoDashboard(g));
 
   // Vistas filtradas por moneda — para tarjetas y gráficos que comparan varias empresas a la vez
@@ -6681,7 +6689,7 @@ const App = () => {
       const techo = presupuestoAnual.find(p => p.empresa === empresa && p.ceco === ceco.codigo && String(p.anio) === String(anio));
       const valorAnual = techo ? (parseFloat(techo.valorAnual) || 0) : 0;
       const ejecutado = gastos
-        .filter(g => !g.neutro && g.empresa === empresa && g.ceco === ceco.codigo && g.fecha && g.fecha.substring(0, 4) === String(anio))
+        .filter(g => !g.neutro && g.estado !== 'Pendiente' && g.empresa === empresa && g.ceco === ceco.codigo && g.fecha && g.fecha.substring(0, 4) === String(anio))
         .reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
       return {
         codigo: ceco.codigo,
