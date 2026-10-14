@@ -21,7 +21,7 @@ import ExportadorPABView from './ExportadorPABView';
 import NotificacionesCampana from './NotificacionesCampana';
 import AuditoriaView from './AuditoriaView';
 import TopNav from './components/TopNav';
-import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, FileDown, Eye, Plus, Check, X, Pencil, Search, Loader2, FileSpreadsheet, Upload, FilePlus2, Pause, Play, LayoutDashboard, FileText, Banknote, DollarSign, Clock, Undo2, CheckCircle2, Building2, Users, ClipboardList, Archive } from 'lucide-react';
+import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, FileDown, Eye, Plus, Check, X, Pencil, Search, Loader2, FileSpreadsheet, Upload, FilePlus2, Pause, Play, LayoutDashboard, FileText, Banknote, DollarSign, Clock, Undo2, CheckCircle2, Building2, Users, ClipboardList, Archive, TrendingUp, TrendingDown, Scale, BarChart3, Trophy, FolderOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9151,335 +9151,294 @@ const App = () => {
         )}
 
         {currentView === 'dashboardFinanciero' && puedeVerFinanzas && (
-          <div>
-            {/* DASHBOARD FINANCIERO AVANZADO */}
-            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-              <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📈 Dashboard Financiero Avanzado</h2>
-              
-              {/* FILTRO DE FECHAS */}
-              <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem', marginBottom: '2rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                <div>
-                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Desde</label>
-                  <input type="date" value={filtroFechaInicio} onChange={(e) => setFiltroFechaInicio(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', cursor: 'pointer' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Hasta</label>
-                  <input type="date" value={filtroFechaFin} onChange={(e) => setFiltroFechaFin(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', cursor: 'pointer' }} />
-                </div>
-                <button onClick={() => { setFiltroFechaInicio('2026-01-01'); setFiltroFechaFin(new Date().toISOString().split('T')[0]); }} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  🔄 Reiniciar
-                </button>
-              </div>
+          // Etapa 3 del sistema de diseño: Dashboard Financiero migrado a los componentes de
+          // src/components/ui/ (mismos datos y cálculos; solo cambia la presentación).
+          <div className="flex flex-col gap-6">
+            <h2 className="m-0 flex items-center gap-2 text-xl font-extrabold"><TrendingUp size={22} className="text-primary" /> Dashboard Financiero Avanzado</h2>
 
-              {/* CARDS RESUMEN — COP (todas las empresas excepto ARKO) */}
-              {(() => {
-                const ingresosCOPFiltrado = ingresosFiltradomatCOP.reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0);
-                const gastosCOPFiltrado = gastosFiltradomatCOP.reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
-                const balanceCOPFiltrado = ingresosCOPFiltrado - gastosCOPFiltrado;
-                const ingresosUSDFiltrado = ingresosFiltradomatUSD.reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0);
-                const gastosUSDFiltrado = gastosFiltradomatUSD.reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
-                const balanceUSDFiltrado = ingresosUSDFiltrado - gastosUSDFiltrado;
-                return (
-                  <>
-                    <h3 style={{ color: '#6B6458', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>Resumen en Pesos (COP) — movimientos en pesos de todas las empresas (sin traslados)</h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-                      <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
-                        <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💰 Ingresos</p>
-                        <h3 style={{ color: '#2F9E52', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(ingresosCOPFiltrado, 'COP')}</h3>
-                      </div>
-                      <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
-                        <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💸 Gastos</p>
-                        <h3 style={{ color: '#CC4B4B', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(gastosCOPFiltrado, 'COP')}</h3>
-                      </div>
-                      <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
-                        <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>📊 Balance</p>
-                        <h3 style={{ color: balanceCOPFiltrado >= 0 ? '#2F9E52' : '#CC4B4B', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(balanceCOPFiltrado, 'COP')}</h3>
-                      </div>
-                    </div>
+            {/* FILTRO DE FECHAS */}
+            <Card className="flex-row flex-wrap items-end gap-3 px-5 py-4">
+              <CampoUI label="Desde" htmlFor="df-desde" className="w-[calc(50%-0.375rem)] sm:w-44">
+                <Input id="df-desde" type="date" value={filtroFechaInicio} onChange={(e) => setFiltroFechaInicio(e.target.value)} className="cursor-pointer" />
+              </CampoUI>
+              <CampoUI label="Hasta" htmlFor="df-hasta" className="w-[calc(50%-0.375rem)] sm:w-44">
+                <Input id="df-hasta" type="date" value={filtroFechaFin} onChange={(e) => setFiltroFechaFin(e.target.value)} className="cursor-pointer" />
+              </CampoUI>
+              <Button variant="outline" onClick={() => { setFiltroFechaInicio('2026-01-01'); setFiltroFechaFin(new Date().toISOString().split('T')[0]); }}>
+                <RotateCcw size={14} /> Reiniciar
+              </Button>
+            </Card>
 
-                    {/* RESUMEN POR EMPRESA — Ingresos, Gastos y Balance de cada empresa individual (COP) */}
-                    <h3 style={{ color: '#6B6458', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>Resumen por Empresa (COP)</h3>
-                    <div style={{ overflowX: 'auto', marginBottom: '2rem' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                        <thead style={{ backgroundColor: '#F8F6F1' }}>
-                          <tr style={{ borderBottom: '2px solid #C4A747' }}>
-                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Ingresos</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Gastos</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Balance</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+            {/* CARDS RESUMEN — COP (todas las empresas excepto ARKO) */}
+            {(() => {
+              const ingresosCOPFiltrado = ingresosFiltradomatCOP.reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0);
+              const gastosCOPFiltrado = gastosFiltradomatCOP.reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
+              const balanceCOPFiltrado = ingresosCOPFiltrado - gastosCOPFiltrado;
+              const ingresosUSDFiltrado = ingresosFiltradomatUSD.reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0);
+              const gastosUSDFiltrado = gastosFiltradomatUSD.reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
+              const balanceUSDFiltrado = ingresosUSDFiltrado - gastosUSDFiltrado;
+              // Tres tarjetas Ingresos / Gastos / Balance para una moneda.
+              const tarjetasResumen = (ingresos, gastos, balance, moneda, sufijo) => (
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {[
+                    { icon: TrendingUp, label: `Ingresos${sufijo}`, valor: ingresos, clase: 'text-success', fondo: 'bg-success/10' },
+                    { icon: TrendingDown, label: `Gastos${sufijo}`, valor: gastos, clase: 'text-destructive', fondo: 'bg-destructive/10' },
+                    { icon: Scale, label: `Balance${sufijo}`, valor: balance, clase: balance >= 0 ? 'text-success' : 'text-destructive', fondo: balance >= 0 ? 'bg-success/10' : 'bg-destructive/10' },
+                  ].map(t => {
+                    const Icono = t.icon;
+                    return (
+                      <Card key={t.label} className="min-w-0 gap-2 px-5 py-5">
+                        <div className="flex items-center gap-2">
+                          <span className={cn('flex size-8 items-center justify-center rounded-lg', t.fondo, t.clase)}><Icono size={16} /></span>
+                          <p className="m-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.label}</p>
+                        </div>
+                        <p className={cn('m-0 text-[clamp(1.35rem,2.4vw,1.9rem)] font-extrabold leading-tight tabular-nums [overflow-wrap:anywhere]', t.clase)}>{formatMoneyByMoneda(t.valor, moneda)}</p>
+                      </Card>
+                    );
+                  })}
+                </div>
+              );
+              const subtitulo = (texto, nota) => (
+                <h3 className="m-0 text-sm font-bold text-muted-foreground">{texto}{nota && <span className="font-normal"> — {nota}</span>}</h3>
+              );
+              return (
+                <>
+                  <div className="flex flex-col gap-3">
+                    {subtitulo('Resumen en Pesos (COP)', 'movimientos en pesos de todas las empresas (sin traslados)')}
+                    {tarjetasResumen(ingresosCOPFiltrado, gastosCOPFiltrado, balanceCOPFiltrado, 'COP', '')}
+                  </div>
+
+                  {/* RESUMEN POR EMPRESA — Ingresos, Gastos y Balance de cada empresa individual (COP) */}
+                  <Card className="gap-4 px-0 py-5">
+                    <CardHeader className="sm:px-6"><CardTitle className="flex items-center gap-2"><Building2 size={18} className="text-primary" /> Resumen por Empresa (COP)</CardTitle></CardHeader>
+                    <CardContent className="sm:px-6">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="hover:bg-transparent">
+                            <TableHead>Empresa</TableHead>
+                            <TableHead className="text-right">Ingresos</TableHead>
+                            <TableHead className="text-right">Gastos</TableHead>
+                            <TableHead className="text-right">Balance</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
                           {resumenPorEmpresaCOP.map(r => (
-                            <tr key={r.empresa} style={{ borderBottom: '1px solid #E6E0D2' }}>
-                              <td style={{ padding: '0.75rem', color: '#221E15', fontWeight: 'bold' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><EmpresaLogo empresa={r.empresa} height={18} />{r.empresa}</div></td>
-                              <td style={{ padding: '0.75rem', textAlign: 'right', color: '#2F9E52' }}>{formatMoneyByMoneda(r.ingresos, 'COP')}</td>
-                              <td style={{ padding: '0.75rem', textAlign: 'right', color: '#CC4B4B' }}>{formatMoneyByMoneda(r.gastos, 'COP')}</td>
-                              <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: 'bold', color: r.balance >= 0 ? '#2F9E52' : '#CC4B4B' }}>{formatMoneyByMoneda(r.balance, 'COP')}</td>
-                            </tr>
+                            <TableRow key={r.empresa}>
+                              <TableCell className="font-semibold"><div className="flex items-center gap-2"><EmpresaLogo empresa={r.empresa} height={18} />{r.empresa}</div></TableCell>
+                              <TableCell className="whitespace-nowrap text-right text-success">{formatMoneyByMoneda(r.ingresos, 'COP')}</TableCell>
+                              <TableCell className="whitespace-nowrap text-right text-destructive">{formatMoneyByMoneda(r.gastos, 'COP')}</TableCell>
+                              <TableCell className={cn('whitespace-nowrap text-right font-bold', r.balance >= 0 ? 'text-success' : 'text-destructive')}>{formatMoneyByMoneda(r.balance, 'COP')}</TableCell>
+                            </TableRow>
                           ))}
-                        </tbody>
-                      </table>
-                    </div>
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
 
-                    {/* CARDS RESUMEN — USD (ARKO + pagos en USD de cualquier empresa) */}
-                    <h3 style={{ color: '#6B6458', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>💵 Resumen en Dólares (USD) — ARKO y pagos en USD (sin traslados)</h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-                      <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
-                        <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💰 Ingresos USD</p>
-                        <h3 style={{ color: '#2F9E52', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(ingresosUSDFiltrado, 'USD')}</h3>
-                      </div>
-                      <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
-                        <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>💸 Gastos USD</p>
-                        <h3 style={{ color: '#CC4B4B', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(gastosUSDFiltrado, 'USD')}</h3>
-                      </div>
-                      <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
-                        <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.85rem' }}>📊 Balance USD</p>
-                        <h3 style={{ color: balanceUSDFiltrado >= 0 ? '#2F9E52' : '#CC4B4B', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(balanceUSDFiltrado, 'USD')}</h3>
-                      </div>
-                    </div>
+                  {/* CARDS RESUMEN — USD (ARKO + pagos en USD de cualquier empresa) */}
+                  <div className="flex flex-col gap-3">
+                    {subtitulo('💵 Resumen en Dólares (USD)', 'ARKO y pagos en USD (sin traslados)')}
+                    {tarjetasResumen(ingresosUSDFiltrado, gastosUSDFiltrado, balanceUSDFiltrado, 'USD', ' USD')}
+                  </div>
 
+                  <div className="grid gap-4 lg:grid-cols-2">
                     {/* GASTOS NEUTROS — registrados en COP pero sin sumar como gasto de la empresa */}
                     {neutrosFiltrados.length > 0 && (
-                      <>
-                        <h3 style={{ color: '#6B6458', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>⚪ Gastos Neutros del período <span style={{ fontWeight: 'normal' }}>— registrados, pero no cuentan como gasto</span></h3>
-                        <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem', marginBottom: '2rem', display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
-                          <div><p style={{ color: '#6B6458', margin: '0 0 0.25rem 0', fontSize: '0.8rem' }}>Cantidad</p><h3 style={{ color: '#6B6458', margin: 0, fontSize: '1.5rem' }}>{neutrosFiltrados.length}</h3></div>
+                      <Card className="min-w-0 gap-3 px-5 py-5">
+                        {subtitulo('⚪ Gastos Neutros del período', 'registrados, pero no cuentan como gasto')}
+                        <div className="flex flex-wrap gap-8">
+                          <div><p className="m-0 mb-1 text-xs text-muted-foreground">Cantidad</p><p className="m-0 text-2xl font-extrabold text-muted-foreground">{neutrosFiltrados.length}</p></div>
                           {['COP', 'USD'].map(m => {
                             const total = neutrosFiltrados.filter(g => monedaMovimiento(g) === m).reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
-                            return total > 0 ? <div key={m}><p style={{ color: '#6B6458', margin: '0 0 0.25rem 0', fontSize: '0.8rem' }}>Total ({m})</p><h3 style={{ color: '#6B6458', margin: 0, fontSize: '1.5rem' }}>{formatMoneyByMoneda(total, m)}</h3></div> : null;
+                            return total > 0 ? <div key={m}><p className="m-0 mb-1 text-xs text-muted-foreground">Total ({m})</p><p className="m-0 text-2xl font-extrabold text-muted-foreground">{formatMoneyByMoneda(total, m)}</p></div> : null;
                           })}
                         </div>
-                      </>
+                      </Card>
                     )}
 
                     {/* TRASLADOS — movimientos entre cuentas/empresas, aparte de Gastos e Ingresos */}
-                    <h3 style={{ color: '#6B6458', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>🔄 Traslados del período <span style={{ fontWeight: 'normal' }}>— no cuentan como gasto ni ingreso</span></h3>
-                    <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem', marginBottom: '2rem' }}>
+                    <Card className={cn('min-w-0 gap-3 px-5 py-5', neutrosFiltrados.length === 0 && 'lg:col-span-2')}>
+                      {subtitulo('🔄 Traslados del período', 'no cuentan como gasto ni ingreso')}
                       {trasladosPorRuta.length === 0 ? (
-                        <p style={{ color: '#AFA897', margin: 0, fontSize: '0.85rem' }}>Sin traslados en este rango de fechas.</p>
+                        <p className="m-0 text-sm text-muted-foreground">Sin traslados en este rango de fechas.</p>
                       ) : (
                         <>
-                          <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-                            <div><p style={{ color: '#6B6458', margin: '0 0 0.25rem 0', fontSize: '0.8rem' }}>Cantidad</p><h3 style={{ color: '#3B72D9', margin: 0, fontSize: '1.5rem' }}>{trasladosFiltrados.length}</h3></div>
+                          <div className="flex flex-wrap gap-8">
+                            <div><p className="m-0 mb-1 text-xs text-muted-foreground">Cantidad</p><p className="m-0 text-2xl font-extrabold text-chart-3">{trasladosFiltrados.length}</p></div>
                             {['COP', 'USD'].map(m => {
                               const total = trasladosPorRuta.filter(r => r.moneda === m).reduce((sum, r) => sum + r.total, 0);
-                              return total > 0 ? <div key={m}><p style={{ color: '#6B6458', margin: '0 0 0.25rem 0', fontSize: '0.8rem' }}>Total movido ({m})</p><h3 style={{ color: '#3B72D9', margin: 0, fontSize: '1.5rem' }}>{formatMoneyByMoneda(total, m)}</h3></div> : null;
+                              return total > 0 ? <div key={m}><p className="m-0 mb-1 text-xs text-muted-foreground">Total movido ({m})</p><p className="m-0 text-2xl font-extrabold text-chart-3">{formatMoneyByMoneda(total, m)}</p></div> : null;
                             })}
                           </div>
-                          <div style={{ overflowX: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                              <thead>
-                                <tr style={{ borderBottom: '2px solid #C4A747' }}>
-                                  <th style={{ textAlign: 'left', padding: '0.6rem', color: '#C4A747' }}>Desde</th>
-                                  <th style={{ textAlign: 'left', padding: '0.6rem', color: '#C4A747' }}>Hacia</th>
-                                  <th style={{ textAlign: 'center', padding: '0.6rem', color: '#C4A747' }}>Cantidad</th>
-                                  <th style={{ textAlign: 'right', padding: '0.6rem', color: '#C4A747' }}>Total (moneda de salida)</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {trasladosPorRuta.map(r => (
-                                  <tr key={`${r.origen}-${r.destino}-${r.moneda}`} style={{ borderBottom: '1px solid #E6E0D2' }}>
-                                    <td style={{ padding: '0.6rem', color: '#221E15' }}>{r.origen}</td>
-                                    <td style={{ padding: '0.6rem', color: '#221E15' }}>{r.destino === r.origen ? 'Entre cuentas propias' : r.destino}</td>
-                                    <td style={{ padding: '0.6rem', textAlign: 'center', color: '#6B6458' }}>{r.cantidad}</td>
-                                    <td style={{ padding: '0.6rem', textAlign: 'right', color: '#3B72D9', fontWeight: 'bold' }}>{formatMoneyByMoneda(r.total, r.moneda)}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
+                          <Table>
+                            <TableHeader>
+                              <TableRow className="hover:bg-transparent">
+                                <TableHead>Desde</TableHead>
+                                <TableHead>Hacia</TableHead>
+                                <TableHead className="text-center">Cantidad</TableHead>
+                                <TableHead className="text-right">Total (moneda de salida)</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {trasladosPorRuta.map(r => (
+                                <TableRow key={`${r.origen}-${r.destino}-${r.moneda}`}>
+                                  <TableCell>{r.origen}</TableCell>
+                                  <TableCell>{r.destino === r.origen ? 'Entre cuentas propias' : r.destino}</TableCell>
+                                  <TableCell className="text-center text-muted-foreground">{r.cantidad}</TableCell>
+                                  <TableCell className="whitespace-nowrap text-right font-bold text-chart-3">{formatMoneyByMoneda(r.total, r.moneda)}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
                         </>
                       )}
-                    </div>
-                  </>
-                );
-              })()}
+                    </Card>
+                  </div>
+                </>
+              );
+            })()}
 
-              {/* GRÁFICO GASTOS VS INGRESOS POR MES */}
-              {datosPorMes.length > 0 && (
-                <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem', marginBottom: '2rem' }}>
-                  <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>Gastos vs Ingresos por Mes <span style={{ color: '#6B6458', fontSize: '0.8rem', fontWeight: 'normal' }}>(COP — sin USD ni traslados)</span></h3>
-                  <svg width="100%" height="300" viewBox="0 0 800 300" style={{ backgroundColor: 'transparent' }}>
-                    {/* Grid */}
-                    {[0, 1, 2, 3, 4].map(i => (
-                      <line key={`grid-${i}`} x1="60" y1={50 + i * 50} x2="750" y2={50 + i * 50} stroke="#E6E0D2" strokeWidth="1" strokeDasharray="5,5" />
-                    ))}
-                    
-                    {/* Barras */}
-                    {datosPorMes.map((mes, idx) => {
-                      const maxVal = Math.max(...datosPorMes.map(m => Math.max(m.gastos, m.ingresos))) || 1;
-                      const x = 60 + (idx * 700 / datosPorMes.length);
-                      const barWidth = 700 / datosPorMes.length / 2.5;
-                      const gastosHeight = (mes.gastos / maxVal) * 200;
-                      const ingresosHeight = (mes.ingresos / maxVal) * 200;
-                      
-                      return (
-                        <g key={`mes-${idx}`}>
-                          {/* Gasto */}
-                          <rect x={x} y={250 - gastosHeight} width={barWidth} height={gastosHeight} fill="#CC4B4B" opacity="0.8" />
-                          {/* Ingreso */}
-                          <rect x={x + barWidth + 5} y={250 - ingresosHeight} width={barWidth} height={ingresosHeight} fill="#2F9E52" opacity="0.8" />
-                          {/* Label */}
-                          <text x={x + barWidth} y="280" textAnchor="middle" fill="#6B6458" fontSize="12">{mes.mes.split('-')[1]}</text>
+            {/* GRÁFICO GASTOS VS INGRESOS POR MES — al pasar el mouse por una barra se ve el valor exacto */}
+            {datosPorMes.length > 0 && (() => {
+              const maxVal = Math.max(...datosPorMes.map(m => Math.max(m.gastos, m.ingresos))) || 1;
+              const anchoGrupo = 690 / datosPorMes.length;
+              const barWidth = Math.min(anchoGrupo / 2.5, 48);
+              const etiquetaMes = (clave) => { const [y, m] = clave.split('-').map(Number); return `${nombresMeses[m - 1]?.slice(0, 3) || m} ${String(y).slice(2)}`; };
+              const compacto = (v) => v >= 1e9 ? `${(v / 1e9).toFixed(1)}B` : v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}K` : String(Math.round(v));
+              return (
+                <Card className="gap-4 px-0 py-5">
+                  <CardHeader className="sm:px-6">
+                    <CardTitle className="flex flex-wrap items-center gap-2"><BarChart3 size={18} className="text-primary" /> Gastos vs Ingresos por Mes <span className="text-xs font-normal text-muted-foreground">(COP — sin USD ni traslados)</span></CardTitle>
+                  </CardHeader>
+                  <CardContent className="sm:px-6">
+                    <svg viewBox="0 0 800 300" role="img" aria-label="Gastos e ingresos por mes en COP" className="block h-auto max-h-[320px] w-full">
+                      {/* Grid recesivo con valores del eje */}
+                      {[0, 1, 2, 3, 4].map(i => (
+                        <g key={`grid-${i}`}>
+                          <line x1="60" y1={50 + i * 50} x2="750" y2={50 + i * 50} stroke="#E6E0D2" strokeWidth="1" strokeDasharray="4,4" />
+                          <text x="54" y={54 + i * 50} textAnchor="end" fill="#8F8877" fontSize="11">{compacto(maxVal * (4 - i) / 4)}</text>
                         </g>
-                      );
-                    })}
-                    
-                    {/* Ejes */}
-                    <line x1="60" y1="50" x2="60" y2="250" stroke="#E6E0D2" strokeWidth="2" />
-                    <line x1="60" y1="250" x2="750" y2="250" stroke="#E6E0D2" strokeWidth="2" />
-                  </svg>
-                  <div style={{ display: 'flex', gap: '2rem', justifyContent: 'center', marginTop: '1rem', fontSize: '0.85rem' }}>
-                    <div><span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#CC4B4B', marginRight: '0.5rem' }}></span><span style={{ color: '#6B6458' }}>Gastos</span></div>
-                    <div><span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: '#2F9E52', marginRight: '0.5rem' }}></span><span style={{ color: '#6B6458' }}>Ingresos</span></div>
-                  </div>
-                </div>
-              )}
-
-              {/* GRÁFICOS TOP CECOs Y TOP EMPRESAS */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem' }}>
-                {topCecos.length > 0 && (
-                  <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
-                    <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🏆 Top 5 CECOs <span style={{ color: '#6B6458', fontSize: '0.8rem', fontWeight: 'normal' }}>(COP — sin USD ni traslados)</span></h3>
-                    <svg width="100%" height="250" viewBox="0 0 200 200" style={{ backgroundColor: 'transparent' }}>
-                      {(() => {
-                        const total = topCecos.reduce((sum, c) => sum + c.value, 0);
-                        let angle = -90;
-                        const cx = 100, cy = 100, r = 70;
-                        const COLORS = ['#C4A747', '#CC4B4B', '#2F9E52', '#3B72D9', '#D6A419'];
-                        
-                        return topCecos.map((ceco, idx) => {
-                          const sliceAngle = (ceco.value / total) * 360;
-                          const startAngle = angle * Math.PI / 180;
-                          const endAngle = (angle + sliceAngle) * Math.PI / 180;
-                          
-                          const x1 = cx + r * Math.cos(startAngle);
-                          const y1 = cy + r * Math.sin(startAngle);
-                          const x2 = cx + r * Math.cos(endAngle);
-                          const y2 = cy + r * Math.sin(endAngle);
-                          
-                          const largeArc = sliceAngle > 180 ? 1 : 0;
-                          const pathData = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
-                          
-                          angle += sliceAngle;
-                          
-                          return <path key={`slice-${idx}`} d={pathData} fill={COLORS[idx % COLORS.length]} opacity="0.8" />;
-                        });
-                      })()}
-                    </svg>
-                    <div style={{ marginTop: '1rem', fontSize: '0.8rem' }}>
-                      {topCecos.map((ceco, idx) => (
-                        <div key={idx} style={{ color: '#6B6458', marginBottom: '0.5rem' }}>
-                          <span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: ['#C4A747', '#CC4B4B', '#2F9E52', '#3B72D9', '#D6A419'][idx % 5], marginRight: '0.5rem' }}></span>
-                          {ceco.name}: ${(ceco.value / 1000000).toFixed(1)}M
-                        </div>
                       ))}
-                    </div>
-                  </div>
-                )}
-
-                {topEmpresas.length > 0 && (
-                  <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem' }}>
-                    <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🏢 Top 5 Empresas <span style={{ color: '#6B6458', fontSize: '0.8rem', fontWeight: 'normal' }}>(COP — sin USD ni traslados)</span></h3>
-                    <svg width="100%" height="250" viewBox="0 0 200 200" style={{ backgroundColor: 'transparent' }}>
-                      {(() => {
-                        const total = topEmpresas.reduce((sum, e) => sum + e.value, 0);
-                        let angle = -90;
-                        const cx = 100, cy = 100, r = 70;
-                        const COLORS = ['#C4A747', '#CC4B4B', '#2F9E52', '#3B72D9', '#D6A419'];
-                        
-                        return topEmpresas.map((empresa, idx) => {
-                          const sliceAngle = (empresa.value / total) * 360;
-                          const startAngle = angle * Math.PI / 180;
-                          const endAngle = (angle + sliceAngle) * Math.PI / 180;
-                          
-                          const x1 = cx + r * Math.cos(startAngle);
-                          const y1 = cy + r * Math.sin(startAngle);
-                          const x2 = cx + r * Math.cos(endAngle);
-                          const y2 = cy + r * Math.sin(endAngle);
-                          
-                          const largeArc = sliceAngle > 180 ? 1 : 0;
-                          const pathData = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
-                          
-                          angle += sliceAngle;
-                          
-                          return <path key={`slice-${idx}`} d={pathData} fill={COLORS[idx % COLORS.length]} opacity="0.8" />;
-                        });
-                      })()}
+                      {datosPorMes.map((mes, idx) => {
+                        const x = 60 + idx * anchoGrupo + (anchoGrupo - (barWidth * 2 + 4)) / 2;
+                        const gastosHeight = (mes.gastos / maxVal) * 200;
+                        const ingresosHeight = (mes.ingresos / maxVal) * 200;
+                        return (
+                          <g key={`mes-${idx}`}>
+                            <rect x={x} y={250 - gastosHeight} width={barWidth} height={gastosHeight} rx="3" fill="#CC4B4B">
+                              <title>{`${etiquetaMes(mes.mes)} · Gastos: ${formatMoneyByMoneda(mes.gastos, 'COP')}`}</title>
+                            </rect>
+                            <rect x={x + barWidth + 4} y={250 - ingresosHeight} width={barWidth} height={ingresosHeight} rx="3" fill="#2F9E52">
+                              <title>{`${etiquetaMes(mes.mes)} · Ingresos: ${formatMoneyByMoneda(mes.ingresos, 'COP')}`}</title>
+                            </rect>
+                            <text x={x + barWidth + 2} y="272" textAnchor="middle" fill="#6B6458" fontSize="12">{etiquetaMes(mes.mes)}</text>
+                          </g>
+                        );
+                      })}
+                      <line x1="60" y1="250" x2="750" y2="250" stroke="#D9D2C0" strokeWidth="1.5" />
                     </svg>
-                    <div style={{ marginTop: '1rem', fontSize: '0.8rem' }}>
-                      {topEmpresas.map((empresa, idx) => (
-                        <div key={idx} style={{ color: '#6B6458', marginBottom: '0.5rem' }}>
-                          <span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: ['#C4A747', '#CC4B4B', '#2F9E52', '#3B72D9', '#D6A419'][idx % 5], marginRight: '0.5rem' }}></span>
-                          {empresa.name}: ${(empresa.value / 1000000).toFixed(1)}M
-                        </div>
-                      ))}
+                    <div className="mt-2 flex justify-center gap-6 text-sm text-muted-foreground">
+                      <span className="flex items-center gap-2"><span className="inline-block size-3 rounded-sm bg-destructive" />Gastos</span>
+                      <span className="flex items-center gap-2"><span className="inline-block size-3 rounded-sm bg-success" />Ingresos</span>
                     </div>
-                  </div>
-                )}
-              </div>
+                  </CardContent>
+                </Card>
+              );
+            })()}
 
-              {/* CECOs POR EMPRESA — VALOR EJECUTADO TOTAL */}
-              {cecosPorEmpresaCOP.length > 0 && (
-                <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem', marginTop: '2rem' }}>
-                  <h3 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>📁 CECOs por Empresa <span style={{ color: '#6B6458', fontSize: '0.8rem', fontWeight: 'normal' }}>— Valor Ejecutado (COP — sin USD ni traslados)</span></h3>
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                      <thead style={{ backgroundColor: '#FFFFFF' }}>
-                        <tr style={{ borderBottom: '2px solid #C4A747' }}>
-                          <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
-                          {empresasCOP.map(emp => (
-                            <th key={emp} style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>
-                              {EMPRESA_LOGOS[emp] ? <EmpresaLogo empresa={emp} height={16} style={{ display: 'block', marginLeft: 'auto', marginBottom: '0.25rem' }} /> : null}
-                              {emp.split(' ')[0]}
-                            </th>
-                          ))}
-                          <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Total Ejecutado</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {cecosPorEmpresaCOP.map(c => (
-                          <tr key={c.codigo} style={{ borderBottom: '1px solid #E6E0D2' }}>
-                            <td style={{ padding: '0.75rem', color: '#221E15', fontWeight: 'bold' }}>{c.nombre}</td>
-                            {empresasCOP.map(emp => (
-                              <td key={emp} style={{ padding: '0.75rem', textAlign: 'right', color: c.porEmpresa[emp] > 0 ? '#CC4B4B' : '#AFA897' }}>
-                                {c.porEmpresa[emp] > 0 ? formatMoneyByMoneda(c.porEmpresa[emp], 'COP') : '—'}
-                              </td>
-                            ))}
-                            <td style={{ padding: '0.75rem', textAlign: 'right', color: '#C4A747', fontWeight: 'bold' }}>{formatMoneyByMoneda(c.total, 'COP')}</td>
-                          </tr>
+            {/* TOP CECOs Y TOP EMPRESAS — barras horizontales con su valor (antes eran tortas) */}
+            {(topCecos.length > 0 || topEmpresas.length > 0) && (
+              <div className="grid gap-4 lg:grid-cols-2">
+                {[
+                  { datos: topCecos, titulo: 'Top 5 CECOs', icon: Trophy },
+                  { datos: topEmpresas, titulo: 'Top 5 Empresas', icon: Building2 },
+                ].filter(b => b.datos.length > 0).map(b => {
+                  const Icono = b.icon;
+                  const max = Math.max(...b.datos.map(d => d.value)) || 1;
+                  const total = b.datos.reduce((sum, d) => sum + d.value, 0) || 1;
+                  return (
+                    <Card key={b.titulo} className="min-w-0 gap-4 px-0 py-5">
+                      <CardHeader className="sm:px-6">
+                        <CardTitle className="flex flex-wrap items-center gap-2"><Icono size={18} className="text-primary" /> {b.titulo} <span className="text-xs font-normal text-muted-foreground">(gastos COP — sin USD ni traslados)</span></CardTitle>
+                      </CardHeader>
+                      <CardContent className="flex flex-col gap-3 sm:px-6">
+                        {b.datos.map(d => (
+                          <div key={d.name} className="flex flex-col gap-1" title={`${d.name}: ${formatMoneyByMoneda(d.value, 'COP')}`}>
+                            <div className="flex items-baseline justify-between gap-3 text-sm">
+                              <span className="truncate">{d.name}</span>
+                              <span className="whitespace-nowrap font-semibold tabular-nums">{formatMoneyByMoneda(d.value, 'COP')} <span className="text-xs font-normal text-muted-foreground">· {((d.value / total) * 100).toFixed(0)}%</span></span>
+                            </div>
+                            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                              <div className="h-full rounded-full bg-primary" style={{ width: `${(d.value / max) * 100}%` }} />
+                            </div>
+                          </div>
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* CECOs POR EMPRESA — VALOR EJECUTADO TOTAL */}
+            {cecosPorEmpresaCOP.length > 0 && (
+              <Card className="gap-4 px-0 py-5">
+                <CardHeader className="sm:px-6">
+                  <CardTitle className="flex flex-wrap items-center gap-2"><FolderOpen size={18} className="text-primary" /> CECOs por Empresa <span className="text-xs font-normal text-muted-foreground">— Valor Ejecutado (COP — sin USD ni traslados)</span></CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-6 sm:px-6">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead>CECO</TableHead>
+                        {empresasCOP.map(emp => (
+                          <TableHead key={emp} className="text-right">
+                            {EMPRESA_LOGOS[emp] ? <EmpresaLogo empresa={emp} height={16} style={{ display: 'block', marginLeft: 'auto', marginBottom: '0.25rem' }} /> : null}
+                            {emp.split(' ')[0]}
+                          </TableHead>
+                        ))}
+                        <TableHead className="text-right">Total Ejecutado</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {cecosPorEmpresaCOP.map(c => (
+                        <TableRow key={c.codigo}>
+                          <TableCell className="min-w-[160px] font-semibold">{c.nombre}</TableCell>
+                          {empresasCOP.map(emp => (
+                            <TableCell key={emp} className={cn('whitespace-nowrap text-right', c.porEmpresa[emp] > 0 ? 'text-destructive' : 'text-muted-foreground')}>
+                              {c.porEmpresa[emp] > 0 ? formatMoneyByMoneda(c.porEmpresa[emp], 'COP') : '—'}
+                            </TableCell>
+                          ))}
+                          <TableCell className="whitespace-nowrap text-right font-bold text-primary">{formatMoneyByMoneda(c.total, 'COP')}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
 
                   {cecosArkoUSD.length > 0 && (
-                    <>
-                      <h3 style={{ color: '#C4A747', margin: '2rem 0 1rem 0' }}>📁 CECOs en USD <span style={{ color: '#6B6458', fontSize: '0.8rem', fontWeight: 'normal' }}>— Valor Ejecutado (USD)</span></h3>
-                      <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                          <thead style={{ backgroundColor: '#FFFFFF' }}>
-                            <tr style={{ borderBottom: '2px solid #C4A747' }}>
-                              <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>CECO</th>
-                              <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Total Ejecutado</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {cecosArkoUSD.map(c => (
-                              <tr key={c.codigo} style={{ borderBottom: '1px solid #E6E0D2' }}>
-                                <td style={{ padding: '0.75rem', color: '#221E15', fontWeight: 'bold' }}>{c.nombre}</td>
-                                <td style={{ padding: '0.75rem', textAlign: 'right', color: '#CC4B4B', fontWeight: 'bold' }}>{formatMoneyByMoneda(c.valor, 'USD')}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </>
+                    <div className="flex flex-col gap-3">
+                      <h3 className="m-0 flex flex-wrap items-center gap-2 text-base font-bold"><FolderOpen size={18} className="text-primary" /> CECOs en USD <span className="text-xs font-normal text-muted-foreground">— Valor Ejecutado (USD)</span></h3>
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="hover:bg-transparent">
+                            <TableHead>CECO</TableHead>
+                            <TableHead className="text-right">Total Ejecutado</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {cecosArkoUSD.map(c => (
+                            <TableRow key={c.codigo}>
+                              <TableCell className="font-semibold">{c.nombre}</TableCell>
+                              <TableCell className="whitespace-nowrap text-right font-bold text-destructive">{formatMoneyByMoneda(c.valor, 'USD')}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   )}
-                </div>
-              )}
-            </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
 
