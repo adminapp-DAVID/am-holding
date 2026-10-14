@@ -5336,6 +5336,138 @@ const App = () => {
     setRegistrarFacturasTercero(prev => prev ? { ...prev, comprobantesPago: (prev.comprobantesPago || []).filter(c => c.id !== id) } : prev);
   };
 
+  // ===== EDITAR UN PAGO A TERCERO EN LOTE YA REGISTRADO =====
+  // Los gastos de un lote se reconocen por lote_pago_id (lotes nuevos) o, en los registrados antes
+  // de guardarlo, por la marca en observaciones + mismo tercero, empresa y fecha.
+  const terceroDeObservacionesLote = (obs) => (String(obs || '').match(/^Factura de tercero registrada en lote \(([^)]*)\)/) || [])[1] || '';
+  const gastosDelLoteTercero = (g) => {
+    if (g.lotePagoId) return gastos.filter(x => x.lotePagoId === g.lotePagoId);
+    const tercero = terceroDeObservacionesLote(g.observaciones);
+    return gastos.filter(x => !x.lotePagoId && (x.observaciones || '').startsWith(OBSERVACIONES_GASTO_LOTE_TERCERO)
+      && terceroDeObservacionesLote(x.observaciones) === tercero && x.empresa === g.empresa && x.fecha === g.fecha);
+  };
+
+  const handleAbrirEditarLoteTercero = (g) => {
+    const miembros = gastosDelLoteTercero(g);
+    if (!miembros.length) return;
+    const terceroNombre = terceroDeObservacionesLote(g.observaciones);
+    setRegistrarFacturasTercero({
+      modo: 'editar',
+      loteId: g.lotePagoId || '',
+      gastoIds: miembros.map(m => m.id),
+      fecha: g.fecha,
+      terceroId: g.terceroId || '',
+      terceroNombre,
+      empresa: g.empresa,
+      cuenta: g.cuenta || '',
+      ceco: g.ceco || '',
+      lineas: miembros.map(m => ({
+        id: m.id,
+        gastoId: m.id,
+        responsable: colaboradoresPublico.find(c => c.id === m.responsableId)?.nombre || personasFinanzas.find(p => p.id === m.responsableId)?.nombre || m.responsableNombre || '',
+        // N° de factura: lo que va entre "Factura " y el nombre del tercero en el detalle.
+        numeroFactura: (String(m.detalle || '').match(new RegExp(`^Factura (.+?) ${terceroNombre.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} — `)) || [])[1] || '',
+        valor: String(m.valorBruto != null ? m.valorBruto : (m.valor ?? '')),
+        retencion: m.deduccionAplicada ? String(m.deduccionAplicada) : '',
+        factura: null,
+        facturaExistente: true,
+      })),
+      comprobantesPago: [],
+    });
+  };
+
+  const handleGuardarEdicionLoteTercero = async () => {
+    const lt = registrarFacturasTercero;
+    const { terceroId, terceroNombre, empresa, cuenta, ceco, lineas, comprobantesPago, fecha } = lt;
+    if (!cuenta) { alert('Elige la Cuenta con la que se pagó'); return; }
+    if (!terceroNombre.trim()) { alert('Escribe o elige el Tercero'); return; }
+    if (!ceco) { alert('Elige el CECO para estas facturas'); return; }
+    const invalidas = lineas.filter(l => !l.responsable || !l.valor || parseFloat(l.valor) <= 0 || (!l.facturaExistente && !l.factura));
+    if (invalidas.length > 0) { alert('Cada línea necesita Colaborador, Valor mayor a cero y (si es nueva) su Soporte de Factura'); return; }
+    const retencionInvalida = lineas.find(l => { const m = montosLineaFacturaTercero(l); return m.retencion < 0 || m.neto <= 0; });
+    if (retencionInvalida) { alert(`La retención de ${retencionInvalida.responsable} no puede ser negativa ni mayor o igual al valor de la factura`); return; }
+
+    setGuardandoFacturasTercero(true);
+    try {
+      const [empresaId, cecoId] = await Promise.all([resolverEmpresaId(empresa), resolverCecoId(ceco)]);
+      const loteId = lt.loteId || ((typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+      const camposLinea = (linea) => {
+        const montos = montosLineaFacturaTercero(linea);
+        return {
+          responsable_id: personasFinanzas.find(r => r.nombre === linea.responsable)?.id || colaboradoresPublico.find(c => c.nombre === linea.responsable)?.id || null,
+          ceco_id: cecoId,
+          cuenta,
+          detalle: `Factura ${linea.numeroFactura ? `${linea.numeroFactura.trim()} ` : ''}${terceroNombre} — ${linea.responsable}`,
+          valor: montos.neto,
+          valor_bruto: montos.retencion > 0 ? montos.bruto : null,
+          deduccion_aplicada: montos.retencion > 0 ? montos.retencion : null,
+          observaciones: `${OBSERVACIONES_GASTO_LOTE_TERCERO} (${terceroNombre})${linea.numeroFactura ? ` — ${linea.numeroFactura.trim()}` : ''}${montos.retencion > 0 ? ` — RTE ${formatMoney(montos.retencion, empresa)}` : ''}.`,
+          tercero_id: terceroId || null,
+          lote_pago_id: loteId,
+        };
+      };
+
+      // Comprobante(s) de pago ya compartido(s) por el lote: los archivos que tienen TODOS los
+      // gastos existentes (con un solo gasto no se puede distinguir de la factura → no se copia).
+      let comprobantesCompartidos = [];
+      if ((lt.gastoIds || []).length > 1) {
+        const { data: sop } = await supabase.from('soportes').select('entidad_id, bucket_path, nombre_original, tamano_kb').eq('entidad_tipo', 'gasto').in('entidad_id', lt.gastoIds);
+        const porRuta = {};
+        (sop || []).forEach(r => { (porRuta[r.bucket_path] = porRuta[r.bucket_path] || { ...r, ids: new Set() }).ids.add(r.entidad_id); });
+        comprobantesCompartidos = Object.values(porRuta).filter(r => r.ids.size === lt.gastoIds.length);
+      }
+
+      const fallidos = [];
+      const idsLote = [];
+      for (const linea of lineas) {
+        try {
+          if (linea.gastoId) {
+            const { data, error } = await supabase.from('gastos').update(camposLinea(linea)).eq('id', linea.gastoId).select('id');
+            if (error) throw error;
+            if (!data || data.length === 0) throw new Error('sin permiso para editar este gasto');
+            if (linea.factura) await subirSoporteEntidad(linea.factura, 'gasto', linea.gastoId);
+            idsLote.push(linea.gastoId);
+          } else {
+            const { data: nuevo, error } = await supabase.from('gastos')
+              .insert({ fecha, tipo: 'Gasto', empresa_id: empresaId, estado: 'Pagado', ...camposLinea(linea) })
+              .select('id').single();
+            if (error) throw error;
+            await subirSoporteEntidad(linea.factura, 'gasto', nuevo.id);
+            for (const rc of comprobantesCompartidos) {
+              await supabase.from('soportes').insert({ bucket_path: rc.bucket_path, nombre_original: rc.nombre_original, tamano_kb: rc.tamano_kb, entidad_tipo: 'gasto', entidad_id: nuevo.id, subido_por: user.id });
+            }
+            idsLote.push(nuevo.id);
+          }
+        } catch (errorLinea) {
+          console.error(`Error guardando la línea de ${linea.responsable}:`, errorLinea);
+          fallidos.push(`${linea.responsable || '(sin colaborador)'}: ${errorLinea.message || 'error inesperado'}`);
+        }
+      }
+
+      // Comprobante(s) nuevo(s) agregado(s) en la edición: se sube una vez y se refleja en todos.
+      if (idsLote.length > 0 && (comprobantesPago || []).length > 0) {
+        for (const comprobante of comprobantesPago) {
+          const ruta = await subirSoporteEntidad(comprobante, 'gasto', idsLote[0]);
+          if (!ruta) continue;
+          const tamanoKb = Math.round(dataUrlToUint8Array(comprobante.data).length / 1024);
+          for (const gastoId of idsLote.slice(1)) {
+            await supabase.from('soportes').insert({ bucket_path: ruta, nombre_original: comprobante.nombre, tamano_kb: tamanoKb, entidad_tipo: 'gasto', entidad_id: gastoId, subido_por: user.id });
+          }
+        }
+      }
+
+      await cargarGastos();
+      if (fallidos.length === 0) {
+        setRegistrarFacturasTercero(null);
+        alert(`✅ Lote actualizado: ${idsLote.length} factura(s).`);
+      } else {
+        alert(`Se guardaron ${idsLote.length} de ${lineas.length}.\n⚠️ No se pudieron guardar: ${fallidos.join('; ')}`);
+      }
+    } finally {
+      setGuardandoFacturasTercero(false);
+    }
+  };
+
   // Crea un Gasto YA "Pagado" por cada línea (colaborador + valor + su propia factura), con la
   // misma Cuenta elegida arriba, y refleja el mismo comprobante de pago compartido en todos —
   // se sube UNA sola vez (al primer Gasto creado) y a los demás se les copia la metadata
@@ -5343,6 +5475,7 @@ const App = () => {
   // generarMovimientoDesdeSolicitud para copiar soportes entre Solicitud y Gasto/Ingreso).
   const handleGuardarFacturasTercero = async () => {
     if (!registrarFacturasTercero) return;
+    if (registrarFacturasTercero.modo === 'editar') { await handleGuardarEdicionLoteTercero(); return; }
     const { terceroId, terceroNombre, empresa, cuenta, ceco, lineas, comprobantesPago } = registrarFacturasTercero;
     if (!empresa) { alert('Elige la Empresa'); return; }
     if (!cuenta) { alert('Elige la Cuenta con la que se pagó'); return; }
@@ -5368,6 +5501,7 @@ const App = () => {
     try {
       const fecha = new Date().toISOString().split('T')[0];
       const [empresaId, cecoId] = await Promise.all([resolverEmpresaId(empresa), resolverCecoId(ceco)]);
+      const loteId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
       const idsCreados = [];
       const fallidos = [];
       for (const linea of lineas) {
@@ -5390,6 +5524,7 @@ const App = () => {
               valor: montos.neto,
               ...(montos.retencion > 0 ? { valor_bruto: montos.bruto, deduccion_aplicada: montos.retencion } : {}),
               estado: 'Pagado',
+              lote_pago_id: loteId,
               observaciones: `${OBSERVACIONES_GASTO_LOTE_TERCERO} (${terceroNombre})${linea.numeroFactura ? ` — ${linea.numeroFactura.trim()}` : ''}${montos.retencion > 0 ? ` — RTE ${formatMoney(montos.retencion, empresa)}` : ''}.`,
               tercero_id: terceroId || null
             })
@@ -9163,7 +9298,12 @@ const App = () => {
                               <div className="text-[0.7rem] text-[#6C63D1]">📅 Vinculado a Presupuesto: {presupuestoItems.find(p => p.id === r.presupuestoItemId)?.nombre || 'concepto'}</div>
                             )}
                             {r.observaciones && r.observaciones.startsWith(OBSERVACIONES_GASTO_LOTE_TERCERO) && (
-                              <div className="text-[0.7rem] text-[#6C63D1]">🧾 Factura de tercero (lote)</div>
+                              <div className="flex flex-wrap items-center gap-1.5 text-[0.7rem] text-[#6C63D1]">
+                                🧾 Factura de tercero (lote)
+                                {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
+                                  <button type="button" onClick={() => handleAbrirEditarLoteTercero(r)} title="Editar todas las facturas de este lote (retención, N° de factura, valores, agregar colaboradores)" className="cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-[0.7rem] font-bold text-[#6C63D1] underline underline-offset-2">Editar lote</button>
+                                )}
+                              </div>
                             )}
                             {r.lotePagoId && (
                               <button type="button" onClick={() => handleVerLotePagoGastos(r.lotePagoId)} className="mt-0.5 block cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-[0.7rem] font-bold text-[#6C63D1] hover:underline">
@@ -10603,18 +10743,23 @@ const App = () => {
             YA "Pagado" por colaborador, cada uno con su factura y el mismo comprobante. */}
         {registrarFacturasTercero && (() => {
           const lt = registrarFacturasTercero;
+          const editando = lt.modo === 'editar';
           const totales = lt.lineas.reduce((acc, l) => { const m = montosLineaFacturaTercero(l); return { bruto: acc.bruto + m.bruto, retencion: acc.retencion + m.retencion, neto: acc.neto + m.neto }; }, { bruto: 0, retencion: 0, neto: 0 });
           return (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
             <Card className="max-h-[90vh] w-full max-w-4xl gap-4 overflow-y-auto px-0 py-6">
               <CardHeader className="sm:px-7">
-                <CardTitle className="text-lg">🧾 Pago a Tercero en Lote</CardTitle>
+                <CardTitle className="text-lg">{editando ? `✏️ Editar Pago a Tercero en Lote · ${lt.fecha}` : '🧾 Pago a Tercero en Lote'}</CardTitle>
+                {editando ? (
+                  <CardDescription>Corrige o completa las facturas de este lote (N° de factura, valores, retención), cambia la cuenta o el CECO, o agrega colaboradores que faltaron. Para quitar una factura, elimínala desde el historial.</CardDescription>
+                ) : (
                 <CardDescription>Para cuando un tercero (ej. Caelum) envía varias facturas de distintos colaboradores y se paga todo junto. Se registra <strong>un gasto por colaborador</strong> con su factura y la copia del comprobante — no se crea ningún registro por el total.</CardDescription>
+                )}
               </CardHeader>
               <CardContent className="flex flex-col gap-4 sm:px-7">
                 <div className="grid gap-3 rounded-lg border border-solid border-border bg-background p-4 [grid-template-columns:repeat(auto-fit,minmax(170px,1fr))]">
                   <CampoUI label="Empresa *" htmlFor="lt-empresa">
-                    <Select id="lt-empresa" value={lt.empresa} onChange={(e) => setRegistrarFacturasTercero({ ...lt, empresa: e.target.value, cuenta: '' })}>
+                    <Select id="lt-empresa" value={lt.empresa} disabled={editando} onChange={(e) => setRegistrarFacturasTercero({ ...lt, empresa: e.target.value, cuenta: '' })}>
                       {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
                     </Select>
                   </CampoUI>
@@ -10668,12 +10813,12 @@ const App = () => {
                           <div className="flex h-9 items-center justify-end rounded-md bg-muted px-3 text-xs font-bold tabular-nums">{formatMoney(m.neto, lt.empresa)}</div>
                         </CampoUI>
                         <CampoUI label={idx === 0 ? 'Soporte factura *' : null} className="col-span-2 sm:col-span-1">
-                          <label className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-9 w-full justify-start overflow-hidden text-xs', linea.factura ? 'text-success' : 'text-destructive')}>
-                            <Paperclip size={14} /> <span className="truncate">{linea.factura ? linea.factura.nombre : 'Adjuntar factura *'}</span>
+                          <label className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-9 w-full justify-start overflow-hidden text-xs', (linea.factura || linea.facturaExistente) ? 'text-success' : 'text-destructive')}>
+                            <Paperclip size={14} /> <span className="truncate">{linea.factura ? linea.factura.nombre : (linea.facturaExistente ? 'Ya cargada · agregar otra' : 'Adjuntar factura *')}</span>
                             <input type="file" className="hidden" onChange={(e) => handleSeleccionarFacturaLinea(linea.id, e)} />
                           </label>
                         </CampoUI>
-                        <Button variant="ghost" size="icon" onClick={() => handleQuitarLineaFacturaTercero(linea.id)} disabled={lt.lineas.length === 1} className="justify-self-end text-destructive" title="Quitar esta línea" aria-label="Quitar esta línea"><Trash2 size={16} /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleQuitarLineaFacturaTercero(linea.id)} disabled={lt.lineas.length === 1 || !!linea.gastoId} className="justify-self-end text-destructive" title="Quitar esta línea" aria-label="Quitar esta línea"><Trash2 size={16} /></Button>
                       </div>
                     );
                   })}
@@ -10688,7 +10833,7 @@ const App = () => {
                 </div>
 
                 <ListaSoportesUI
-                  titulo="Soporte de pago (recibo único del banco para todo el lote) *"
+                  titulo={editando ? 'Agregar otro soporte de pago (opcional — el que ya tiene el lote se conserva)' : 'Soporte de pago (recibo único del banco para todo el lote) *'}
                   inputProps={{ multiple: true, onChange: handleSeleccionarComprobantePagoTercero }}
                   archivos={(lt.comprobantesPago || []).map(c => ({ ...c, tamaño: Math.round((c.data || '').length * 0.75) }))}
                   resumen="Se copia a cada uno de los gastos del lote (un solo archivo en el sistema)."
@@ -10697,7 +10842,7 @@ const App = () => {
 
                 <div className="flex gap-3">
                   <Button size="lg" disabled={guardandoFacturasTercero} onClick={handleGuardarFacturasTercero} className="flex-1">
-                    {guardandoFacturasTercero ? 'Guardando...' : `✅ Registrar ${lt.lineas.length} factura(s)`}
+                    {guardandoFacturasTercero ? 'Guardando...' : (editando ? `💾 Guardar cambios (${lt.lineas.length} factura(s))` : `✅ Registrar ${lt.lineas.length} factura(s)`)}
                   </Button>
                   <Button size="lg" variant="outline" disabled={guardandoFacturasTercero} onClick={() => setRegistrarFacturasTercero(null)}>Cancelar</Button>
                 </div>
