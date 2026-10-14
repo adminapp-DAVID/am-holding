@@ -1638,6 +1638,8 @@ const App = () => {
     // Mismo lote_pago_id que la Solicitud que originó este Gasto, cuando se pagó junto con
     // otras (ver "Pago en Lote" en Solicitudes/Finanzas).
     lotePagoId: row.lote_pago_id || '',
+    // Gasto Neutro: queda registrado (en COP, con soportes) pero NO suma como gasto de la empresa.
+    neutro: !!row.neutro,
     cantidadSoportes: 0
   });
 
@@ -1645,7 +1647,7 @@ const App = () => {
     setCargandoGastos(true);
     const { data, error } = await supabase
       .from('gastos')
-      .select('id, fecha, tipo, cuenta, cuenta_salida, cuenta_destino, detalle, valor, valor_destino, valor_bruto, deduccion_aplicada, categoria, estado, observaciones, presupuesto_item_id, soporte_drive_link, responsable_id, moneda_pago, tercero_info, tercero_id, solicitud_origen_id, lote_pago_id, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
+      .select('id, fecha, tipo, cuenta, cuenta_salida, cuenta_destino, detalle, valor, valor_destino, valor_bruto, deduccion_aplicada, categoria, estado, observaciones, presupuesto_item_id, soporte_drive_link, responsable_id, moneda_pago, tercero_info, tercero_id, solicitud_origen_id, lote_pago_id, neutro, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
       .order('fecha', { ascending: false });
     if (error) {
       console.error('Error cargando gastos:', error);
@@ -2728,7 +2730,7 @@ const App = () => {
       if (solicitud && !solicitud.gastoGeneradoId && !solicitud.ingresoGeneradoId) {
         const { accion, monto } = calcularAccionFinanzasSolicitud(solicitud);
         if (accion !== 'ninguno') {
-          await generarMovimientoDesdeSolicitud(solicitud, { cuentaPago: opciones.cuentaPago || null, cecoCodigo: opciones.cecoCodigo || null, accion, monto, loteId: opciones.loteId || null, fechaPago: opciones.fechaPago || null });
+          await generarMovimientoDesdeSolicitud(solicitud, { cuentaPago: opciones.cuentaPago || null, cecoCodigo: opciones.cecoCodigo || null, accion, monto, loteId: opciones.loteId || null, fechaPago: opciones.fechaPago || null, neutro: opciones.neutro || null });
         }
       }
     }
@@ -2751,6 +2753,14 @@ const App = () => {
     if (unicos.length > 1) return 'reembolsos y anticipos';
     return (nombre[unicos[0]] || ['solicitud', 'solicitudes'])[plural ? 1 : 0];
   };
+
+  // POLÍTICA "GASTO NEUTRO": un Pago a Tercero en USD de FOR SEVEN MEDIA con CECO-012-PUB se
+  // paga en COP y se registra en Finanzas como Gasto Neutro (en COP, con sus soportes, pero sin
+  // sumar como gasto de la empresa). Se aplica siempre que se cumplan las tres condiciones.
+  const CECO_GASTO_NEUTRO = 'CECO-012-PUB';
+  const esEmpresaForSeven = (empresa) => String(empresa || '').toUpperCase().replace(/\s+/g, ' ').includes('FOR SEVEN');
+  const esPagoTerceroNeutro = (s, cecoCodigo) => !!s && s.tipo === 'Pago a Tercero'
+    && (s.moneda || getMoneda(s.empresa)) === 'USD' && esEmpresaForSeven(s.empresa) && cecoCodigo === CECO_GASTO_NEUTRO;
 
   const calcularAccionFinanzasSolicitud = (s) => {
     if (s.tipo === 'Pago a Tercero') return { accion: 'gasto', monto: parseFloat(s.valor) || 0 };
@@ -2775,7 +2785,7 @@ const App = () => {
   // esto solo agrega una fila más al mismo Finanzas que ya ven Admin/Coordinadora. Anticipo y
   // Reembolso quedan vinculados al Responsable de la solicitud (no llevan Tercero); Pago a
   // Tercero sigue llevando también los datos del tercero.
-  const generarMovimientoDesdeSolicitud = async (solicitud, { cuentaPago = null, cecoCodigo = null, accion, monto, loteId = null, fechaPago = null } = {}) => {
+  const generarMovimientoDesdeSolicitud = async (solicitud, { cuentaPago = null, cecoCodigo = null, accion, monto, loteId = null, fechaPago = null, neutro = null } = {}) => {
     try {
       const { data: solActual, error: errorLectura } = await supabase
         .from('solicitudes')
@@ -2831,6 +2841,14 @@ const App = () => {
         payload.moneda_pago = solicitud.moneda || null;
         payload.tercero_id = solicitud.terceroId || null;
         payload.tercero_info = solicitud.terceroInfo || null;
+      }
+      // Gasto Neutro: queda en COP con el valor realmente pagado y el concepto ajustado en el modal.
+      if (neutro) {
+        payload.neutro = true;
+        payload.valor = neutro.valorCOP;
+        payload.moneda_pago = 'COP';
+        payload.detalle = neutro.detalle;
+        payload.observaciones = `Gasto Neutro (no suma en gastos de la empresa). Solicitud original en USD por ${monto}.`;
       }
 
       const { data: nuevoMovimiento, error: errorMovimiento } = await supabase
@@ -2952,13 +2970,23 @@ const App = () => {
       alert('Adjunta al menos el comprobante de pago del banco');
       return;
     }
+    // Política Gasto Neutro: concepto y valor en COP obligatorios, y al menos 2 soportes.
+    let neutro = null;
+    if (esPagoTerceroNeutro(solicitud, ceco)) {
+      const detalleNeutro = String(confirmarPagoSolicitud.detalleNeutro ?? solicitud.detalle ?? '').trim();
+      const valorCOP = parseFloat(String(confirmarPagoSolicitud.valorCOP || '').replace(/[^\d,]/g, '').replace(',', '.'));
+      if (!detalleNeutro) { alert('Escribe el concepto del Gasto Neutro'); return; }
+      if (!valorCOP || valorCOP <= 0) { alert('Escribe el valor pagado en COP'); return; }
+      if (comprobantes.length < 2) { alert('Para un Gasto Neutro adjunta al menos 2 soportes (ej. factura y comprobante de pago)'); return; }
+      neutro = { detalle: detalleNeutro, valorCOP };
+    }
     setGuardandoConfirmarPago(true);
     try {
       for (const comprobante of comprobantes) {
         await subirSoporteEntidad(comprobante, 'solicitud', solicitud.id);
       }
       const nuevoEstadoFinal = solicitud.tipo === 'Legalización T. Pro' ? 'Legalizado' : 'Pagado';
-      await handleChangeEstado(solicitud.id, nuevoEstadoFinal, { cuentaPago: cuenta, cecoCodigo: ceco || null, fechaPago });
+      await handleChangeEstado(solicitud.id, nuevoEstadoFinal, { cuentaPago: cuenta, cecoCodigo: ceco || null, fechaPago, neutro });
       setConfirmarPagoSolicitud(null);
     } finally {
       setGuardandoConfirmarPago(false);
@@ -3020,6 +3048,12 @@ const App = () => {
     }
     if (!comprobantes || !comprobantes.length) {
       alert('Adjunta el comprobante de pago del banco (aplica a todo el lote)');
+      return;
+    }
+    // Los Gastos Neutros llevan su propio valor en COP y concepto: se pagan uno por uno.
+    const neutrosEnLote = items.filter(it => esPagoTerceroNeutro(it, ceco));
+    if (neutrosEnLote.length > 0) {
+      alert(`Con ${CECO_GASTO_NEUTRO} estos pagos de FOR SEVEN en USD son Gasto Neutro y se registran uno por uno (con su valor en COP). Págalos individualmente con "Pagado".`);
       return;
     }
 
@@ -4656,7 +4690,7 @@ const App = () => {
   const [editandoConceptoFinanzas, setEditandoConceptoFinanzas] = useState(null); // { tabla, id, texto, fecha, ceco, valor, valorDestino }
   const [guardandoConceptoFinanzas, setGuardandoConceptoFinanzas] = useState(false);
   const handleGuardarConceptoFinanzas = async () => {
-    const { tabla, id, texto, fecha, ceco, valor: valorTexto, valorDestino: valorDestinoTexto, tieneValorDestino } = editandoConceptoFinanzas || {};
+    const { tabla, id, texto, fecha, ceco, valor: valorTexto, valorDestino: valorDestinoTexto, tieneValorDestino, permiteNeutro, neutro } = editandoConceptoFinanzas || {};
     const valor = parseValorFiltro(valorTexto);
     const valorDestino = tieneValorDestino ? parseValorFiltro(valorDestinoTexto) : null;
     if (!valor || valor <= 0) { alert('El valor debe ser mayor a cero'); return; }
@@ -4669,10 +4703,10 @@ const App = () => {
     try {
       const cecoId = await resolverCecoId(ceco);
       if (!cecoId) { alert('❌ No se encontró el CECO ' + ceco); return; }
-      const { data, error } = await supabase.from(tabla).update({ detalle, fecha, ceco_id: cecoId, valor, ...(tieneValorDestino ? { valor_destino: valorDestino } : {}) }).eq('id', id).select('id');
+      const { data, error } = await supabase.from(tabla).update({ detalle, fecha, ceco_id: cecoId, valor, ...(tieneValorDestino ? { valor_destino: valorDestino } : {}), ...(permiteNeutro ? { neutro: !!neutro, ...(neutro ? { moneda_pago: 'COP' } : {}) } : {}) }).eq('id', id).select('id');
       if (error) { alert('❌ No se pudo guardar: ' + error.message); return; }
       if (!data || data.length === 0) { alert('❌ No se pudo guardar: tu rol no tiene permiso para editar este registro.'); return; }
-      const cambios = { detalle, fecha, ceco, valor, ...(tieneValorDestino ? { valorDestino } : {}) };
+      const cambios = { detalle, fecha, ceco, valor, ...(tieneValorDestino ? { valorDestino } : {}), ...(permiteNeutro ? { neutro: !!neutro, ...(neutro ? { moneda: 'COP' } : {}) } : {}) };
       if (tabla === 'ingresos') setIngresos(prev => prev.map(i => (i.id === id ? { ...i, ...cambios } : i)));
       else setGastos(prev => prev.map(g => (g.id === id ? { ...g, ...cambios } : g)));
       setEditandoConceptoFinanzas(null);
@@ -6181,7 +6215,7 @@ const App = () => {
     const porMoneda = monedasPresentes.map(moneda => {
       const filas = datos.filter(r => getMoneda(r.empresa) === moneda);
       const ingresos = filas.filter(r => r.tipo === 'Ingreso').reduce((s, r) => s + (parseFloat(r.valor) || 0), 0);
-      const gastos = filas.filter(r => r.tipo === 'Gasto').reduce((s, r) => s + (parseFloat(r.valor) || 0), 0);
+      const gastos = filas.filter(r => r.tipo === 'Gasto' && !r.neutro).reduce((s, r) => s + (parseFloat(r.valor) || 0), 0);
       const trasladoSalida = filas.filter(r => r.tipo === 'Traslado' && r._ladoTraslado === 'salida').reduce((s, r) => s + (parseFloat(r.valor) || 0), 0);
       // Cada Traslado aparece como 2 filas (salida/entrada) en registrosFinanzas — se cuenta una
       // sola vez por su id real, para no duplicar el conteo de movimientos.
@@ -6195,7 +6229,7 @@ const App = () => {
         if (!mes) return;
         if (!meses[mes]) meses[mes] = { ingresos: 0, gastos: 0 };
         if (r.tipo === 'Ingreso') meses[mes].ingresos += parseFloat(r.valor) || 0;
-        if (r.tipo === 'Gasto') meses[mes].gastos += parseFloat(r.valor) || 0;
+        if (r.tipo === 'Gasto' && !r.neutro) meses[mes].gastos += parseFloat(r.valor) || 0;
       });
       const mesesOrdenados = Object.keys(meses).sort();
       const graficaMensual = {
@@ -6424,7 +6458,9 @@ const App = () => {
   // (propias o de otra empresa de la holding). Se excluyen de Gastos/Balance/CECOs y se
   // resumen aparte en la tarjeta "Traslados".
   const enRangoDashboard = (m) => m.fecha >= filtroFechaInicio && m.fecha <= filtroFechaFin;
-  const gastosFiltradomat = gastosBase.filter(g => g.tipo !== 'Traslado' && enRangoDashboard(g));
+  // Los Gastos Neutros (ver esPagoTerceroNeutro) quedan fuera de Gastos/Balance/CECOs, igual que los traslados.
+  const gastosFiltradomat = gastosBase.filter(g => g.tipo !== 'Traslado' && !g.neutro && enRangoDashboard(g));
+  const neutrosFiltrados = gastosBase.filter(g => g.neutro && enRangoDashboard(g));
   const ingresosFiltradomat = ingresosBase.filter(enRangoDashboard);
   const trasladosFiltrados = gastosBase.filter(g => g.tipo === 'Traslado' && enRangoDashboard(g));
 
@@ -6645,7 +6681,7 @@ const App = () => {
       const techo = presupuestoAnual.find(p => p.empresa === empresa && p.ceco === ceco.codigo && String(p.anio) === String(anio));
       const valorAnual = techo ? (parseFloat(techo.valorAnual) || 0) : 0;
       const ejecutado = gastos
-        .filter(g => g.empresa === empresa && g.ceco === ceco.codigo && g.fecha && g.fecha.substring(0, 4) === String(anio))
+        .filter(g => !g.neutro && g.empresa === empresa && g.ceco === ceco.codigo && g.fecha && g.fecha.substring(0, 4) === String(anio))
         .reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
       return {
         codigo: ceco.codigo,
@@ -8905,6 +8941,12 @@ const App = () => {
                                 {editandoConceptoFinanzas.tieneValorDestino && (
                                   <input type="text" inputMode="decimal" value={editandoConceptoFinanzas.valorDestino} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, valorDestino: e.target.value })} title="Valor destino (otra moneda)" placeholder="Valor destino" style={{ width: '110px', padding: '0.3rem', border: '1px solid #C4A747', borderRadius: '4px', fontSize: '0.8rem' }} />
                                 )}
+                                {editandoConceptoFinanzas.permiteNeutro && (
+                                  <label title="Gasto Neutro: se registra en COP y no suma en los gastos de la empresa" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', color: '#6B6458', whiteSpace: 'nowrap' }}>
+                                    <input type="checkbox" checked={!!editandoConceptoFinanzas.neutro} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, neutro: e.target.checked })} />
+                                    ⚪ Neutro (COP)
+                                  </label>
+                                )}
                                 <input autoFocus type="text" value={editandoConceptoFinanzas.texto} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, texto: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') handleGuardarConceptoFinanzas(); if (e.key === 'Escape') setEditandoConceptoFinanzas(null); }} style={{ flex: 1, minWidth: '140px', padding: '0.35rem', border: '1px solid #C4A747', borderRadius: '4px', fontSize: '0.8rem' }} />
                                 <button disabled={guardandoConceptoFinanzas} onClick={handleGuardarConceptoFinanzas} title="Guardar" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>💾</button>
                                 <button onClick={() => setEditandoConceptoFinanzas(null)} title="Cancelar" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>✖️</button>
@@ -8913,7 +8955,7 @@ const App = () => {
                               <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'flex-start' }}>
                                 <div style={{ flex: 1 }}><TextoResumido texto={r.detalle} /></div>
                                 {puedeEditarConceptoFinanzas && (
-                                  <button onClick={() => setEditandoConceptoFinanzas({ tabla: esIngreso ? 'ingresos' : 'gastos', id: r.id, texto: r.detalle || '', fecha: r.fecha || '', ceco: r.ceco || '', valor: String((esIngreso ? r : (gastos.find(g => g.id === r.id) || r)).valor ?? '').replace('.', ','), tieneValorDestino: esTraslado && r.valorDestino != null, valorDestino: String(r.valorDestino ?? '').replace('.', ','), opcionesCeco: esIngreso ? cecosIngreso : (esTraslado ? cecosTraslado : cecosGasto) })} title="Editar fecha, CECO, valor y concepto (solo en Finanzas)" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', padding: 0 }}>✏️</button>
+                                  <button onClick={() => setEditandoConceptoFinanzas({ tabla: esIngreso ? 'ingresos' : 'gastos', id: r.id, texto: r.detalle || '', fecha: r.fecha || '', ceco: r.ceco || '', valor: String((esIngreso ? r : (gastos.find(g => g.id === r.id) || r)).valor ?? '').replace('.', ','), tieneValorDestino: esTraslado && r.valorDestino != null, permiteNeutro: !esIngreso && !esTraslado, neutro: !!r.neutro, valorDestino: String(r.valorDestino ?? '').replace('.', ','), opcionesCeco: esIngreso ? cecosIngreso : (esTraslado ? cecosTraslado : cecosGasto) })} title="Editar fecha, CECO, valor y concepto (solo en Finanzas)" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', padding: 0 }}>✏️</button>
                                 )}
                               </div>
                             )}
@@ -8922,6 +8964,9 @@ const App = () => {
                             )}
                             {nombreTerceroCatalogo && (
                               <div style={{ fontSize: '0.7rem', color: '#8F8877' }}>🏢 {nombreTerceroCatalogo}</div>
+                            )}
+                            {r.neutro && (
+                              <div style={{ fontSize: '0.7rem', color: '#6B6458', fontWeight: 'bold' }} title="Registrado en COP; no suma en los gastos de la empresa">⚪ Gasto Neutro</div>
                             )}
                             {r.solicitudOrigenId && (
                               <div style={{ fontSize: '0.7rem', color: '#6C63D1' }}>🔗 Generado desde Solicitudes</div>
@@ -9110,6 +9155,20 @@ const App = () => {
                         <h3 style={{ color: balanceUSDFiltrado >= 0 ? '#2F9E52' : '#CC4B4B', margin: 0, fontSize: '2rem' }}>{formatMoneyByMoneda(balanceUSDFiltrado, 'USD')}</h3>
                       </div>
                     </div>
+
+                    {/* GASTOS NEUTROS — registrados en COP pero sin sumar como gasto de la empresa */}
+                    {neutrosFiltrados.length > 0 && (
+                      <>
+                        <h3 style={{ color: '#6B6458', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>⚪ Gastos Neutros del período <span style={{ fontWeight: 'normal' }}>— registrados, pero no cuentan como gasto</span></h3>
+                        <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem', marginBottom: '2rem', display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+                          <div><p style={{ color: '#6B6458', margin: '0 0 0.25rem 0', fontSize: '0.8rem' }}>Cantidad</p><h3 style={{ color: '#6B6458', margin: 0, fontSize: '1.5rem' }}>{neutrosFiltrados.length}</h3></div>
+                          {['COP', 'USD'].map(m => {
+                            const total = neutrosFiltrados.filter(g => monedaMovimiento(g) === m).reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
+                            return total > 0 ? <div key={m}><p style={{ color: '#6B6458', margin: '0 0 0.25rem 0', fontSize: '0.8rem' }}>Total ({m})</p><h3 style={{ color: '#6B6458', margin: 0, fontSize: '1.5rem' }}>{formatMoneyByMoneda(total, m)}</h3></div> : null;
+                          })}
+                        </div>
+                      </>
+                    )}
 
                     {/* TRASLADOS — movimientos entre cuentas/empresas, aparte de Gastos e Ingresos */}
                     <h3 style={{ color: '#6B6458', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>🔄 Traslados del período <span style={{ fontWeight: 'normal' }}>— no cuentan como gasto ni ingreso</span></h3>
@@ -10132,6 +10191,18 @@ const App = () => {
                     {opcionesCeco.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
                   </select>
                 </>
+              )}
+
+              {esPagoTerceroNeutro(solicitud, confirmarPagoSolicitud.ceco) && (
+                <div style={{ backgroundColor: '#F1F0EC', border: '1px solid #CFCBC0', borderRadius: '6px', padding: '0.9rem', marginBottom: '1rem' }}>
+                  <p style={{ margin: '0 0 0.75rem 0', color: '#221E15', fontSize: '0.85rem' }}>
+                    ⚪ <strong>Gasto Neutro</strong>: se registra en Finanzas en <strong>COP</strong> con el valor realmente pagado, pero <strong>no suma</strong> en los gastos de la empresa. Requiere al menos 2 soportes.
+                  </p>
+                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Concepto *</label>
+                  <input type="text" value={confirmarPagoSolicitud.detalleNeutro ?? (solicitud.detalle || '')} onChange={(e) => setConfirmarPagoSolicitud({ ...confirmarPagoSolicitud, detalleNeutro: e.target.value })} style={{ width: '100%', padding: '0.6rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', margin: '0.4rem 0 0.75rem 0' }} />
+                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Valor pagado en COP * <span style={{ fontWeight: 'normal', color: '#6B6458' }}>(solicitud original: {formatMoneyByMoneda(monto, 'USD')})</span></label>
+                  <input type="text" inputMode="decimal" placeholder="Ej: 4.250.000" value={confirmarPagoSolicitud.valorCOP || ''} onChange={(e) => setConfirmarPagoSolicitud({ ...confirmarPagoSolicitud, valorCOP: e.target.value })} style={{ width: '100%', padding: '0.6rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.4rem' }} />
+                </div>
               )}
 
               <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Comprobante(s) de {accion === 'ingreso' ? 'la consignación' : 'pago'} del banco * <span style={{ fontWeight: 'normal', color: '#6B6458' }}>(puedes adjuntar varios, ej. factura + soporte de pago)</span></label>
