@@ -6195,10 +6195,11 @@ const App = () => {
   // todo a partir de `registrosFinanzas` (el filtro que se está viendo en pantalla ahora mismo).
   const construirDatosInformeFinanzas = () => {
     const datos = registrosFinanzas;
-    // Mismos criterios que el Dashboard Financiero: moneda REAL del movimiento (un Pago a Tercero
-    // en USD de una empresa en COP va al resumen USD), los Pagos a Tercero sí cuentan como gasto,
-    // y no suman los Gastos Neutros ni lo que sigue Pendiente (aún no pagado/recibido).
-    const monedaR = (r) => r.moneda || getMoneda(r.empresa);
+    // Mismos criterios que el Dashboard Financiero: cada movimiento se agrupa en la moneda de SU
+    // EMPRESA (las de COP pagan en COP; ARKO en USD — la única excepción, FOR SEVEN en USD pagado en
+    // COP, queda como Gasto Neutro en COP). Los Pagos a Tercero sí cuentan como gasto y no suman
+    // los Gastos Neutros ni lo que sigue Pendiente (aún no pagado/recibido).
+    const monedaR = (r) => getMoneda(r.empresa);
     const esGastoInforme = (r) => r._origen === 'gasto' && r.tipo !== 'Traslado' && !r.neutro && r.estado !== 'Pendiente';
     const esIngresoInforme = (r) => r.tipo === 'Ingreso' && r.estado !== 'Pendiente';
     const monedasPresentes = [...new Set(datos.map(monedaR))].sort();
@@ -6279,7 +6280,7 @@ const App = () => {
       empresa: r.empresa,
       cecoCuenta: r.ceco || r.cuenta || '—',
       detalle: r.detalle || '—',
-      valorTexto: formatMoneyByMoneda(r.valor, monedaR(r))
+      valorTexto: formatMoneyByMoneda(r.valor, r.moneda || getMoneda(r.empresa))
     }));
 
     return {
@@ -6455,10 +6456,10 @@ const App = () => {
   const gastosBase = user?.rol === 'Responsable' ? gastosUsuario : gastos;
   const ingresosBase = user?.rol === 'Responsable' ? ingresosUsuario : ingresos;
 
-  // Moneda REAL de un movimiento: un Pago a Tercero guarda su propia moneda (moneda_pago),
-  // que puede no ser la de la empresa que paga (empresa en COP pagando en USD, o ARKO pagando
-  // en COP). Sin moneda propia, se usa la de la empresa.
-  const monedaMovimiento = (m) => m.moneda || getMoneda(m.empresa);
+  // Los totales se agrupan por la moneda de la EMPRESA: las empresas en COP pagan en COP y ARKO
+  // en USD. La única excepción (FOR SEVEN: Pago a Tercero solicitado en USD y pagado en COP) se
+  // registra como Gasto Neutro en COP y no suma como gasto.
+  const monedaMovimiento = (m) => getMoneda(m.empresa);
 
   // Los Traslados viven en la tabla de gastos pero NO son gastos: mueven plata entre cuentas
   // (propias o de otra empresa de la holding). Se excluyen de Gastos/Balance/CECOs y se
