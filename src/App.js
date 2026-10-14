@@ -941,8 +941,8 @@ const App = () => {
     }
   };
 
-  // Elimina UN soporte puntual desde el modal "Ver Soportes" (botón 🗑️, hoy solo habilitado
-  // para Solicitudes — ver verSoportesContexto). Antes solo se podía agregar; si algo se subió
+  // Elimina UN soporte puntual desde el modal "Ver Soportes" (botón 🗑️, habilitado en
+  // Solicitudes y en Gastos/Ingresos de Finanzas — ver verSoportesContexto). Antes solo se podía agregar; si algo se subió
   // por error no había forma de quitarlo sin pedirle a alguien que entrara a la base de datos.
   // Mismo cuidado de siempre con el archivo físico: solo se borra de Storage si ninguna otra
   // fila de public.soportes (de cualquier entidad, ej. el Gasto que esta misma solicitud generó
@@ -962,20 +962,27 @@ const App = () => {
         return;
       }
       const esCompartido = (otras || []).some(o => o.id !== soporte.id);
+      // Primero la fila (con .select para confirmar que RLS sí la borró: sin él, un bloqueo
+      // devuelve error null y 0 filas) y solo después el archivo, para no dejar una fila
+      // apuntando a un archivo ya borrado si la base rechaza el cambio.
+      const { data: borradas, error: errorDelete } = await supabase.from('soportes').delete().eq('id', soporte.id).select('id');
+      if (errorDelete || !borradas || borradas.length === 0) {
+        console.error('Error eliminando soporte:', errorDelete);
+        alert('❌ No se pudo eliminar: ' + (errorDelete?.message || 'no tienes permiso para borrar este soporte.'));
+        return;
+      }
       if (!esCompartido) {
         await supabase.storage.from('soportes').remove([soporte.bucketPath]);
       }
-      const { error: errorDelete } = await supabase.from('soportes').delete().eq('id', soporte.id);
-      if (errorDelete) {
-        console.error('Error eliminando soporte:', errorDelete);
-        alert('❌ No se pudo eliminar: ' + errorDelete.message);
-        return;
-      }
       setVerSoportes(prev => (prev || []).filter(s => s.id !== soporte.id));
-      if (verSoportesContexto?.entidadTipo === 'solicitud') {
-        const nuevoConteo = await contarSoportesPorEntidad('solicitud', [verSoportesContexto.entidadId]);
-        const n = nuevoConteo[verSoportesContexto.entidadId] || 0;
-        setSolicitudes(prev => prev.map(s => s.id === verSoportesContexto.entidadId ? { ...s, cantidadSoportes: n } : s));
+      const ctx = verSoportesContexto;
+      if (ctx?.entidadTipo === 'solicitud' || ctx?.entidadTipo === 'gasto' || ctx?.entidadTipo === 'ingreso') {
+        const nuevoConteo = await contarSoportesPorEntidad(ctx.entidadTipo, [ctx.entidadId]);
+        const n = nuevoConteo[ctx.entidadId] || 0;
+        const actualizar = prev => prev.map(x => x.id === ctx.entidadId ? { ...x, cantidadSoportes: n } : x);
+        if (ctx.entidadTipo === 'solicitud') setSolicitudes(actualizar);
+        else if (ctx.entidadTipo === 'gasto') setGastos(actualizar);
+        else setIngresos(actualizar);
       }
     } finally {
       setEliminandoSoporteId(null);
@@ -6007,24 +6014,26 @@ const App = () => {
     if (g.soporteDriveLink) { window.open(g.soporteDriveLink, '_blank'); return; }
     const { data, error } = await supabase
       .from('soportes')
-      .select('bucket_path, nombre_original, tamano_kb')
+      .select('id, bucket_path, nombre_original, tamano_kb')
       .eq('entidad_tipo', 'gasto')
       .eq('entidad_id', g.id)
       .order('created_at');
     if (error) { console.error('Error cargando soportes:', error); alert('❌ No se pudieron cargar los soportes: ' + error.message); return; }
-    setVerSoportes((data || []).map(r => ({ nombre: r.nombre_original, tamaño: (r.tamano_kb || 0) * 1024, bucketPath: r.bucket_path })));
+    setVerSoportesContexto({ entidadTipo: 'gasto', entidadId: g.id, puedeEliminar: user?.rol === 'Administrador' || user?.rol === 'Coordinadora Administrativa' });
+    setVerSoportes((data || []).map(r => ({ id: r.id, nombre: r.nombre_original, tamaño: (r.tamano_kb || 0) * 1024, bucketPath: r.bucket_path })));
   };
 
   const handleVerSoportesIngreso = async (i) => {
     if (i.soporteDriveLink) { window.open(i.soporteDriveLink, '_blank'); return; }
     const { data, error } = await supabase
       .from('soportes')
-      .select('bucket_path, nombre_original, tamano_kb')
+      .select('id, bucket_path, nombre_original, tamano_kb')
       .eq('entidad_tipo', 'ingreso')
       .eq('entidad_id', i.id)
       .order('created_at');
     if (error) { console.error('Error cargando soportes:', error); alert('❌ No se pudieron cargar los soportes: ' + error.message); return; }
-    setVerSoportes((data || []).map(r => ({ nombre: r.nombre_original, tamaño: (r.tamano_kb || 0) * 1024, bucketPath: r.bucket_path })));
+    setVerSoportesContexto({ entidadTipo: 'ingreso', entidadId: i.id, puedeEliminar: user?.rol === 'Administrador' || user?.rol === 'Coordinadora Administrativa' });
+    setVerSoportes((data || []).map(r => ({ id: r.id, nombre: r.nombre_original, tamaño: (r.tamano_kb || 0) * 1024, bucketPath: r.bucket_path })));
   };
 
   // Filtrar gastos e ingresos
