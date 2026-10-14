@@ -4751,7 +4751,11 @@ const App = () => {
   const [editandoConceptoFinanzas, setEditandoConceptoFinanzas] = useState(null); // { tabla, id, texto, fecha, ceco, valor, valorDestino }
   const [guardandoConceptoFinanzas, setGuardandoConceptoFinanzas] = useState(false);
   const handleGuardarConceptoFinanzas = async () => {
-    const { tabla, id, texto, fecha, ceco, valor: valorTexto, valorDestino: valorDestinoTexto, tieneValorDestino, permiteNeutro, neutro } = editandoConceptoFinanzas || {};
+    const { tabla, id, texto, fecha, ceco, valor: valorTexto, valorDestino: valorDestinoTexto, tieneValorDestino, permiteNeutro, neutro, moneda, monedaOriginal } = editandoConceptoFinanzas || {};
+    // Moneda real del pago (solo Gastos): Neutro siempre queda en COP; si no, se guarda la elegida
+    // en el editor, pero solo cuando cambió — para no escribir moneda_pago en registros que nunca la tuvieron.
+    const monedaFinal = permiteNeutro ? (neutro ? 'COP' : moneda) : null;
+    const cambiaMoneda = permiteNeutro && (neutro || monedaFinal !== monedaOriginal);
     const valor = parseValorFiltro(valorTexto);
     const valorDestino = tieneValorDestino ? parseValorFiltro(valorDestinoTexto) : null;
     if (!valor || valor <= 0) { alert('El valor debe ser mayor a cero'); return; }
@@ -4764,10 +4768,10 @@ const App = () => {
     try {
       const cecoId = await resolverCecoId(ceco);
       if (!cecoId) { alert('❌ No se encontró el CECO ' + ceco); return; }
-      const { data, error } = await supabase.from(tabla).update({ detalle, fecha, ceco_id: cecoId, valor, ...(tieneValorDestino ? { valor_destino: valorDestino } : {}), ...(permiteNeutro ? { neutro: !!neutro, ...(neutro ? { moneda_pago: 'COP' } : {}) } : {}) }).eq('id', id).select('id');
+      const { data, error } = await supabase.from(tabla).update({ detalle, fecha, ceco_id: cecoId, valor, ...(tieneValorDestino ? { valor_destino: valorDestino } : {}), ...(permiteNeutro ? { neutro: !!neutro } : {}), ...(cambiaMoneda ? { moneda_pago: monedaFinal } : {}) }).eq('id', id).select('id');
       if (error) { alert('❌ No se pudo guardar: ' + error.message); return; }
       if (!data || data.length === 0) { alert('❌ No se pudo guardar: tu rol no tiene permiso para editar este registro.'); return; }
-      const cambios = { detalle, fecha, ceco, valor, ...(tieneValorDestino ? { valorDestino } : {}), ...(permiteNeutro ? { neutro: !!neutro, ...(neutro ? { moneda: 'COP' } : {}) } : {}) };
+      const cambios = { detalle, fecha, ceco, valor, ...(tieneValorDestino ? { valorDestino } : {}), ...(permiteNeutro ? { neutro: !!neutro } : {}), ...(cambiaMoneda ? { moneda: monedaFinal } : {}) };
       if (tabla === 'ingresos') setIngresos(prev => prev.map(i => (i.id === id ? { ...i, ...cambios } : i)));
       else setGastos(prev => prev.map(g => (g.id === id ? { ...g, ...cambios } : g)));
       setEditandoConceptoFinanzas(null);
@@ -9016,6 +9020,14 @@ const App = () => {
                                     {editandoConceptoFinanzas.opcionesCeco.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
                                   </Select>
                                 </div>
+                                {editandoConceptoFinanzas.permiteNeutro && (
+                                  <div className="w-[84px]">
+                                    <Select value={editandoConceptoFinanzas.neutro ? 'COP' : editandoConceptoFinanzas.moneda} disabled={!!editandoConceptoFinanzas.neutro} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, moneda: e.target.value })} title="Moneda en que realmente se pagó (si la cambias, corrige también el valor)" aria-label="Moneda" className="h-8 border-primary text-xs">
+                                      <option value="COP">COP</option>
+                                      <option value="USD">USD</option>
+                                    </Select>
+                                  </div>
+                                )}
                                 <Input type="text" inputMode="decimal" value={editandoConceptoFinanzas.valor} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, valor: e.target.value })} title="Valor" aria-label="Valor" placeholder="Valor" className="h-8 w-[110px] border-primary text-xs" />
                                 {editandoConceptoFinanzas.tieneValorDestino && (
                                   <Input type="text" inputMode="decimal" value={editandoConceptoFinanzas.valorDestino} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, valorDestino: e.target.value })} title="Valor destino (otra moneda)" aria-label="Valor destino" placeholder="Valor destino" className="h-8 w-[110px] border-primary text-xs" />
@@ -9034,7 +9046,7 @@ const App = () => {
                               <div className="flex items-start gap-1">
                                 <div className="flex-1"><TextoResumido texto={r.detalle} /></div>
                                 {puedeEditarConceptoFinanzas && (
-                                  <Button variant="ghost" size="icon" onClick={() => setEditandoConceptoFinanzas({ tabla: esIngreso ? 'ingresos' : 'gastos', id: r.id, texto: r.detalle || '', fecha: r.fecha || '', ceco: r.ceco || '', valor: String((esIngreso ? r : (gastos.find(g => g.id === r.id) || r)).valor ?? '').replace('.', ','), tieneValorDestino: esTraslado && r.valorDestino != null, permiteNeutro: !esIngreso && !esTraslado, neutro: !!r.neutro, valorDestino: String(r.valorDestino ?? '').replace('.', ','), opcionesCeco: esIngreso ? cecosIngreso : (esTraslado ? cecosTraslado : cecosGasto) })} title="Editar fecha, CECO, valor y concepto (solo en Finanzas)" aria-label="Editar" className="size-7 shrink-0 text-[#6C63D1]"><Pencil size={14} /></Button>
+                                  <Button variant="ghost" size="icon" onClick={() => setEditandoConceptoFinanzas({ tabla: esIngreso ? 'ingresos' : 'gastos', id: r.id, texto: r.detalle || '', fecha: r.fecha || '', ceco: r.ceco || '', valor: String((esIngreso ? r : (gastos.find(g => g.id === r.id) || r)).valor ?? '').replace('.', ','), tieneValorDestino: esTraslado && r.valorDestino != null, permiteNeutro: !esIngreso && !esTraslado, neutro: !!r.neutro, moneda: r.moneda || getMoneda(r.empresa), monedaOriginal: r.moneda || getMoneda(r.empresa), valorDestino: String(r.valorDestino ?? '').replace('.', ','), opcionesCeco: esIngreso ? cecosIngreso : (esTraslado ? cecosTraslado : cecosGasto) })} title="Editar fecha, CECO, valor y concepto (solo en Finanzas)" aria-label="Editar" className="size-7 shrink-0 text-[#6C63D1]"><Pencil size={14} /></Button>
                                 )}
                               </div>
                             )}
@@ -9063,7 +9075,7 @@ const App = () => {
                             )}
                           </TableCell>
                           <TableCell className={cn('whitespace-nowrap text-right font-bold', claseValor)}>
-                            {esSalidaTraslado ? '− ' : esEntradaTraslado ? '+ ' : ''}{esPagoTercero ? formatMoneyByMoneda(parseFloat(r.valor) || 0, r.moneda || getMoneda(r.empresa)) : formatMoney(r.valor, r.empresa)}
+                            {esSalidaTraslado ? '− ' : esEntradaTraslado ? '+ ' : ''}{(esPagoTercero || (esGasto && r.moneda)) ? formatMoneyByMoneda(parseFloat(r.valor) || 0, r.moneda || getMoneda(r.empresa)) : formatMoney(r.valor, r.empresa)}
                             {r.valorBruto != null && (
                               <div className="text-[0.7rem] font-normal text-muted-foreground" title="Valor bruto antes de deducciones">
                                 Bruto {formatMoney(r.valorBruto, r.empresa)} · −{formatMoney(r.deduccionAplicada, r.empresa)}
