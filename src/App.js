@@ -8376,284 +8376,282 @@ const App = () => {
         )}
 
         {currentView === 'responsables' && (() => {
-          const inputStyle = { padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', width: '100%' };
-          const labelStyle = { display: 'block', color: '#221E15', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 'bold' };
-          const archivoBadge = (archivo, campo) => archivo ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', fontSize: '0.8rem', color: '#2F9E52' }}>
-              <span>📎 {archivo.nombre}</span>
-              <button type="button" onClick={() => handleColaboradorRemoveArchivo(campo)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B' }}>✕</button>
-            </div>
-          ) : null;
-
+          // Etapa 3 del sistema de diseño: Colaboradores migrado a los componentes de
+          // src/components/ui/ (misma lógica, handlers y permisos que antes; solo cambia la presentación).
           const listaUsuarios = [
             ...responsables.map(r => ({ ...r, rol: 'Colaborador', origen: 'responsables' })),
             ...usuariosAdmin.map(u => ({ ...u, origen: 'admin' }))
           ];
           const rolIcono = { 'Colaborador': '👥', 'Gerente': '📈', 'Coordinadora Administrativa': '🗂️', 'Contadora': '🧮', 'Administrador': '🔑' };
+          const seccion = (titulo, contenido, extra) => (
+            <section className="flex flex-col gap-3">
+              <h3 className="m-0 border-0 border-b border-solid border-border pb-2 text-sm font-bold">{titulo}</h3>
+              {extra}
+              {contenido}
+            </section>
+          );
+          const grilla = 'grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]';
 
           return (
-            <div>
+            <div className="flex flex-col gap-6">
               {/* CUMPLEAÑOS DEL MES */}
               {cumpleanosEsteMes.length > 0 && (
-                <div style={{ backgroundColor: '#FFFFFF', padding: '1.5rem 2rem', borderRadius: '10px', border: '1px solid #E6E0D2', borderLeft: '4px solid #C4A747', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
-                  <h2 style={{ color: '#C4A747', margin: '0 0 1rem 0', fontSize: '1.1rem' }}>🎂 Cumpleaños de {nombresMeses[new Date().getMonth()]}</h2>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
+                <Card className="gap-3 border-l-4 border-l-primary px-0 py-5">
+                  <CardHeader className="sm:px-7">
+                    <CardTitle>🎂 Cumpleaños de {nombresMeses[new Date().getMonth()]}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex flex-wrap gap-3 sm:px-7">
                     {cumpleanosEsteMes.map(r => (
-                      <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '20px', padding: '0.5rem 1rem 0.5rem 0.5rem' }}>
+                      <div key={r.id} className="flex items-center gap-2 rounded-full border border-solid border-border bg-background py-1.5 pl-1.5 pr-4">
                         <ColaboradorAvatar foto={r.foto} nombre={r.nombre} size={28} />
-                        <span style={{ color: '#221E15', fontSize: '0.85rem' }}>{r.nombre} — día {r.diaCumple}</span>
+                        <span className="text-sm">{r.nombre} — día {r.diaCumple}</span>
                       </div>
                     ))}
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
               )}
 
               {/* Sin nadie en edición: instrucciones para sumar una persona nueva (sigue siendo manual, por decisión) */}
               {!editingResponsableId && (
-                <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
-                  <h2 style={{ color: '#C4A747', margin: '0 0 1rem 0' }}>➕ Agregar una persona nueva</h2>
-                  <p style={{ color: '#6B6458', margin: '0 0 0.75rem 0', fontSize: '0.9rem' }}>Por ahora esto se hace en 2 pasos fuera de la app (así quedó decidido, para no manejar llaves sensibles desde el navegador):</p>
-                  <ol style={{ color: '#6B6458', fontSize: '0.9rem', margin: 0, paddingLeft: '1.2rem' }}>
-                    <li style={{ marginBottom: '0.4rem' }}>Crea su cuenta en Supabase → <strong>Authentication → Users</strong> (con "Auto Confirm User" marcado), igual que hiciste con las cuentas actuales.</li>
-                    <li>Pide el pequeño SQL para vincularla a <code>usuarios</code> con su nombre, rol y empresa — o edítalo tú mismo siguiendo el patrón de <code>vincular_usuarios_reales.sql</code>.</li>
-                  </ol>
-                  <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '0.75rem 0 0 0' }}>Para editar a alguien que ya tiene cuenta, usa el ✏️ en la tabla de abajo.</p>
-                </div>
+                <Card className="gap-3 px-0 py-6">
+                  <CardHeader className="sm:px-7">
+                    <CardTitle className="text-lg">Agregar una persona nueva</CardTitle>
+                    <CardDescription>Por ahora esto se hace en 2 pasos fuera de la app (así quedó decidido, para no manejar llaves sensibles desde el navegador):</CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground sm:px-7">
+                    <ol className="m-0 flex flex-col gap-1.5 pl-5">
+                      <li>Crea su cuenta en Supabase → <strong>Authentication → Users</strong> (con "Auto Confirm User" marcado), igual que hiciste con las cuentas actuales.</li>
+                      <li>Pide el pequeño SQL para vincularla a <code>usuarios</code> con su nombre, rol y empresa — o edítalo tú mismo siguiendo el patrón de <code>vincular_usuarios_reales.sql</code>.</li>
+                    </ol>
+                    <p className="m-0 text-xs">Para editar a alguien que ya tiene cuenta, usa el ✏️ en la tabla de abajo.</p>
+                  </CardContent>
+                </Card>
               )}
 
               {/* FORMULARIO EDITAR */}
               {editingResponsableId && (
-              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>✏️ Editar Usuario</h2>
+              <Card className="gap-5 border-2 border-[#6C63D1] px-0 py-6">
+                <CardHeader className="sm:px-7">
+                  <CardTitle className="text-lg text-[#6C63D1]">✏️ Editar Usuario</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-7 sm:px-7">
 
-                <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Acceso al sistema</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-                  <div>
-                    <label style={labelStyle}>Rol / Perfil</label>
-                    <select value={newUserType} onChange={(e) => setNewUserType(e.target.value)} disabled style={inputStyle}>
-                      <option value="Colaborador">👥 Colaborador</option>
-                      <option value="Gerente">📈 Gerente</option>
-                      <option value="Coordinadora Administrativa">🗂️ Coordinadora Administrativa</option>
-                      <option value="Contadora">🧮 Contadora</option>
-                      <option value="Administrador">🔑 Administrador</option>
-                    </select>
-                    <div style={{ color: '#8F8877', fontSize: '0.75rem', marginTop: '0.3rem' }}>El rol no se cambia desde aquí — avísame si alguien necesita otro perfil.</div>
+                {seccion('Acceso al sistema', (
+                  <div className={grilla}>
+                    <CampoUI label="Rol / Perfil" htmlFor="co-rol">
+                      <Select id="co-rol" value={newUserType} onChange={(e) => setNewUserType(e.target.value)} disabled>
+                        <option value="Colaborador">👥 Colaborador</option>
+                        <option value="Gerente">📈 Gerente</option>
+                        <option value="Coordinadora Administrativa">🗂️ Coordinadora Administrativa</option>
+                        <option value="Contadora">🧮 Contadora</option>
+                        <option value="Administrador">🔑 Administrador</option>
+                      </Select>
+                      <p className="m-0 text-xs text-muted-foreground">El rol no se cambia desde aquí — avísame si alguien necesita otro perfil.</p>
+                    </CampoUI>
+                    <CampoUI label="Nombre Completo" htmlFor="co-nombre">
+                      <Input id="co-nombre" type="text" placeholder="Nombre Completo" value={newResponsable.nombre} onChange={(e) => setNewResponsable({...newResponsable, nombre: e.target.value})} />
+                    </CampoUI>
+                    <CampoUI label="Email" htmlFor="co-email">
+                      <Input id="co-email" type="email" placeholder="Email" value={newResponsable.email} disabled />
+                      <p className="m-0 text-xs text-muted-foreground">Es el email de acceso — se cambia desde Authentication en Supabase, aquí es solo informativo.</p>
+                    </CampoUI>
+                    {(newUserType === 'Colaborador' || newUserType === 'Gerente') && (
+                      <CampoUI label="Empresa" htmlFor="co-empresa">
+                        <Select id="co-empresa" value={newResponsable.empresa} onChange={(e) => setNewResponsable({...newResponsable, empresa: e.target.value})}>
+                          {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                        </Select>
+                      </CampoUI>
+                    )}
                   </div>
-                  <div>
-                    <label style={labelStyle}>Nombre Completo</label>
-                    <input type="text" placeholder="Nombre Completo" value={newResponsable.nombre} onChange={(e) => setNewResponsable({...newResponsable, nombre: e.target.value})} style={inputStyle} />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Email</label>
-                    <input type="email" placeholder="Email" value={newResponsable.email} disabled style={{ ...inputStyle, backgroundColor: '#EFEBE0', color: '#514A39' }} />
-                    <div style={{ color: '#8F8877', fontSize: '0.75rem', marginTop: '0.3rem' }}>Es el email de acceso — se cambia desde Authentication en Supabase, aquí es solo informativo.</div>
-                  </div>
-                  {(newUserType === 'Colaborador' || newUserType === 'Gerente') && (
-                    <div>
-                      <label style={labelStyle}>Empresa</label>
-                      <select value={newResponsable.empresa} onChange={(e) => setNewResponsable({...newResponsable, empresa: e.target.value})} style={inputStyle}>
-                        {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
-                      </select>
-                    </div>
-                  )}
-                </div>
+                ))}
 
-                {/* Antes esto solo se mostraba para el rol Colaborador. Se abrió a todos los roles porque
-                    Cédula, Funciones y Datos bancarios ahora los necesita CUALQUIER usuario para poder
+                {/* Cédula, Funciones y Datos bancarios los necesita CUALQUIER usuario para poder
                     generar su propia Cuenta de Cobro, sin importar su perfil (Admin, Gerente, etc.). */}
-                {true && (
-                  <>
-                    <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Datos personales</h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'auto repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '2rem', alignItems: 'end' }}>
-                      <div style={{ textAlign: 'center' }}>
-                        <label style={labelStyle}>Foto</label>
-                        <ColaboradorAvatar foto={newResponsable.foto} nombre={newResponsable.nombre} size={64} style={{ marginBottom: '0.5rem' }} />
-                        <input type="file" accept="image/*" onChange={handleColaboradorFoto} style={{ fontSize: '0.75rem', maxWidth: '140px' }} />
-                        {newResponsable.foto && <button type="button" onClick={() => handleColaboradorRemoveArchivo('foto')} style={{ display: 'block', margin: '0.35rem auto 0', background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '0.75rem' }}>Quitar foto</button>}
-                      </div>
-                      <div>
-                        <label style={labelStyle}>Tipo de Documento</label>
-                        <SelectTipoDocumento value={newResponsable.tipoDocumento} placeholder="Seleccionar" onChange={(v) => setNewResponsable({ ...newResponsable, tipoDocumento: v })} style={inputStyle} />
-                      </div>
-                      <div>
-                        <label style={labelStyle}>Número de Documento</label>
-                        <input type="text" placeholder="Solo números" value={newResponsable.cedula} onChange={(e) => setNewResponsable({ ...newResponsable, cedula: e.target.value })} style={inputStyle} />
-                      </div>
-                      <div>
-                        <label style={labelStyle}>Teléfono</label>
-                        <input type="text" placeholder="Teléfono" value={newResponsable.telefono} onChange={(e) => setNewResponsable({...newResponsable, telefono: e.target.value})} style={inputStyle} />
-                      </div>
-                      <div>
-                        <label style={labelStyle}>Fecha de Nacimiento</label>
-                        <input type="date" value={newResponsable.fechaNacimiento} onChange={(e) => setNewResponsable({...newResponsable, fechaNacimiento: e.target.value})} style={inputStyle} />
-                      </div>
+                {seccion('Datos personales', (
+                  <div className="flex flex-wrap items-end gap-4">
+                    <div className="flex flex-col items-center gap-2">
+                      <Label>Foto</Label>
+                      <ColaboradorAvatar foto={newResponsable.foto} nombre={newResponsable.nombre} size={64} />
+                      <label className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'text-xs')}>
+                        <Upload size={13} /> {newResponsable.foto ? 'Cambiar' : 'Subir foto'}
+                        <input type="file" accept="image/*" onChange={handleColaboradorFoto} className="hidden" />
+                      </label>
+                      {newResponsable.foto && <Button variant="link" size="sm" onClick={() => handleColaboradorRemoveArchivo('foto')} className="h-auto p-0 text-xs text-destructive">Quitar foto</Button>}
                     </div>
-
-                    <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Datos laborales</h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-                      <div>
-                        <label style={labelStyle}>Cargo / Puesto</label>
-                        <input type="text" placeholder="Ej: Coordinador Deportivo" value={newResponsable.cargo} onChange={(e) => setNewResponsable({...newResponsable, cargo: e.target.value})} style={inputStyle} />
-                      </div>
-                      <div>
-                        <label style={labelStyle}>Fecha de Ingreso</label>
-                        <input type="date" value={newResponsable.fechaIngreso} onChange={(e) => setNewResponsable({...newResponsable, fechaIngreso: e.target.value})} style={inputStyle} />
-                      </div>
-                      <div>
-                        <label style={labelStyle}>Tipo de Vinculación</label>
-                        <select value={newResponsable.tipoVinculacion} onChange={(e) => setNewResponsable({...newResponsable, tipoVinculacion: e.target.value})} style={inputStyle}>
-                          <option value="">Seleccionar</option>
-                          <option value="Nómina">Nómina</option>
-                          <option value="Prestación de Servicios">Prestación de Servicios</option>
-                        </select>
-                      </div>
-                      <div style={{ gridColumn: '1 / -1' }}>
-                        <label style={labelStyle}>Funciones (para la Cuenta de Cobro)</label>
-                        <textarea placeholder="Ej: Coordinar estrategias en el desarrollo de los proyectos deportivos asignados y prestar apoyo al área de scouting de la empresa." value={newResponsable.funciones} onChange={(e) => setNewResponsable({...newResponsable, funciones: e.target.value})} rows={2} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
-                        <p style={{ color: '#8F8877', fontSize: '0.75rem', margin: '0.35rem 0 0 0' }}>Se usa como el texto entre paréntesis del PDF de Cuenta de Cobro — se guarda una sola vez y se reutiliza cada mes.</p>
-                      </div>
+                    <div className={cn(grilla, 'min-w-[260px] flex-1')}>
+                      <CampoUI label="Tipo de Documento">
+                        <SelectTipoDocumento value={newResponsable.tipoDocumento} placeholder="Seleccionar" onChange={(v) => setNewResponsable({ ...newResponsable, tipoDocumento: v })} style={estiloCampoUI} />
+                      </CampoUI>
+                      <CampoUI label="Número de Documento" htmlFor="co-doc">
+                        <Input id="co-doc" type="text" placeholder="Solo números" value={newResponsable.cedula} onChange={(e) => setNewResponsable({ ...newResponsable, cedula: e.target.value })} />
+                      </CampoUI>
+                      <CampoUI label="Teléfono" htmlFor="co-tel">
+                        <Input id="co-tel" type="text" placeholder="Teléfono" value={newResponsable.telefono} onChange={(e) => setNewResponsable({...newResponsable, telefono: e.target.value})} />
+                      </CampoUI>
+                      <CampoUI label="Fecha de Nacimiento" htmlFor="co-nac">
+                        <Input id="co-nac" type="date" value={newResponsable.fechaNacimiento} onChange={(e) => setNewResponsable({...newResponsable, fechaNacimiento: e.target.value})} />
+                      </CampoUI>
                     </div>
+                  </div>
+                ))}
 
-                    <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Datos bancarios (para consignación y Cuenta de Cobro)</h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-                      <div>
-                        <label style={labelStyle}>Banco</label>
-                        <CampoBanco codigo={newResponsable.codigoBanco} texto={newResponsable.banco} onChange={({ codigo, texto }) => setNewResponsable({ ...newResponsable, codigoBanco: codigo, banco: texto })} style={inputStyle} />
-                        {!newResponsable.codigoBanco && newResponsable.banco && <p style={{ color: '#C4622D', fontSize: '0.75rem', margin: '0.35rem 0 0 0' }}>Antes: "{newResponsable.banco}" — elige el banco de la lista</p>}
-                      </div>
-                      <div>
-                        <label style={labelStyle}>Tipo de Cuenta</label>
-                        <select value={newResponsable.tipoCuentaBancaria} onChange={(e) => setNewResponsable({...newResponsable, tipoCuentaBancaria: e.target.value})} style={inputStyle}>
-                          <option value="">Seleccionar</option>
-                          <option value="Ahorros">Ahorros</option>
-                          <option value="Corriente">Corriente</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label style={labelStyle}>Número de Cuenta</label>
-                        <input type="text" value={newResponsable.numeroCuenta} onChange={(e) => setNewResponsable({...newResponsable, numeroCuenta: e.target.value})} style={inputStyle} />
-                      </div>
-                      <div>
-                        <label style={labelStyle}>Titular de la Cuenta</label>
-                        <input type="text" placeholder="Si es distinto al nombre del colaborador" value={newResponsable.titularCuenta} onChange={(e) => setNewResponsable({...newResponsable, titularCuenta: e.target.value})} style={inputStyle} />
-                      </div>
-                    </div>
+                {seccion('Datos laborales', (
+                  <div className={grilla}>
+                    <CampoUI label="Cargo / Puesto" htmlFor="co-cargo">
+                      <Input id="co-cargo" type="text" placeholder="Ej: Coordinador Deportivo" value={newResponsable.cargo} onChange={(e) => setNewResponsable({...newResponsable, cargo: e.target.value})} />
+                    </CampoUI>
+                    <CampoUI label="Fecha de Ingreso" htmlFor="co-ingreso">
+                      <Input id="co-ingreso" type="date" value={newResponsable.fechaIngreso} onChange={(e) => setNewResponsable({...newResponsable, fechaIngreso: e.target.value})} />
+                    </CampoUI>
+                    <CampoUI label="Tipo de Vinculación" htmlFor="co-vinculacion">
+                      <Select id="co-vinculacion" value={newResponsable.tipoVinculacion} onChange={(e) => setNewResponsable({...newResponsable, tipoVinculacion: e.target.value})}>
+                        <option value="">Seleccionar</option>
+                        <option value="Nómina">Nómina</option>
+                        <option value="Prestación de Servicios">Prestación de Servicios</option>
+                      </Select>
+                    </CampoUI>
+                    <CampoUI label="Funciones (para la Cuenta de Cobro)" htmlFor="co-funciones" className="col-span-full">
+                      <Textarea id="co-funciones" placeholder="Ej: Coordinar estrategias en el desarrollo de los proyectos deportivos asignados y prestar apoyo al área de scouting de la empresa." value={newResponsable.funciones} onChange={(e) => setNewResponsable({...newResponsable, funciones: e.target.value})} rows={2} />
+                      <p className="m-0 text-xs text-muted-foreground">Se usa como el texto entre paréntesis del PDF de Cuenta de Cobro — se guarda una sola vez y se reutiliza cada mes.</p>
+                    </CampoUI>
+                  </div>
+                ))}
 
-                    <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Contacto de emergencia y salud</h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-                      <div>
-                        <label style={labelStyle}>Nombre Contacto de Emergencia</label>
-                        <input type="text" value={newResponsable.contactoEmergenciaNombre} onChange={(e) => setNewResponsable({...newResponsable, contactoEmergenciaNombre: e.target.value})} style={inputStyle} />
-                      </div>
-                      <div>
-                        <label style={labelStyle}>Teléfono Contacto de Emergencia</label>
-                        <input type="text" value={newResponsable.contactoEmergenciaTelefono} onChange={(e) => setNewResponsable({...newResponsable, contactoEmergenciaTelefono: e.target.value})} style={inputStyle} />
-                      </div>
-                      <div>
-                        <label style={labelStyle}>EPS</label>
-                        <input type="text" value={newResponsable.eps} onChange={(e) => setNewResponsable({...newResponsable, eps: e.target.value})} style={inputStyle} />
-                      </div>
-                      <div>
-                        <label style={labelStyle}>ARL</label>
-                        <input type="text" value={newResponsable.arl} onChange={(e) => setNewResponsable({...newResponsable, arl: e.target.value})} style={inputStyle} />
-                      </div>
-                    </div>
+                {seccion('Datos bancarios (para consignación y Cuenta de Cobro)', (
+                  <div className={grilla}>
+                    <CampoUI label="Banco">
+                      <CampoBanco codigo={newResponsable.codigoBanco} texto={newResponsable.banco} onChange={({ codigo, texto }) => setNewResponsable({ ...newResponsable, codigoBanco: codigo, banco: texto })} style={estiloCampoUI} />
+                      {!newResponsable.codigoBanco && newResponsable.banco && <p className="m-0 text-xs text-[#C4622D]">Antes: "{newResponsable.banco}" — elige el banco de la lista</p>}
+                    </CampoUI>
+                    <CampoUI label="Tipo de Cuenta" htmlFor="co-tipocuenta">
+                      <Select id="co-tipocuenta" value={newResponsable.tipoCuentaBancaria} onChange={(e) => setNewResponsable({...newResponsable, tipoCuentaBancaria: e.target.value})}>
+                        <option value="">Seleccionar</option>
+                        <option value="Ahorros">Ahorros</option>
+                        <option value="Corriente">Corriente</option>
+                      </Select>
+                    </CampoUI>
+                    <CampoUI label="Número de Cuenta" htmlFor="co-numcuenta">
+                      <Input id="co-numcuenta" type="text" value={newResponsable.numeroCuenta} onChange={(e) => setNewResponsable({...newResponsable, numeroCuenta: e.target.value})} />
+                    </CampoUI>
+                    <CampoUI label="Titular de la Cuenta" htmlFor="co-titular">
+                      <Input id="co-titular" type="text" placeholder="Si es distinto al nombre del colaborador" value={newResponsable.titularCuenta} onChange={(e) => setNewResponsable({...newResponsable, titularCuenta: e.target.value})} />
+                    </CampoUI>
+                  </div>
+                ))}
 
-                    <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Documentos</h3>
-                    <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>Se guardan en un almacenamiento privado — solo Administrador y Coordinadora Administrativa pueden verlos o subirlos.</p>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                      {['documentoCedula', 'documentoPasaporte'].map(campo => (
-                        <div key={campo} style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem' }}>
-                          <label style={labelStyle}>{campo === 'documentoCedula' ? 'Cédula' : 'Pasaporte'}</label>
-                          {newResponsable[campo] ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                              <span style={{ color: '#2F9E52', fontSize: '0.85rem' }}>📎 Archivo cargado</span>
-                              <button type="button" onClick={() => handleColaboradorVerDocumento(newResponsable[campo])} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '0.8rem', textDecoration: 'underline' }}>Ver</button>
-                              <button type="button" onClick={() => handleColaboradorEliminarDocumento(campo)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '0.8rem' }}>Quitar</button>
-                            </div>
-                          ) : (
-                            <input type="file" accept=".pdf,image/*" disabled={subiendoDocumento === campo} onChange={(e) => handleColaboradorDocumento(e, campo)} style={{ fontSize: '0.75rem', width: '100%' }} />
-                          )}
-                          {subiendoDocumento === campo && <p style={{ color: '#8F8877', fontSize: '0.75rem', margin: '0.5rem 0 0 0' }}>Subiendo...</p>}
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
+                {seccion('Contacto de emergencia y salud', (
+                  <div className={grilla}>
+                    <CampoUI label="Nombre Contacto de Emergencia" htmlFor="co-emerg-nombre">
+                      <Input id="co-emerg-nombre" type="text" value={newResponsable.contactoEmergenciaNombre} onChange={(e) => setNewResponsable({...newResponsable, contactoEmergenciaNombre: e.target.value})} />
+                    </CampoUI>
+                    <CampoUI label="Teléfono Contacto de Emergencia" htmlFor="co-emerg-tel">
+                      <Input id="co-emerg-tel" type="text" value={newResponsable.contactoEmergenciaTelefono} onChange={(e) => setNewResponsable({...newResponsable, contactoEmergenciaTelefono: e.target.value})} />
+                    </CampoUI>
+                    <CampoUI label="EPS" htmlFor="co-eps">
+                      <Input id="co-eps" type="text" value={newResponsable.eps} onChange={(e) => setNewResponsable({...newResponsable, eps: e.target.value})} />
+                    </CampoUI>
+                    <CampoUI label="ARL" htmlFor="co-arl">
+                      <Input id="co-arl" type="text" value={newResponsable.arl} onChange={(e) => setNewResponsable({...newResponsable, arl: e.target.value})} />
+                    </CampoUI>
+                  </div>
+                ))}
 
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button onClick={handleSaveResponsable} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
-                    Guardar Cambios
-                  </button>
-                  <button onClick={handleCancelEditResponsable} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Cancelar</button>
+                {seccion('Documentos', (
+                  <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
+                    {['documentoCedula', 'documentoPasaporte'].map(campo => (
+                      <div key={campo} className="flex flex-col gap-2 rounded-lg border border-solid border-border bg-background p-4">
+                        <Label>{campo === 'documentoCedula' ? 'Cédula' : 'Pasaporte'}</Label>
+                        {newResponsable[campo] ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="flex items-center gap-1 text-sm text-success"><Paperclip size={14} /> Archivo cargado</span>
+                            <Button variant="outline" size="sm" onClick={() => handleColaboradorVerDocumento(newResponsable[campo])}><Eye size={14} /> Ver</Button>
+                            <Button variant="ghost" size="sm" onClick={() => handleColaboradorEliminarDocumento(campo)} className="text-destructive"><Trash2 size={14} /> Quitar</Button>
+                          </div>
+                        ) : (
+                          <Input type="file" accept=".pdf,image/*" aria-label={campo === 'documentoCedula' ? 'Cédula' : 'Pasaporte'} disabled={subiendoDocumento === campo} onChange={(e) => handleColaboradorDocumento(e, campo)} className={claseInputArchivo} />
+                        )}
+                        {subiendoDocumento === campo && <p className="m-0 text-xs text-muted-foreground">Subiendo...</p>}
+                      </div>
+                    ))}
+                  </div>
+                ), <p className="m-0 text-xs text-muted-foreground">Se guardan en un almacenamiento privado — solo Administrador y Coordinadora Administrativa pueden verlos o subirlos.</p>)}
+
+                <div className="flex gap-3">
+                  <Button size="lg" onClick={handleSaveResponsable} className="flex-1">Guardar Cambios</Button>
+                  <Button size="lg" variant="outline" onClick={handleCancelEditResponsable}>Cancelar</Button>
                 </div>
-              </div>
+                </CardContent>
+              </Card>
               )}
 
               {/* TABLA DE USUARIOS */}
-              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>👥 Usuarios ({listaUsuarios.length})</h2>
-                {cargandoUsuarios && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando usuarios...</p>}
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                    <thead style={{ backgroundColor: '#F8F6F1' }}>
-                      <tr style={{ borderBottom: '2px solid #C4A747' }}>
-                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Usuario</th>
-                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Rol</th>
-                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cargo</th>
-                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Empresa</th>
-                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Teléfono</th>
-                        <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Cédula</th>
-                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>🎂</th>
-                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Docs</th>
-                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Solicitudes</th>
-                        <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+              <Card className="gap-4 px-0 py-6">
+                <CardHeader className="sm:px-7">
+                  <CardTitle className="text-lg">👥 Usuarios ({listaUsuarios.length})</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-3 sm:px-7">
+                {cargandoUsuarios && <p className="m-0 text-sm text-muted-foreground">Cargando usuarios...</p>}
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead>Usuario</TableHead>
+                      <TableHead>Rol</TableHead>
+                      <TableHead>Cargo</TableHead>
+                      <TableHead>Empresa</TableHead>
+                      <TableHead>Teléfono</TableHead>
+                      <TableHead>Cédula</TableHead>
+                      <TableHead className="text-center">🎂</TableHead>
+                      <TableHead className="text-center">Docs</TableHead>
+                      <TableHead className="text-center">Solicitudes</TableHead>
+                      <TableHead className="text-center">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                       {listaUsuarios.map(r => {
                         const solicitudesColaborador = solicitudes.filter(s => s.responsableId === r.id && r.origen === 'responsables').length;
                         const numDocs = (r.documentoCedula ? 1 : 0) + (r.documentoPasaporte ? 1 : 0);
                         const esSensible = rolesSensibles.includes(r.rol);
                         const puedeGestionar = !esSensible || user?.rol === 'Administrador';
                         return (
-                          <tr key={`${r.origen}-${r.id}`} style={{ borderBottom: '1px solid #E6E0D2' }}>
-                            <td style={{ padding: '0.75rem', color: '#221E15' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                          <TableRow key={`${r.origen}-${r.id}`} className={cn(editingResponsableId === r.id && 'bg-secondary/30')}>
+                            <TableCell>
+                              <div className="flex items-center gap-2.5">
                                 <ColaboradorAvatar foto={r.foto} nombre={r.nombre} size={32} />
-                                <div>
-                                  <div>{r.nombre}</div>
-                                  <div style={{ color: '#8F8877', fontSize: '0.75rem' }}>{r.email}</div>
+                                <div className="min-w-0">
+                                  <div className="whitespace-nowrap font-medium">{r.nombre}</div>
+                                  <div className="text-xs text-muted-foreground">{r.email}</div>
                                 </div>
                               </div>
-                            </td>
-                            <td style={{ padding: '0.75rem', color: '#6B6458' }}>{rolIcono[r.rol] || ''} {r.rol}</td>
-                            <td style={{ padding: '0.75rem', color: '#6B6458' }}>{r.cargo || '-'}</td>
-                            <td style={{ padding: '0.75rem', color: '#C4A747' }}>{r.empresa || '-'}</td>
-                            <td style={{ padding: '0.75rem', color: '#6B6458' }}>{r.telefono || '-'}</td>
-                            <td style={{ padding: '0.75rem', color: '#6B6458' }}>{r.cedula || '-'}</td>
-                            <td style={{ padding: '0.75rem', textAlign: 'center', color: '#6B6458', fontSize: '0.8rem' }}>{r.fechaNacimiento ? `${r.fechaNacimiento.substring(8,10)}/${r.fechaNacimiento.substring(5,7)}` : '-'}</td>
-                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                              {numDocs > 0 ? <span style={{ color: '#2F9E52' }}>📎 {numDocs}</span> : <span style={{ color: '#AFA897' }}>—</span>}
-                            </td>
-                            <td style={{ padding: '0.75rem', textAlign: 'center', color: '#2F9E52', fontWeight: 'bold' }}>{r.origen === 'responsables' ? solicitudesColaborador : '-'}</td>
-                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{rolIcono[r.rol] || ''} {r.rol}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{r.cargo || '-'}</TableCell>
+                            <TableCell className="text-xs">{r.empresa ? <div className="flex items-center gap-2"><EmpresaLogo empresa={r.empresa} height={16} /><span className="text-primary">{r.empresa}</span></div> : '-'}</TableCell>
+                            <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{r.telefono || '-'}</TableCell>
+                            <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{r.cedula || '-'}</TableCell>
+                            <TableCell className="text-center text-xs text-muted-foreground">{r.fechaNacimiento ? `${r.fechaNacimiento.substring(8,10)}/${r.fechaNacimiento.substring(5,7)}` : '-'}</TableCell>
+                            <TableCell className="text-center">
+                              {numDocs > 0 ? <span className="inline-flex items-center gap-1 text-success"><Paperclip size={14} /> {numDocs}</span> : <span className="text-muted-foreground">—</span>}
+                            </TableCell>
+                            <TableCell className="text-center font-bold text-success">{r.origen === 'responsables' ? solicitudesColaborador : '-'}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center justify-center">
                               {puedeGestionar ? (
                                 <>
-                                  <button onClick={() => handleOpenEditResponsable(r, r.origen)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.5rem' }}>✏️</button>
-                                  <button onClick={() => handleDeleteResponsable(r.id, r.origen)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
+                                  <Button variant="ghost" size="icon" onClick={() => handleOpenEditResponsable(r, r.origen)} title="Editar" aria-label="Editar" className="text-[#6C63D1]"><Pencil size={16} /></Button>
+                                  <Button variant="ghost" size="icon" onClick={() => handleDeleteResponsable(r.id, r.origen)} title="Eliminar" aria-label="Eliminar" className="text-destructive"><Trash2 size={16} /></Button>
                                 </>
                               ) : (
-                                <span style={{ color: '#AFA897', fontSize: '0.8rem' }}>🔒</span>
+                                <span className="text-xs text-muted-foreground" title="Solo el Administrador puede gestionar este perfil">🔒</span>
                               )}
-                            </td>
-                          </tr>
+                              </div>
+                            </TableCell>
+                          </TableRow>
                         );
                       })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+                  </TableBody>
+                </Table>
+                </CardContent>
+              </Card>
             </div>
           );
         })()}
