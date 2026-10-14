@@ -197,7 +197,9 @@ const ExportadorPABView = ({
     const rechazados = items.filter(i => ajustes[i.entidad_clave]?.resultado === 'Rechazado');
     const hayCostos = (parseFloat(costos.comision) || 0) > 0 || (parseFloat(costos.gmf) || 0) > 0;
     if (!fechaPago) { alert('Elige la fecha del pago'); return; }
-    if (pagados.length && !comprobante) { alert('Adjunta el comprobante del banco (uno para todo el lote)'); return; }
+    // Bancolombia da un soporte por cada pago: cada pagado necesita el suyo o, si no, el general del lote.
+    const sinSoporte = pagados.filter(i => !ajustes[i.entidad_clave].comprobante);
+    if (sinSoporte.length && !comprobante) { alert(`Adjunta el soporte de cada pago (o uno general del lote). Faltan:\n• ${sinSoporte.map(i => i.datos?.nombre || i.entidad_clave).join('\n• ')}`); return; }
     if (rechazados.some(i => !(ajustes[i.entidad_clave].motivo || '').trim())) { alert('Indica el motivo de cada pago rechazado'); return; }
     if (pagados.some(i => i.entidad_tipo === 'solicitud' && !ajustes[i.entidad_clave].ceco)) { alert('Elige el CECO de cada solicitud pagada'); return; }
     if (hayCostos && !costos.ceco) { alert('Elige el CECO de la comisión / 4x1000'); return; }
@@ -387,7 +389,7 @@ const ExportadorPABView = ({
             </Table>
           )}
           <p className="m-0 text-xs text-muted-foreground">
-            <CheckCircle2 size={12} className="inline align-[-2px] text-success" /> cuando el banco confirme el pago: pide fecha y comprobante del lote; por cada pago, si se pagó o lo rechazó el banco, su CECO y concepto; y la comisión / 4x1000. Registra todo en Finanzas (Solicitudes quedan Pagado; Presupuesto, pagado en el mes) y los rechazados quedan libres para otro lote. <Ban size={12} className="inline align-[-2px] text-destructive" /> Anular solo si el archivo no se pagó.
+            <CheckCircle2 size={12} className="inline align-[-2px] text-success" /> cuando el banco confirme el pago: pide fecha; por cada pago, su soporte del banco (o uno general del lote), si se pagó o lo rechazó el banco, su CECO y concepto; y la comisión / 4x1000. Registra todo en Finanzas (Solicitudes quedan Pagado; Presupuesto, pagado en el mes) y los rechazados quedan libres para otro lote. <Ban size={12} className="inline align-[-2px] text-destructive" /> Anular solo si el archivo no se pagó.
           </p>
         </CardContent>
       </Card>
@@ -403,14 +405,14 @@ const ExportadorPABView = ({
             <Card className="max-h-[90vh] w-full max-w-4xl gap-4 overflow-y-auto px-0 py-6">
               <CardHeader className="sm:px-7">
                 <CardTitle className="text-lg">✅ Resultado del lote #{pagoLote.lote.numero}</CardTitle>
-                <CardDescription>{pagoLote.lote.empresas?.nombre} · {pagoLote.lote.config_bancaria_empresa?.nombre_cuenta} · {items.length} pago(s) por {formatCOP(parseFloat(pagoLote.lote.total) || 0)}. Revisa contra el reporte del banco: marca los rechazados, ajusta CECO o concepto si hace falta y registra la comisión / 4x1000.</CardDescription>
+                <CardDescription>{pagoLote.lote.empresas?.nombre} · {pagoLote.lote.config_bancaria_empresa?.nombre_cuenta} · {items.length} pago(s) por {formatCOP(parseFloat(pagoLote.lote.total) || 0)}. Revisa contra el reporte del banco: adjunta el soporte de cada pago, marca los rechazados, ajusta CECO o concepto si hace falta y registra la comisión / 4x1000.</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-4 sm:px-7">
                 <div className="flex flex-wrap gap-3">
                   <Campo label="Fecha del pago *" htmlFor="pab-fecha-pago" className="w-full sm:w-44">
                     <Input id="pab-fecha-pago" type="date" value={pagoLote.fechaPago} onChange={(e) => setPagoLote({ ...pagoLote, fechaPago: e.target.value })} />
                   </Campo>
-                  <Campo label={`Comprobante del banco (todo el lote)${pagados.length ? ' *' : ''}`} htmlFor="pab-comprobante" className="min-w-[220px] flex-1">
+                  <Campo label="Comprobante general del lote (opcional si adjuntas el soporte de cada pago)" htmlFor="pab-comprobante" className="min-w-[220px] flex-1">
                     <Input id="pab-comprobante" type="file" accept=".pdf,image/*" onChange={(e) => leerComprobante(e.target.files[0])} className={claseInputArchivo} />
                   </Campo>
                 </div>
@@ -451,7 +453,7 @@ const ExportadorPABView = ({
                             <Campo label="Concepto en Finanzas" htmlFor={`pab-detalle-${i.entidad_clave}`}>
                               <Input id={`pab-detalle-${i.entidad_clave}`} value={a.detalle} onChange={(e) => cambiarAjuste(i.entidad_clave, { detalle: e.target.value })} className="h-8 text-xs" />
                             </Campo>
-                            <Campo label="Comprobante individual (opcional)" htmlFor={`pab-comp-${i.entidad_clave}`}>
+                            <Campo label={pagoLote.comprobante ? 'Soporte del pago (opcional)' : 'Soporte del pago *'} htmlFor={`pab-comp-${i.entidad_clave}`}>
                               <Input id={`pab-comp-${i.entidad_clave}`} type="file" accept=".pdf,image/*" onChange={(e) => leerArchivo(e.target.files[0], (comprobante) => cambiarAjuste(i.entidad_clave, { comprobante }))} className={cn(claseInputArchivo, 'py-1 text-xs')} />
                             </Campo>
                           </div>

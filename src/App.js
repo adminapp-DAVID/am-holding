@@ -5157,8 +5157,9 @@ const App = () => {
   // ============================================================
   // LOTE PAB PAGADO (pantalla 💸 Pagos PAB → ✅): registra en Finanzas cada pago del lote con
   // los MISMOS pasos de siempre — Solicitudes: "Pagado" vía handleChangeEstado (genera su
-  // Gasto); Presupuesto: el mismo Gasto que crea "Marcar Pagado". El banco da UN comprobante
-  // por lote, así que se sube una vez y se enlaza (mismo bucket_path) a todos los registros.
+  // Gasto); Presupuesto: el mismo Gasto que crea "Marcar Pagado". Soportes: Bancolombia da uno
+  // por cada pago (ajustes[clave].comprobante); el comprobante general del lote es opcional y, si
+  // viene, se sube una vez y se enlaza (mismo bucket_path) a todos los registros.
   // Además:
   //  • rechazados: pagos que el banco no hizo (cuenta errada, etc.) → quedan libres para otro lote.
   //  • ajustes[clave]: CECO, concepto y comprobante individual (opcional) de cada pago.
