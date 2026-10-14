@@ -2005,6 +2005,8 @@ const App = () => {
     if (currentView === 'solicitudes') cargarSolicitudes();
     if (currentView === 'cuentasCobro') cargarCuentasCobro();
     if (currentView === 'finanzas' || currentView === 'dashboardFinanciero') { cargarGastos(); cargarIngresos(); }
+    // Al entrar a Finanzas el formulario de registro siempre arranca plegado.
+    if (currentView === 'finanzas') setMostrarNuevoMovimientoFinanzas(false);
     if (currentView === 'presupuesto') { cargarPresupuestoItems(); cargarPresupuestoAnual(); cargarPresupuestoOverrides(); cargarPresupuestoAprobaciones(); cargarCuentasCobro(); }
     if (currentView === 'responsables') { cargarUsuarios(); cargarColaboradoresPublico(); }
     if (currentView === 'datosBancarios' || currentView === 'auditoria') { cargarUsuarios(); cargarTodosTerceros(); }
@@ -4632,6 +4634,7 @@ const App = () => {
         actualizarTercero: false
       });
       setSoportesTemp([]);
+      setMostrarNuevoMovimientoFinanzas(false); // el formulario se vuelve a plegar tras registrar
       alert('✅ Transacción agregada con soportes');
     } finally {
       setGuardandoGasto(false);
@@ -4703,6 +4706,7 @@ const App = () => {
         soportes: []
       });
       setSoportesTemp([]);
+      setMostrarNuevoMovimientoFinanzas(false); // el formulario se vuelve a plegar tras registrar
       alert('✅ Ingreso agregado con soportes');
     } finally {
       setGuardandoIngreso(false);
