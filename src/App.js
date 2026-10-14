@@ -21,14 +21,14 @@ import ExportadorPABView from './ExportadorPABView';
 import NotificacionesCampana from './NotificacionesCampana';
 import AuditoriaView from './AuditoriaView';
 import TopNav from './components/TopNav';
-import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, FileDown, Eye } from 'lucide-react';
+import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, FileDown, Eye, Plus, Check, X, Pencil, Search, Loader2, FileSpreadsheet } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Badge, badgeVariants, estadoBadge } from '@/components/ui/badge';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { CODIGO_BANCO_EXTERIOR, inferirCodigoBanco, limpiarNumeroCuenta, limpiarDocumento } from './datosBancarios';
@@ -47,6 +47,45 @@ const EmpresaLogo = ({ empresa, height = 20, style = {} }) => {
   if (!src) return null;
   return <img src={src} alt={empresa} style={{ height: `${height}px`, width: 'auto', maxWidth: `${height * 4.5}px`, objectFit: 'contain', verticalAlign: 'middle', ...style }} />;
 };
+
+// ===== Piezas compartidas de los módulos ya migrados al sistema de diseño (etapa 3) =====
+// Clases para elementos nativos que no tienen componente propio (checkbox, archivo, select de estado).
+const claseCheckbox = 'size-4 cursor-pointer accent-[#C4A747] disabled:cursor-not-allowed';
+const claseInputArchivo = 'h-auto cursor-pointer py-2 text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1 file:font-[inherit] file:text-xs file:font-semibold file:text-secondary-foreground';
+const claseSelectEstado = 'cursor-pointer py-1 font-[inherit] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60';
+const claseBotonMorado = 'bg-[#6C63D1] text-white hover:bg-[#6C63D1]/90';
+// Para CampoBanco / SelectTipoDocumento (CamposBancarios.js), que solo reciben `style`.
+const estiloCampoUI = { width: '100%', height: '36px', padding: '0 0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '8px', color: '#221E15', fontSize: '0.875rem', fontFamily: 'inherit', boxSizing: 'border-box' };
+
+// Etiqueta + campo.
+const CampoUI = ({ label, htmlFor, className, children }) => (
+  <div className={cn('flex flex-col gap-1.5', className)}>
+    {label && <Label htmlFor={htmlFor}>{label}</Label>}
+    {children}
+  </div>
+);
+
+// Bloque "📎 Soportes": selector de archivos + lista de los ya cargados con botón para quitar.
+const ListaSoportesUI = ({ titulo, inputProps, archivos, resumen, onQuitar }) => (
+  <div className="flex flex-col gap-2 rounded-lg border border-solid border-border bg-background p-4">
+    <Label className="text-foreground"><Paperclip size={14} /> {titulo}</Label>
+    <Input type="file" aria-label={titulo} className={claseInputArchivo} {...inputProps} />
+    {archivos.length > 0 && (
+      <div className="mt-2 flex flex-col gap-2">
+        <p className="m-0 text-xs text-muted-foreground">{resumen}</p>
+        {archivos.map(soporte => (
+          <div key={soporte.id} className="flex items-center justify-between gap-2 rounded-md border border-solid border-border bg-card px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <p className="m-0 truncate text-sm font-semibold">{soporte.nombre}</p>
+              <p className="m-0 text-xs text-muted-foreground">{(soporte.tamaño / 1024).toFixed(2)} KB</p>
+            </div>
+            <Button variant="ghost" size="icon" onClick={() => onQuitar(soporte.id)} className="text-destructive" title="Quitar archivo" aria-label="Quitar archivo"><Trash2 size={16} /></Button>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+);
 
 // Foto de perfil del colaborador — si no tiene foto cargada, muestra sus iniciales como avatar de respaldo.
 const ColaboradorAvatar = ({ foto, nombre, size = 32, style = {} }) => {
@@ -7367,132 +7406,138 @@ const App = () => {
         })()}
 
         {currentView === 'solicitudes' && (
-          <div>
-            <div>
+          // Etapa 3 del sistema de diseño: Solicitudes migrado a los componentes de
+          // src/components/ui/ (misma lógica, handlers y permisos que antes; solo cambia la presentación).
+          <div className="flex flex-col gap-6">
               {!isReadOnly && (
-                <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                  <h2 style={{ color: '#C4A747', margin: '0 0 0.5rem 0' }}>📥 Mi Bandeja de Soportes</h2>
-                  <p style={{ color: '#6B6458', fontSize: '0.85rem', margin: '0 0 1.5rem 0' }}>Sube aquí tus recibos y facturas a medida que te van llegando. Cuando quieras pedir una Legalización o Reembolso, marca los que quieras usar y el sistema prellena el formulario de abajo con esos datos.</p>
+                <Card className="gap-4 px-0 py-6 sm:py-7">
+                  <CardHeader className="sm:px-7">
+                    <CardTitle className="text-lg">📥 Mi Bandeja de Soportes</CardTitle>
+                    <CardDescription>Sube aquí tus recibos y facturas a medida que te van llegando. Cuando quieras pedir una Legalización o Reembolso, marca los que quieras usar y el sistema prellena el formulario de abajo con esos datos.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-4 sm:px-7">
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem', backgroundColor: '#F8F6F1', padding: '1rem', borderRadius: '4px', border: '1px solid #E6E0D2' }}>
-                    <input type="date" value={nuevoSoportePendiente.fecha} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, fecha: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                    <input type="text" placeholder="Pagado a" value={nuevoSoportePendiente.proveedor} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, proveedor: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                    <input type="text" placeholder="NIT" value={nuevoSoportePendiente.nit} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, nit: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                    <input type="text" placeholder="Por concepto de *" required value={nuevoSoportePendiente.descripcion} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, descripcion: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                    <input type="number" placeholder="Valor pagado" value={nuevoSoportePendiente.valor} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, valor: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                    <select value={nuevoSoportePendiente.tipoSoporte} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, tipoSoporte: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }}>
-                      <option value="">Tipo de Soporte</option>
-                      {tiposSoporte.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
+                  <div className="grid gap-3 rounded-lg border border-solid border-border bg-background p-4 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]">
+                    <CampoUI label="Fecha" htmlFor="bs-fecha"><Input id="bs-fecha" type="date" value={nuevoSoportePendiente.fecha} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, fecha: e.target.value})} /></CampoUI>
+                    <CampoUI label="Pagado a" htmlFor="bs-proveedor"><Input id="bs-proveedor" type="text" placeholder="Pagado a" value={nuevoSoportePendiente.proveedor} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, proveedor: e.target.value})} /></CampoUI>
+                    <CampoUI label="NIT" htmlFor="bs-nit"><Input id="bs-nit" type="text" placeholder="NIT" value={nuevoSoportePendiente.nit} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, nit: e.target.value})} /></CampoUI>
+                    <CampoUI label="Por concepto de *" htmlFor="bs-desc"><Input id="bs-desc" type="text" placeholder="Por concepto de *" required value={nuevoSoportePendiente.descripcion} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, descripcion: e.target.value})} /></CampoUI>
+                    <CampoUI label="Valor pagado" htmlFor="bs-valor"><Input id="bs-valor" type="number" placeholder="Valor pagado" value={nuevoSoportePendiente.valor} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, valor: e.target.value})} /></CampoUI>
+                    <CampoUI label="Tipo de Soporte" htmlFor="bs-tipo">
+                      <Select id="bs-tipo" value={nuevoSoportePendiente.tipoSoporte} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, tipoSoporte: e.target.value})}>
+                        <option value="">Tipo de Soporte</option>
+                        {tiposSoporte.map(t => <option key={t} value={t}>{t}</option>)}
+                      </Select>
+                    </CampoUI>
                   </div>
-                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-                    <input type="file" accept="application/pdf,image/*" onChange={handleSeleccionarArchivoPendiente} style={{ flex: 1, minWidth: '200px', padding: '0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', boxSizing: 'border-box', cursor: 'pointer' }} />
-                    {nuevoSoportePendiente.archivo && <span style={{ color: '#2F9E52', fontSize: '0.8rem' }}>📎 {nuevoSoportePendiente.archivo.nombre}</span>}
-                    <button onClick={handleAgregarSoportePendiente} disabled={subiendoSoportePendiente} style={{ padding: '0.6rem 1.25rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: subiendoSoportePendiente ? 'not-allowed' : 'pointer', opacity: subiendoSoportePendiente ? 0.6 : 1 }}>
-                      {subiendoSoportePendiente ? 'Subiendo...' : '+ Agregar a mi bandeja'}
-                    </button>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Input type="file" accept="application/pdf,image/*" onChange={handleSeleccionarArchivoPendiente} aria-label="Archivo del soporte" className={cn(claseInputArchivo, 'min-w-[200px] flex-1')} />
+                    {nuevoSoportePendiente.archivo && <span className="flex items-center gap-1 text-xs text-success"><Paperclip size={14} /> {nuevoSoportePendiente.archivo.nombre}</span>}
+                    <Button onClick={handleAgregarSoportePendiente} disabled={subiendoSoportePendiente}>
+                      {subiendoSoportePendiente ? 'Subiendo...' : <><Plus size={16} /> Agregar a mi bandeja</>}
+                    </Button>
                   </div>
 
-                  {cargandoSoportesPendientes && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando tu bandeja...</p>}
+                  {cargandoSoportesPendientes && <p className="m-0 text-sm text-muted-foreground">Cargando tu bandeja...</p>}
 
                   {soportesPendientes.length === 0 ? (
-                    <p style={{ color: '#AFA897', fontSize: '0.85rem' }}>Tu bandeja está vacía.</p>
+                    <p className="m-0 text-sm text-muted-foreground">Tu bandeja está vacía.</p>
                   ) : (
                     <>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                        <span style={{ color: '#8F8877', fontSize: '0.75rem' }}>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs text-muted-foreground">
                           {bandejaSoloUltimo ? `Mostrando el último de ${soportesPendientes.length}` : `${soportesPendientes.length} en tu bandeja`}
                         </span>
                         {/* Para no tener que desplazarse tanto cuando hay muchos recibos acumulados
                             — "el último" es el primero de la lista (ya viene ordenada por fecha
                             descendente desde cargarSoportesPendientes). */}
-                        <div style={{ display: 'flex', gap: '0.4rem' }}>
-                          <button onClick={() => setBandejaSoloUltimo(false)} style={{ padding: '0.4rem 0.85rem', backgroundColor: !bandejaSoloUltimo ? '#C4A747' : '#F8F6F1', color: !bandejaSoloUltimo ? '#221E15' : '#6B6458', border: '1px solid #E6E0D2', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.75rem' }}>
-                            📋 Ver todos
-                          </button>
-                          <button onClick={() => setBandejaSoloUltimo(true)} style={{ padding: '0.4rem 0.85rem', backgroundColor: bandejaSoloUltimo ? '#C4A747' : '#F8F6F1', color: bandejaSoloUltimo ? '#221E15' : '#6B6458', border: '1px solid #E6E0D2', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.75rem' }}>
-                            🔽 Ver solo el último
-                          </button>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant={!bandejaSoloUltimo ? 'default' : 'outline'} onClick={() => setBandejaSoloUltimo(false)} aria-pressed={!bandejaSoloUltimo}>Ver todos</Button>
+                          <Button size="sm" variant={bandejaSoloUltimo ? 'default' : 'outline'} onClick={() => setBandejaSoloUltimo(true)} aria-pressed={bandejaSoloUltimo}>Ver solo el último</Button>
                         </div>
                       </div>
-                      <div style={{ overflowX: 'auto', marginBottom: '1rem' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                          <thead>
-                            <tr style={{ borderBottom: '2px solid #E6E0D2' }}>
-                              <th style={{ padding: '0.5rem' }}></th>
-                              <th style={{ textAlign: 'left', padding: '0.5rem', color: '#C4A747' }}>Fecha</th>
-                              <th style={{ textAlign: 'left', padding: '0.5rem', color: '#C4A747' }}>Pagado a</th>
-                              <th style={{ textAlign: 'left', padding: '0.5rem', color: '#C4A747' }}>Concepto</th>
-                              <th style={{ textAlign: 'right', padding: '0.5rem', color: '#C4A747' }}>Valor</th>
-                              <th style={{ textAlign: 'left', padding: '0.5rem', color: '#C4A747' }}>Archivo</th>
-                              <th style={{ padding: '0.5rem' }}></th>
-                            </tr>
-                          </thead>
-                          <tbody>
+                      <Table className="text-xs">
+                        <TableHeader>
+                          <TableRow className="hover:bg-transparent">
+                            <TableHead></TableHead>
+                            <TableHead>Fecha</TableHead>
+                            <TableHead>Pagado a</TableHead>
+                            <TableHead>Concepto</TableHead>
+                            <TableHead className="text-right">Valor</TableHead>
+                            <TableHead>Archivo</TableHead>
+                            <TableHead></TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
                             {(bandejaSoloUltimo ? soportesPendientes.slice(0, 1) : soportesPendientes).map(item => {
                               const enEdicion = editandoPendienteId === item.id;
                               if (enEdicion) {
                                 return (
-                                  <tr key={item.id} style={{ borderBottom: '1px solid #E6E0D2', backgroundColor: '#FBF8EF' }}>
-                                    <td style={{ padding: '0.5rem', textAlign: 'center' }}></td>
-                                    <td style={{ padding: '0.35rem' }}><input type="date" value={pendienteEditData.fecha} onChange={(e) => setPendienteEditData({...pendienteEditData, fecha: e.target.value})} style={{ width: '100%', padding: '0.4rem', border: '1px solid #E6E0D2', borderRadius: '3px', boxSizing: 'border-box', fontSize: '0.8rem' }} /></td>
-                                    <td style={{ padding: '0.35rem' }}><input type="text" value={pendienteEditData.proveedor} onChange={(e) => setPendienteEditData({...pendienteEditData, proveedor: e.target.value})} style={{ width: '100%', padding: '0.4rem', border: '1px solid #E6E0D2', borderRadius: '3px', boxSizing: 'border-box', fontSize: '0.8rem' }} /></td>
-                                    <td style={{ padding: '0.35rem' }}>
-                                      <input type="text" placeholder="Concepto *" required value={pendienteEditData.descripcion} onChange={(e) => setPendienteEditData({...pendienteEditData, descripcion: e.target.value})} style={{ width: '100%', padding: '0.4rem', border: '1px solid #E6E0D2', borderRadius: '3px', boxSizing: 'border-box', fontSize: '0.8rem', marginBottom: '0.25rem' }} />
-                                      <select value={pendienteEditData.tipoSoporte} onChange={(e) => setPendienteEditData({...pendienteEditData, tipoSoporte: e.target.value})} style={{ width: '100%', padding: '0.4rem', border: '1px solid #E6E0D2', borderRadius: '3px', boxSizing: 'border-box', fontSize: '0.75rem' }}>
-                                        <option value="">Tipo de Soporte</option>
-                                        {tiposSoporte.map(t => <option key={t} value={t}>{t}</option>)}
-                                      </select>
-                                    </td>
-                                    <td style={{ padding: '0.35rem' }}><input type="number" value={pendienteEditData.valor} onChange={(e) => setPendienteEditData({...pendienteEditData, valor: e.target.value})} style={{ width: '100%', padding: '0.4rem', border: '1px solid #E6E0D2', borderRadius: '3px', boxSizing: 'border-box', fontSize: '0.8rem', textAlign: 'right' }} /></td>
-                                    <td style={{ padding: '0.5rem', color: '#6B6458', fontSize: '0.75rem' }}>{item.nombre}</td>
-                                    <td style={{ padding: '0.5rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                      <button onClick={() => handleGuardarEdicionPendiente(item.id)} disabled={guardandoEdicionPendiente} title="Guardar" style={{ background: 'none', border: 'none', cursor: guardandoEdicionPendiente ? 'not-allowed' : 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.4rem' }}>✅</button>
-                                      <button onClick={handleCancelarEdicionPendiente} disabled={guardandoEdicionPendiente} title="Cancelar" style={{ background: 'none', border: 'none', cursor: guardandoEdicionPendiente ? 'not-allowed' : 'pointer', color: '#8F8877', fontSize: '1rem' }}>✖️</button>
-                                    </td>
-                                  </tr>
+                                  <TableRow key={item.id} className="bg-secondary/30 hover:bg-secondary/30">
+                                    <TableCell></TableCell>
+                                    <TableCell className="px-1.5"><Input type="date" aria-label="Fecha" value={pendienteEditData.fecha} onChange={(e) => setPendienteEditData({...pendienteEditData, fecha: e.target.value})} className="h-8 text-xs" /></TableCell>
+                                    <TableCell className="px-1.5"><Input type="text" aria-label="Pagado a" value={pendienteEditData.proveedor} onChange={(e) => setPendienteEditData({...pendienteEditData, proveedor: e.target.value})} className="h-8 text-xs" /></TableCell>
+                                    <TableCell className="px-1.5">
+                                      <div className="flex flex-col gap-1">
+                                        <Input type="text" placeholder="Concepto *" required value={pendienteEditData.descripcion} onChange={(e) => setPendienteEditData({...pendienteEditData, descripcion: e.target.value})} className="h-8 text-xs" />
+                                        <Select aria-label="Tipo de Soporte" value={pendienteEditData.tipoSoporte} onChange={(e) => setPendienteEditData({...pendienteEditData, tipoSoporte: e.target.value})} className="h-8 text-xs">
+                                          <option value="">Tipo de Soporte</option>
+                                          {tiposSoporte.map(t => <option key={t} value={t}>{t}</option>)}
+                                        </Select>
+                                      </div>
+                                    </TableCell>
+                                    <TableCell className="px-1.5"><Input type="number" aria-label="Valor" value={pendienteEditData.valor} onChange={(e) => setPendienteEditData({...pendienteEditData, valor: e.target.value})} className="h-8 text-right text-xs" /></TableCell>
+                                    <TableCell className="text-muted-foreground">{item.nombre}</TableCell>
+                                    <TableCell className="whitespace-nowrap text-center">
+                                      <Button variant="ghost" size="icon" onClick={() => handleGuardarEdicionPendiente(item.id)} disabled={guardandoEdicionPendiente} title="Guardar" aria-label="Guardar" className="text-success"><Check size={16} /></Button>
+                                      <Button variant="ghost" size="icon" onClick={handleCancelarEdicionPendiente} disabled={guardandoEdicionPendiente} title="Cancelar" aria-label="Cancelar" className="text-muted-foreground"><X size={16} /></Button>
+                                    </TableCell>
+                                  </TableRow>
                                 );
                               }
                               return (
-                              <tr key={item.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
-                                <td style={{ padding: '0.5rem', textAlign: 'center' }}><input type="checkbox" checked={seleccionPendientes.includes(item.id)} onChange={() => toggleSeleccionPendiente(item.id)} /></td>
-                                <td style={{ padding: '0.5rem', color: '#6B6458' }}>{item.fecha}</td>
-                                <td style={{ padding: '0.5rem', color: '#6B6458' }}>{item.proveedor}</td>
-                                <td style={{ padding: '0.5rem', color: '#6B6458' }}>{item.descripcion}</td>
-                                <td style={{ padding: '0.5rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{formatMoney(item.valor, user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)}</td>
-                                <td style={{ padding: '0.5rem', color: '#6B6458', fontSize: '0.75rem' }}>{item.nombre}</td>
-                                <td style={{ padding: '0.5rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                  <button onClick={() => handlePreviewSoporte(item)} disabled={cargandoPreviewSoporte} title="Ver archivo" style={{ background: 'none', border: 'none', cursor: cargandoPreviewSoporte ? 'default' : 'pointer', color: '#C4A747', fontSize: '1rem', marginRight: '0.4rem' }}>👁️</button>
-                                  <button onClick={() => handleIniciarEdicionPendiente(item)} title="Editar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.4rem' }}>✏️</button>
-                                  <button onClick={() => handleEliminarSoportePendiente(item)} title="Eliminar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }}>🗑️</button>
-                                </td>
-                              </tr>
+                              <TableRow key={item.id}>
+                                <TableCell className="text-center"><input type="checkbox" aria-label="Seleccionar soporte" checked={seleccionPendientes.includes(item.id)} onChange={() => toggleSeleccionPendiente(item.id)} className={claseCheckbox} /></TableCell>
+                                <TableCell className="whitespace-nowrap text-muted-foreground">{item.fecha}</TableCell>
+                                <TableCell className="text-muted-foreground">{item.proveedor}</TableCell>
+                                <TableCell className="text-muted-foreground">{item.descripcion}</TableCell>
+                                <TableCell className="whitespace-nowrap text-right font-bold text-success">{formatMoney(item.valor, user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)}</TableCell>
+                                <TableCell className="text-muted-foreground">{item.nombre}</TableCell>
+                                <TableCell className="whitespace-nowrap text-center">
+                                  <Button variant="ghost" size="icon" onClick={() => handlePreviewSoporte(item)} disabled={cargandoPreviewSoporte} title="Ver archivo" aria-label="Ver archivo"><Eye size={16} /></Button>
+                                  <Button variant="ghost" size="icon" onClick={() => handleIniciarEdicionPendiente(item)} title="Editar" aria-label="Editar" className="text-[#6C63D1]"><Pencil size={16} /></Button>
+                                  <Button variant="ghost" size="icon" onClick={() => handleEliminarSoportePendiente(item)} title="Eliminar" aria-label="Eliminar" className="text-destructive"><Trash2 size={16} /></Button>
+                                </TableCell>
+                              </TableRow>
                               );
                             })}
-                          </tbody>
-                        </table>
-                      </div>
-                      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                        <button onClick={() => handleUsarPendientesEnSolicitud('Legalización')} disabled={seleccionPendientes.length === 0} style={{ padding: '0.6rem 1.25rem', backgroundColor: seleccionPendientes.length === 0 ? '#D8D2C2' : '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: seleccionPendientes.length === 0 ? 'not-allowed' : 'pointer' }}>Usar seleccionados en Legalización</button>
-                        <button onClick={() => handleUsarPendientesEnSolicitud('Reembolso')} disabled={seleccionPendientes.length === 0} style={{ padding: '0.6rem 1.25rem', backgroundColor: seleccionPendientes.length === 0 ? '#D8D2C2' : '#2F9E52', color: '#FFFFFF', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: seleccionPendientes.length === 0 ? 'not-allowed' : 'pointer' }}>Usar seleccionados en Reembolso</button>
+                        </TableBody>
+                      </Table>
+                      <div className="flex flex-wrap gap-3">
+                        <Button onClick={() => handleUsarPendientesEnSolicitud('Legalización')} disabled={seleccionPendientes.length === 0}>Usar seleccionados en Legalización</Button>
+                        <Button variant="success" onClick={() => handleUsarPendientesEnSolicitud('Reembolso')} disabled={seleccionPendientes.length === 0}>Usar seleccionados en Reembolso</Button>
                         {/* "Legalización T. Pro" (gastos pagados con efectivo/tarjeta personal):
                             hoy solo aplica a este colaborador. */}
                         {user.nombre === COLABORADOR_LEGALIZACION_TPRO && (
-                          <button onClick={() => handleUsarPendientesEnSolicitud('Legalización T. Pro')} disabled={seleccionPendientes.length === 0} style={{ padding: '0.6rem 1.25rem', backgroundColor: seleccionPendientes.length === 0 ? '#D8D2C2' : '#6C63D1', color: '#FFFFFF', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: seleccionPendientes.length === 0 ? 'not-allowed' : 'pointer' }}>Usar seleccionados en Legalización T. Pro</button>
+                          <Button onClick={() => handleUsarPendientesEnSolicitud('Legalización T. Pro')} disabled={seleccionPendientes.length === 0} className={claseBotonMorado}>Usar seleccionados en Legalización T. Pro</Button>
                         )}
                       </div>
                     </>
                   )}
-                </div>
+                  </CardContent>
+                </Card>
               )}
 
-              <div id="form-nueva-solicitud" style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: editingSolicitudId ? '2px solid #6C63D1' : '1px solid #E6E0D2', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-                <h2 style={{ color: editingSolicitudId ? '#6C63D1' : '#C4A747', margin: '0 0 1.5rem 0' }}>{editingSolicitudId ? '✏️ Editando Solicitud' : '➕ Nueva Solicitud'}</h2>
+              <Card id="form-nueva-solicitud" className={cn('gap-4 px-0 py-6 sm:py-7', editingSolicitudId && 'border-2 border-[#6C63D1]')}>
+                <CardHeader className="sm:px-7">
+                  <CardTitle className={cn('text-lg', editingSolicitudId && 'text-[#6C63D1]')}>{editingSolicitudId ? '✏️ Editando Solicitud' : 'Nueva Solicitud'}</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-4 sm:px-7">
 
                 {isReadOnly && (
-                  <div style={{ backgroundColor: '#FFF4F4', border: '1px solid #CC4B4B', borderRadius: '4px', padding: '1rem', marginBottom: '1rem', color: '#B0102B' }}>
-                    <p style={{ margin: 0, fontWeight: 'bold' }}>🔒 Modo Solo Lectura</p>
-                    <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem' }}>Los Contadores no pueden crear ni editar solicitudes. Solo pueden ver y descargar.</p>
+                  <div className="rounded-lg border border-solid border-destructive bg-destructive/10 p-4 text-[#B0102B]">
+                    <p className="m-0 font-bold">🔒 Modo Solo Lectura</p>
+                    <p className="m-0 mt-2 text-sm">Los Contadores no pueden crear ni editar solicitudes. Solo pueden ver y descargar.</p>
                   </div>
                 )}
 
@@ -7500,9 +7545,9 @@ const App = () => {
                   const solicitudEnEdicion = solicitudes.find(x => x.id === editingSolicitudId);
                   const esLegalizadaTPro = solicitudEnEdicion?.tipo === 'Legalización T. Pro' && solicitudEnEdicion?.estado === 'Legalizado';
                   return (
-                    <div style={{ backgroundColor: '#F1EFFB', border: '1px solid #6C63D1', borderRadius: '4px', padding: '1rem', marginBottom: '1rem', color: '#4A4499' }}>
-                      <p style={{ margin: 0, fontWeight: 'bold' }}>✏️ {esLegalizadaTPro ? 'Editando una Legalización T. Pro ya Legalizada' : 'Editando una Solicitud Pendiente'}</p>
-                      <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem' }}>
+                    <div className="rounded-lg border border-solid border-[#6C63D1] bg-[#F1EFFB] p-4 text-[#4A4499]">
+                      <p className="m-0 font-bold">✏️ {esLegalizadaTPro ? 'Editando una Legalización T. Pro ya Legalizada' : 'Editando una Solicitud Pendiente'}</p>
+                      <p className="m-0 mt-2 text-sm">
                         {esLegalizadaTPro
                           ? 'Corrige lo que haga falta. Como ya está Legalizada y el Gasto ya quedó registrado en Finanzas, se queda en estado "Legalizado" al guardar (no se reenvía a revisión).'
                           : 'Corrige lo que haga falta y agrega algún soporte faltante más abajo. El Tipo no se puede cambiar. Cuando termines, dale "Guardar Cambios" — o "Cancelar edición" para dejarla como estaba.'}
@@ -7511,9 +7556,10 @@ const App = () => {
                   );
                 })()}
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem', opacity: isReadOnly ? 0.5 : 1, pointerEvents: isReadOnly ? 'none' : 'auto' }}>
-                  <input type="date" value={newSolicitud.fecha} onChange={(e) => setNewSolicitud({...newSolicitud, fecha: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                  <select value={newSolicitud.tipo} disabled={!!editingSolicitudId} onChange={(e) => {
+                <div className={cn('grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]', isReadOnly && 'pointer-events-none opacity-50')}>
+                  <CampoUI label="Fecha" htmlFor="sol-fecha"><Input id="sol-fecha" type="date" value={newSolicitud.fecha} onChange={(e) => setNewSolicitud({...newSolicitud, fecha: e.target.value})} /></CampoUI>
+                  <CampoUI label="Tipo" htmlFor="sol-tipo">
+                  <Select id="sol-tipo" value={newSolicitud.tipo} disabled={!!editingSolicitudId} onChange={(e) => {
                     const nuevoTipo = e.target.value;
                     setNewSolicitud({
                       ...newSolicitud,
@@ -7525,7 +7571,7 @@ const App = () => {
                       // pero el selector de Empresa (abajo) queda editable para ese tipo.
                       empresa: (nuevoTipo === 'Pago a Tercero' && (user.rol === 'Responsable' || user.rol === 'Gerente')) ? user.empresa : newSolicitud.empresa
                     });
-                  }} style={{ padding: '0.75rem', backgroundColor: editingSolicitudId ? '#EDEAE0' : '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }}>
+                  }}>
                     <option value="">Seleccionar Tipo</option>
                     <option value="Anticipo">Anticipo</option>
                     <option value="Legalización">Legalización</option>
@@ -7538,7 +7584,8 @@ const App = () => {
                     {(user.nombre === COLABORADOR_LEGALIZACION_TPRO || newSolicitud.tipo === 'Legalización T. Pro') && (
                       <option value="Legalización T. Pro">Legalización T. Pro</option>
                     )}
-                  </select>
+                  </Select>
+                  </CampoUI>
                   {/* Anticipo/Legalización/Reembolso: para Responsable/Gerente la Empresa siempre es
                       la suya (ese gasto sale de su propio presupuesto), por eso el selector queda
                       oculto para esos tipos. Pago a Tercero es la excepción: el pago puede necesitar
@@ -7547,26 +7594,36 @@ const App = () => {
                       Confirmar Pago solo ofrecía las cuentas de esa empresa, sin forma de elegir la
                       cuenta correcta. */}
                   {((user.rol !== 'Responsable' && user.rol !== 'Gerente') || newSolicitud.tipo === 'Pago a Tercero') && (
-                    <select value={newSolicitud.empresa} onChange={(e) => setNewSolicitud({...newSolicitud, empresa: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }}>
-                      {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
-                    </select>
+                    <CampoUI label="Empresa" htmlFor="sol-empresa">
+                      <Select id="sol-empresa" value={newSolicitud.empresa} onChange={(e) => setNewSolicitud({...newSolicitud, empresa: e.target.value})}>
+                        {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                      </Select>
+                    </CampoUI>
                   )}
                   {newSolicitud.tipo === 'Anticipo' && (
-                    <input type="number" placeholder={`Valor Solicitado (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
+                    <CampoUI label={`Valor Solicitado (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} htmlFor="sol-valor">
+                      <Input id="sol-valor" type="number" placeholder={`Valor Solicitado (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} />
+                    </CampoUI>
                   )}
                   {newSolicitud.tipo === 'Legalización' && (
-                    <input type="number" placeholder={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} disabled={newSolicitud.anticipoIds.length > 0} value={newSolicitud.valorAnticipoOriginal} onChange={(e) => setNewSolicitud({...newSolicitud, valorAnticipoOriginal: e.target.value})} style={{ padding: '0.75rem', backgroundColor: newSolicitud.anticipoIds.length > 0 ? '#EDEAE0' : '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
+                    <CampoUI label={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} htmlFor="sol-anticipo">
+                      <Input id="sol-anticipo" type="number" placeholder={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} disabled={newSolicitud.anticipoIds.length > 0} value={newSolicitud.valorAnticipoOriginal} onChange={(e) => setNewSolicitud({...newSolicitud, valorAnticipoOriginal: e.target.value})} />
+                    </CampoUI>
                   )}
                   {/* Pago a Tercero: la moneda del pago se elige aparte — no depende de la empresa
                       que paga, a diferencia de los demás tipos (puede ser una empresa en COP
                       pagando a un tercero en USD, o al revés). */}
                   {newSolicitud.tipo === 'Pago a Tercero' && (
                     <>
-                      <select value={newSolicitud.moneda} onChange={(e) => setNewSolicitud({...newSolicitud, moneda: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }}>
-                        <option value="COP">Pesos Colombianos (COP)</option>
-                        <option value="USD">Dólares (USD)</option>
-                      </select>
-                      <input type="number" placeholder={`Valor a Pagar (${newSolicitud.moneda})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
+                      <CampoUI label="Moneda" htmlFor="sol-moneda">
+                        <Select id="sol-moneda" value={newSolicitud.moneda} onChange={(e) => setNewSolicitud({...newSolicitud, moneda: e.target.value})}>
+                          <option value="COP">Pesos Colombianos (COP)</option>
+                          <option value="USD">Dólares (USD)</option>
+                        </Select>
+                      </CampoUI>
+                      <CampoUI label={`Valor a Pagar (${newSolicitud.moneda})`} htmlFor="sol-valor-tercero">
+                        <Input id="sol-valor-tercero" type="number" placeholder={`Valor a Pagar (${newSolicitud.moneda})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} />
+                      </CampoUI>
                     </>
                   )}
                 </div>
@@ -7586,16 +7643,17 @@ const App = () => {
                       .flatMap(x => x.anticipoIds || [])
                   );
                   return (
-                    <div style={{ marginBottom: '1rem' }}>
-                      <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Vincular a los Anticipos que se están legalizando (opcional, recomendado — puedes elegir varios)</label>
-                      <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: '220px', overflowY: 'auto', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '0.6rem', backgroundColor: '#F8F6F1' }}>
+                    <div className="flex flex-col gap-1.5">
+                      <Label>Vincular a los Anticipos que se están legalizando (opcional, recomendado — puedes elegir varios)</Label>
+                      <div className="flex max-h-[220px] flex-col gap-1.5 overflow-y-auto rounded-lg border border-solid border-border bg-background p-3">
                         {misAnticipos.map(a => {
                           const yaLegalizado = idsYaLegalizados.has(a.id);
                           const seleccionado = newSolicitud.anticipoIds.includes(a.id);
                           return (
-                            <label key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: yaLegalizado ? '#AFA897' : '#221E15', textDecoration: yaLegalizado ? 'line-through' : 'none', cursor: yaLegalizado ? 'not-allowed' : 'pointer' }}>
+                            <label key={a.id} className={cn('flex items-center gap-2 text-sm', yaLegalizado ? 'cursor-not-allowed text-muted-foreground line-through' : 'cursor-pointer')}>
                               <input
                                 type="checkbox"
+                                className={claseCheckbox}
                                 disabled={yaLegalizado}
                                 checked={seleccionado}
                                 onChange={(e) => {
@@ -7614,7 +7672,7 @@ const App = () => {
                         })}
                       </div>
                       {newSolicitud.anticipoIds.length > 1 && (
-                        <div style={{ fontSize: '0.75rem', color: '#6C63D1', marginTop: '0.35rem' }}>
+                        <div className="text-xs text-[#6C63D1]">
                           {newSolicitud.anticipoIds.length} anticipos seleccionados — suma: {formatMoney(parseFloat(newSolicitud.valorAnticipoOriginal) || 0, newSolicitud.empresa)}
                         </div>
                       )}
@@ -7622,17 +7680,19 @@ const App = () => {
                   );
                 })()}
 
-                <input type="text" placeholder="Concepto * (obligatorio)" required value={newSolicitud.detalle} onChange={(e) => setNewSolicitud({...newSolicitud, detalle: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: `1px solid ${newSolicitud.tipo && !newSolicitud.detalle.trim() ? '#CC4B4B' : '#E6E0D2'}`, borderRadius: '4px', color: '#332D1E', marginBottom: '1rem', boxSizing: 'border-box' }} />
+                <CampoUI label="Concepto *" htmlFor="sol-concepto">
+                  <Input id="sol-concepto" type="text" placeholder="Concepto * (obligatorio)" required value={newSolicitud.detalle} onChange={(e) => setNewSolicitud({...newSolicitud, detalle: e.target.value})} aria-invalid={newSolicitud.tipo && !newSolicitud.detalle.trim() ? true : undefined} />
+                </CampoUI>
 
                 {newSolicitud.tipo === 'Pago a Tercero' && (
                   <>
-                    <div style={{ marginBottom: '1rem', backgroundColor: '#F8F6F1', padding: '1rem', borderRadius: '4px', border: '1px solid #E6E0D2' }}>
-                      <h3 style={{ color: '#C4A747', margin: '0 0 1rem 0', fontSize: '1rem' }}>Información del Tercero</h3>
+                    <div className="flex flex-col gap-3 rounded-lg border border-solid border-border bg-background p-4">
+                      <h3 className="m-0 text-base font-bold">Información del Tercero</h3>
 
                       {/* Elegir un tercero ya guardado prellena todo lo de abajo — así, si el pago se
                           repite, solo hace falta ingresar el Valor. */}
-                      <div style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.5rem' }}>
-                        <select value={newSolicitud.terceroId} onChange={(e) => {
+                      <div className="flex gap-2">
+                        <Select aria-label="Tercero guardado" value={newSolicitud.terceroId} onChange={(e) => {
                           const id = e.target.value;
                           if (!id) {
                             setNewSolicitud({...newSolicitud, terceroId: '', terceroNombre: '', terceroDni: '', terceroTipoDocumento: '', terceroPaisOrigen: '', terceroBanco: '', terceroCodigoBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false});
@@ -7643,102 +7703,92 @@ const App = () => {
                           // edita Nombre/DNI/banco/etc. abajo, el catálogo compartido se sincroniza solo
                           // al guardar (se puede desmarcar si esta vez NO se quiere tocar el catálogo).
                           setNewSolicitud({...newSolicitud, terceroId: id, terceroNombre: t?.nombre || '', terceroDni: t?.dni || '', terceroTipoDocumento: t?.tipo_documento || '', terceroPaisOrigen: t?.pais_origen || '', terceroBanco: t?.banco || '', terceroCodigoBanco: t?.codigo_banco || inferirCodigoBanco(t?.banco), terceroTipoCuenta: t?.tipo_cuenta || '', terceroNumeroCuenta: t?.numero_cuenta || '', guardarTercero: false, actualizarTercero: true});
-                        }} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }}>
+                        }}>
                           <option value="">➕ Nuevo tercero</option>
                           {tercerosDB.map(t => <option key={t.id} value={t.id}>{t.nombre} — {t.dni}</option>)}
-                        </select>
+                        </Select>
                         {/* Eliminar del catálogo: solo Admin/Coordinadora, mismos roles que ya pueden
                             editar terceros en Supabase (RLS) — evita mostrar un botón que a otros roles
                             les fallaría al hacer clic. Es un borrado lógico (activo=false, nunca se
                             borra la fila) para no romper el vínculo con pagos históricos que ya lo usaron. */}
                         {newSolicitud.terceroId && (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
-                          <button type="button" onClick={() => handleEliminarTercero(newSolicitud.terceroId)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#CC4B4B', cursor: 'pointer', fontSize: '0.85rem' }} title="Eliminar este tercero del catálogo">
-                            🗑️
-                          </button>
+                          <Button variant="outline" size="icon" onClick={() => handleEliminarTercero(newSolicitud.terceroId)} className="shrink-0 text-destructive" title="Eliminar este tercero del catálogo" aria-label="Eliminar este tercero del catálogo">
+                            <Trash2 size={16} />
+                          </Button>
                         )}
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                        <input type="text" placeholder="Nombre completo *" value={newSolicitud.terceroNombre} onChange={(e) => setNewSolicitud({...newSolicitud, terceroNombre: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
-                        <SelectTipoDocumento value={newSolicitud.terceroTipoDocumento} onChange={(v) => setNewSolicitud({...newSolicitud, terceroTipoDocumento: v})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
-                        <input type="text" placeholder="Documento (NIT sin DV) *" value={newSolicitud.terceroDni} onChange={(e) => setNewSolicitud({...newSolicitud, terceroDni: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
-                        <input type="text" placeholder="País de origen" value={newSolicitud.terceroPaisOrigen} onChange={(e) => setNewSolicitud({...newSolicitud, terceroPaisOrigen: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
+                      <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]">
+                        <Input type="text" aria-label="Nombre completo" placeholder="Nombre completo *" value={newSolicitud.terceroNombre} onChange={(e) => setNewSolicitud({...newSolicitud, terceroNombre: e.target.value})} />
+                        <SelectTipoDocumento value={newSolicitud.terceroTipoDocumento} onChange={(v) => setNewSolicitud({...newSolicitud, terceroTipoDocumento: v})} style={estiloCampoUI} />
+                        <Input type="text" aria-label="Documento" placeholder="Documento (NIT sin DV) *" value={newSolicitud.terceroDni} onChange={(e) => setNewSolicitud({...newSolicitud, terceroDni: e.target.value})} />
+                        <Input type="text" aria-label="País de origen" placeholder="País de origen" value={newSolicitud.terceroPaisOrigen} onChange={(e) => setNewSolicitud({...newSolicitud, terceroPaisOrigen: e.target.value})} />
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                        <CampoBanco codigo={newSolicitud.terceroCodigoBanco} texto={newSolicitud.terceroBanco} onChange={({ codigo, texto }) => setNewSolicitud({...newSolicitud, terceroCodigoBanco: codigo, terceroBanco: texto})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
-                        <select value={newSolicitud.terceroTipoCuenta} onChange={(e) => setNewSolicitud({...newSolicitud, terceroTipoCuenta: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }}>
+                      <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+                        <CampoBanco codigo={newSolicitud.terceroCodigoBanco} texto={newSolicitud.terceroBanco} onChange={({ codigo, texto }) => setNewSolicitud({...newSolicitud, terceroCodigoBanco: codigo, terceroBanco: texto})} style={estiloCampoUI} />
+                        <Select aria-label="Tipo de cuenta" value={newSolicitud.terceroTipoCuenta} onChange={(e) => setNewSolicitud({...newSolicitud, terceroTipoCuenta: e.target.value})}>
                           <option value="">Tipo de cuenta</option>
                           <option value="Ahorros">Ahorros</option>
                           <option value="Corriente">Corriente</option>
-                        </select>
-                        <input type="text" placeholder="Número de cuenta" value={newSolicitud.terceroNumeroCuenta} onChange={(e) => setNewSolicitud({...newSolicitud, terceroNumeroCuenta: e.target.value})} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.85rem' }} />
+                        </Select>
+                        <Input type="text" aria-label="Número de cuenta" placeholder="Número de cuenta" value={newSolicitud.terceroNumeroCuenta} onChange={(e) => setNewSolicitud({...newSolicitud, terceroNumeroCuenta: e.target.value})} />
                       </div>
 
                       {!newSolicitud.terceroId ? (
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#221E15', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}>
-                          <input type="checkbox" checked={newSolicitud.guardarTercero} onChange={(e) => setNewSolicitud({...newSolicitud, guardarTercero: e.target.checked})} />
+                        <label className="flex cursor-pointer items-center gap-2 text-xs font-bold">
+                          <input type="checkbox" className={claseCheckbox} checked={newSolicitud.guardarTercero} onChange={(e) => setNewSolicitud({...newSolicitud, guardarTercero: e.target.checked})} />
                           💾 Guardar este tercero para futuros pagos (la próxima vez solo se ingresa el valor)
                         </label>
                       ) : (
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#221E15', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}>
-                          <input type="checkbox" checked={newSolicitud.actualizarTercero} onChange={(e) => setNewSolicitud({...newSolicitud, actualizarTercero: e.target.checked})} />
+                        <label className="flex cursor-pointer items-center gap-2 text-xs font-bold">
+                          <input type="checkbox" className={claseCheckbox} checked={newSolicitud.actualizarTercero} onChange={(e) => setNewSolicitud({...newSolicitud, actualizarTercero: e.target.checked})} />
                           🔄 Actualizar los datos guardados de este tercero con lo que edité arriba
                         </label>
                       )}
                     </div>
 
                     {/* SOPORTES — archivos simples (foto, PDF, etc.), sin unirse en un solo PDF */}
-                    <div style={{ marginBottom: '1rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem' }}>
-                      <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>📎 Soportes (foto, PDF, etc.)</label>
-                      <input type="file" multiple onChange={handleAddSoporteTercero} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '1rem', boxSizing: 'border-box', cursor: 'pointer' }} />
-
-                      {soportesTerceroTemp.length > 0 && (
-                        <div style={{ marginTop: '1rem' }}>
-                          <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.8rem' }}>Archivos cargados: {soportesTerceroTemp.length}</p>
-                          {soportesTerceroTemp.map(soporte => (
-                            <div key={soporte.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <div style={{ flex: 1 }}>
-                                <p style={{ color: '#C4A747', margin: '0 0 0.25rem 0', fontSize: '0.8rem', fontWeight: 'bold' }}>{soporte.nombre}</p>
-                                <p style={{ color: '#6B6458', margin: 0, fontSize: '0.75rem' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
-                              </div>
-                              <button onClick={() => handleRemoveSoporteTercero(soporte.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem', padding: '0.5rem' }}>🗑️</button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <ListaSoportesUI
+                      titulo="Soportes (foto, PDF, etc.)"
+                      inputProps={{ multiple: true, onChange: handleAddSoporteTercero }}
+                      archivos={soportesTerceroTemp}
+                      resumen={`Archivos cargados: ${soportesTerceroTemp.length}`}
+                      onQuitar={handleRemoveSoporteTercero}
+                    />
                   </>
                 )}
 
                 {(newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso' || newSolicitud.tipo === 'Legalización T. Pro') && (
                   <>
-                    <div style={{ marginBottom: '1rem', backgroundColor: '#F8F6F1', padding: '1rem', borderRadius: '4px', border: '1px solid #E6E0D2' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                        <h3 style={{ color: '#C4A747', margin: 0, fontSize: '1rem' }}>Ítems del Gasto</h3>
-                        <button onClick={handleAddDocumento} style={{ padding: '0.5rem 1rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>+ Agregar</button>
+                    <div className="flex flex-col gap-3 rounded-lg border border-solid border-border bg-background p-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="m-0 text-base font-bold">Ítems del Gasto</h3>
+                        <Button size="sm" onClick={handleAddDocumento}><Plus size={14} /> Agregar</Button>
                       </div>
 
                       {newSolicitud.documentos.map((doc, idx) => (
-                        <div key={idx} style={{ backgroundColor: '#FFFFFF', padding: '1rem', marginBottom: '1rem', borderRadius: '3px', border: '1px solid #E6E0D2' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr 1fr 1.6fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                            <input type="date" placeholder="Fecha del Gasto" value={doc.fecha || ''} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].fecha = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.8rem' }} />
-                            <input type="text" placeholder="Pagado a" value={doc.proveedor} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].proveedor = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.8rem' }} />
-                            <input type="text" placeholder="NIT" value={doc.nit} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].nit = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.8rem' }} />
-                            <input type="text" placeholder="Por concepto de *" required value={doc.descripcion} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].descripcion = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: `1px solid ${(doc.descripcion || '').trim() ? '#E6E0D2' : '#CC4B4B'}`, borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.8rem' }} />
+                        <div key={idx} className="flex flex-col gap-3 rounded-lg border border-solid border-border bg-card p-3">
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1.4fr_1fr_1.6fr]">
+                            <Input type="date" aria-label="Fecha del Gasto" placeholder="Fecha del Gasto" value={doc.fecha || ''} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].fecha = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} />
+                            <Input type="text" aria-label="Pagado a" placeholder="Pagado a" value={doc.proveedor} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].proveedor = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} />
+                            <Input type="text" aria-label="NIT" placeholder="NIT" value={doc.nit} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].nit = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} />
+                            <Input type="text" aria-label="Por concepto de" placeholder="Por concepto de *" required value={doc.descripcion} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].descripcion = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} aria-invalid={(doc.descripcion || '').trim() ? undefined : true} />
                           </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr auto', gap: '0.75rem' }}>
-                            <input type="number" placeholder="Valor pagado" value={doc.valor} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].valor = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.8rem' }} />
-                            <select value={doc.tipoSoporte || ''} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].tipoSoporte = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} style={{ padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '3px', color: '#332D1E', boxSizing: 'border-box', fontSize: '0.8rem' }}>
-                              <option value="">Tipo de Soporte</option>
-                              {tiposSoporte.map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                            <button onClick={() => handleDeleteDocumento(idx)} style={{ padding: '0.75rem 1rem', backgroundColor: '#CC4B4B', color: '#221E15', border: 'none', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>✕</button>
+                          <div className="grid grid-cols-[1fr_auto] gap-3 sm:grid-cols-[1fr_1.4fr_auto]">
+                            <Input type="number" aria-label="Valor pagado" placeholder="Valor pagado" value={doc.valor} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].valor = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} />
+                            <div className="col-span-2 row-start-2 sm:col-span-1 sm:row-start-auto">
+                              <Select aria-label="Tipo de Soporte" value={doc.tipoSoporte || ''} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].tipoSoporte = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }}>
+                                <option value="">Tipo de Soporte</option>
+                                {tiposSoporte.map(t => <option key={t} value={t}>{t}</option>)}
+                              </Select>
+                            </div>
+                            <Button variant="outline" size="icon" onClick={() => handleDeleteDocumento(idx)} className="text-destructive" title="Quitar ítem" aria-label="Quitar ítem"><Trash2 size={16} /></Button>
                           </div>
                         </div>
                       ))}
 
                       {newSolicitud.documentos.length > 0 && (
-                        <p style={{ color: '#C4A747', textAlign: 'right', margin: '0.5rem 0 0 0', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                        <p className="m-0 text-right text-sm font-bold">
                           Total: {formatMoney(newSolicitud.documentos.reduce((sum, d) => sum + (parseFloat(d.valor) || 0), 0), user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)}
                         </p>
                       )}
@@ -7751,40 +7801,28 @@ const App = () => {
                         subidos aquí durante una edición se descartaban en silencio al guardar
                         — el código de guardado solo arma el PDF consolidado "!editingSolicitudId". */}
                     {!editingSolicitudId && (
-                      <div style={{ marginBottom: '1rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem' }}>
-                        <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>📎 Soportes (PDFs e imágenes — se unen en un solo PDF)</label>
-                        <input type="file" multiple accept="application/pdf,image/*" onChange={handleAddSoporteLegalizacion} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '1rem', boxSizing: 'border-box', cursor: 'pointer' }} />
-
-                        {soportesLegalizacionTemp.length > 0 && (
-                          <div style={{ marginTop: '1rem' }}>
-                            <p style={{ color: '#6B6458', margin: '0 0 0.5rem 0', fontSize: '0.8rem' }}>Archivos cargados: {soportesLegalizacionTemp.length} (se unirán en un solo PDF al guardar)</p>
-                            {soportesLegalizacionTemp.map(soporte => (
-                              <div key={soporte.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '0.75rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div style={{ flex: 1 }}>
-                                  <p style={{ color: '#C4A747', margin: '0 0 0.25rem 0', fontSize: '0.8rem', fontWeight: 'bold' }}>{soporte.nombre}</p>
-                                  <p style={{ color: '#6B6458', margin: 0, fontSize: '0.75rem' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
-                                </div>
-                                <button onClick={() => handleRemoveSoporteLegalizacion(soporte.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem', padding: '0.5rem' }}>🗑️</button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                      <ListaSoportesUI
+                        titulo="Soportes (PDFs e imágenes — se unen en un solo PDF)"
+                        inputProps={{ multiple: true, accept: 'application/pdf,image/*', onChange: handleAddSoporteLegalizacion }}
+                        archivos={soportesLegalizacionTemp}
+                        resumen={`Archivos cargados: ${soportesLegalizacionTemp.length} (se unirán en un solo PDF al guardar)`}
+                        onQuitar={handleRemoveSoporteLegalizacion}
+                      />
                     )}
                   </>
                 )}
 
                 {editingSolicitudId && (
-                  <div style={{ marginBottom: '1rem', backgroundColor: '#F8F6F1', padding: '1rem', borderRadius: '4px', border: '1px solid #E6E0D2' }}>
-                    <h3 style={{ color: '#6C63D1', margin: '0 0 0.5rem 0', fontSize: '0.95rem' }}>📎 Agregar soporte(s) de los ítems nuevos / faltante</h3>
-                    <p style={{ color: '#6B6458', fontSize: '0.8rem', margin: '0 0 0.75rem 0' }}>Sube aquí los soportes de los ítems que agregaste arriba (o algún soporte que haya faltado al crear la solicitud). Al guardar se fusionan con el PDF ya consolidado en uno solo nuevo — no quedan sueltos.</p>
-                    <input type="file" accept="application/pdf,image/*" multiple onChange={handleSeleccionarSoporteAdicionalEdicion} style={{ width: '100%', padding: '0.6rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', boxSizing: 'border-box', cursor: 'pointer' }} />
+                  <div className="flex flex-col gap-2 rounded-lg border border-solid border-border bg-background p-4">
+                    <h3 className="m-0 flex items-center gap-1.5 text-sm font-bold text-[#6C63D1]"><Paperclip size={15} /> Agregar soporte(s) de los ítems nuevos / faltante</h3>
+                    <p className="m-0 text-xs text-muted-foreground">Sube aquí los soportes de los ítems que agregaste arriba (o algún soporte que haya faltado al crear la solicitud). Al guardar se fusionan con el PDF ya consolidado en uno solo nuevo — no quedan sueltos.</p>
+                    <Input type="file" accept="application/pdf,image/*" multiple onChange={handleSeleccionarSoporteAdicionalEdicion} aria-label="Agregar soportes" className={claseInputArchivo} />
                     {soportesAdicionalesEdicion.length > 0 && (
-                      <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      <div className="flex flex-col gap-1.5">
                         {soportesAdicionalesEdicion.map(soporte => (
-                          <div key={soporte.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF', padding: '0.5rem 0.75rem', borderRadius: '3px', border: '1px solid #E6E0D2' }}>
-                            <span style={{ color: '#2F9E52', fontSize: '0.8rem' }}>📎 {soporte.nombre}</span>
-                            <button onClick={() => handleQuitarSoporteAdicionalEdicion(soporte.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '0.9rem' }}>🗑️</button>
+                          <div key={soporte.id} className="flex items-center justify-between gap-2 rounded-md border border-solid border-border bg-card px-3 py-1.5">
+                            <span className="flex min-w-0 items-center gap-1 truncate text-xs text-success"><Paperclip size={13} /> {soporte.nombre}</span>
+                            <Button variant="ghost" size="icon" onClick={() => handleQuitarSoporteAdicionalEdicion(soporte.id)} className="size-7 text-destructive" title="Quitar archivo" aria-label="Quitar archivo"><Trash2 size={14} /></Button>
                           </div>
                         ))}
                       </div>
@@ -7792,67 +7830,67 @@ const App = () => {
                   </div>
                 )}
 
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
-                  <button onClick={handleAddSolicitud} disabled={isReadOnly || guardandoSolicitud} style={{ flex: 1, padding: '0.75rem', backgroundColor: isReadOnly ? '#D8D2C2' : (editingSolicitudId ? '#6C63D1' : '#C4A747'), color: editingSolicitudId ? '#FFFFFF' : '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: isReadOnly || guardandoSolicitud ? 'not-allowed' : 'pointer', opacity: isReadOnly || guardandoSolicitud ? 0.5 : 1 }}>
+                <div className="flex gap-3">
+                  <Button size="lg" onClick={handleAddSolicitud} disabled={isReadOnly || guardandoSolicitud} className={cn('flex-1', editingSolicitudId && claseBotonMorado)}>
                     {guardandoSolicitud ? '⏳ Guardando...' : (editingSolicitudId ? '✅ Guardar Cambios' : 'Guardar Solicitud')}
-                  </button>
+                  </Button>
                   {editingSolicitudId && (
-                    <button onClick={handleCancelarEdicionSolicitud} disabled={guardandoSolicitud} style={{ padding: '0.75rem 1.25rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoSolicitud ? 'not-allowed' : 'pointer' }}>
+                    <Button size="lg" variant="outline" onClick={handleCancelarEdicionSolicitud} disabled={guardandoSolicitud}>
                       Cancelar edición
-                    </button>
+                    </Button>
                   )}
                 </div>
-              </div>
-              </div>
+                </CardContent>
+              </Card>
 
-            <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-              <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>
-                📋 {soloPropias ? 'Mis Solicitudes' : user.rol === 'Contadora' ? 'Solicitudes Auditadas' : 'Todas las Solicitudes'} ({solicitudesFiltradas.length})
-              </h2>
+            <Card className="gap-4 px-0 py-6 sm:py-7">
+              <CardHeader className="sm:px-7">
+                <CardTitle className="text-lg">
+                  📋 {soloPropias ? 'Mis Solicitudes' : user.rol === 'Contadora' ? 'Solicitudes Auditadas' : 'Todas las Solicitudes'} ({solicitudesFiltradas.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4 sm:px-7">
 
               {/* FILTROS: buscador de texto libre + Tipo/Estado/(Empresa) + rango de fechas.
                   Empresa solo se ofrece a los roles que de por sí ven varias empresas a la vez —
                   Responsable/Gerente ya están limitados a la suya por `solicitudesUsuario`. */}
-              <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                <div style={{ flex: '1 1 220px', minWidth: '200px' }}>
-                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Buscar</label>
-                  <input type="text" placeholder="Colaborador, concepto, empresa..." value={busquedaSolicitudes} onChange={(e) => setBusquedaSolicitudes(e.target.value)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Tipo</label>
-                  <select value={filtroSolicitudesTipo} onChange={(e) => setFiltroSolicitudesTipo(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }}>
+              <div className="flex flex-wrap items-end gap-3 rounded-lg border border-solid border-border bg-background p-4">
+                <CampoUI label="Buscar" htmlFor="fs-buscar" className="min-w-[200px] flex-[1_1_220px]">
+                  <div className="relative">
+                    <Search size={15} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Input id="fs-buscar" type="text" placeholder="Colaborador, concepto, empresa..." value={busquedaSolicitudes} onChange={(e) => setBusquedaSolicitudes(e.target.value)} className="pl-8" />
+                  </div>
+                </CampoUI>
+                <CampoUI label="Tipo" htmlFor="fs-tipo" className="w-full sm:w-44">
+                  <Select id="fs-tipo" value={filtroSolicitudesTipo} onChange={(e) => setFiltroSolicitudesTipo(e.target.value)}>
                     <option value="Todos">Todos</option>
                     {tiposSolicitud.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Estado</label>
-                  <select value={filtroSolicitudesEstado} onChange={(e) => setFiltroSolicitudesEstado(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }}>
+                  </Select>
+                </CampoUI>
+                <CampoUI label="Estado" htmlFor="fs-estado" className="w-full sm:w-36">
+                  <Select id="fs-estado" value={filtroSolicitudesEstado} onChange={(e) => setFiltroSolicitudesEstado(e.target.value)}>
                     <option value="Todos">Todos</option>
                     {estadosSolicitud.map(e => <option key={e} value={e}>{e}</option>)}
-                  </select>
-                </div>
+                  </Select>
+                </CampoUI>
                 {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && (
-                  <div>
-                    <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Empresa</label>
-                    <select value={filtroSolicitudesEmpresa} onChange={(e) => setFiltroSolicitudesEmpresa(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }}>
+                  <CampoUI label="Empresa" htmlFor="fs-empresa" className="w-full sm:w-60">
+                    <Select id="fs-empresa" value={filtroSolicitudesEmpresa} onChange={(e) => setFiltroSolicitudesEmpresa(e.target.value)}>
                       <option value="Todas">Todas</option>
                       {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
-                    </select>
-                  </div>
+                    </Select>
+                  </CampoUI>
                 )}
-                <div>
-                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Desde</label>
-                  <input type="date" value={filtroSolicitudesFechaInicio} onChange={(e) => setFiltroSolicitudesFechaInicio(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#6B6458', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Hasta</label>
-                  <input type="date" value={filtroSolicitudesFechaFin} onChange={(e) => setFiltroSolicitudesFechaFin(e.target.value)} style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E' }} />
-                </div>
-                <button onClick={() => { setBusquedaSolicitudes(''); setFiltroSolicitudesTipo('Todos'); setFiltroSolicitudesEstado('Todos'); setFiltroSolicitudesEmpresa('Todas'); setFiltroSolicitudesFechaInicio(''); setFiltroSolicitudesFechaFin(''); }} style={{ padding: '0.75rem 1.25rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>🔄 Reiniciar</button>
+                <CampoUI label="Desde" htmlFor="fs-desde" className="w-full sm:w-40">
+                  <Input id="fs-desde" type="date" value={filtroSolicitudesFechaInicio} onChange={(e) => setFiltroSolicitudesFechaInicio(e.target.value)} />
+                </CampoUI>
+                <CampoUI label="Hasta" htmlFor="fs-hasta" className="w-full sm:w-40">
+                  <Input id="fs-hasta" type="date" value={filtroSolicitudesFechaFin} onChange={(e) => setFiltroSolicitudesFechaFin(e.target.value)} />
+                </CampoUI>
+                <Button variant="outline" onClick={() => { setBusquedaSolicitudes(''); setFiltroSolicitudesTipo('Todos'); setFiltroSolicitudesEstado('Todos'); setFiltroSolicitudesEmpresa('Todas'); setFiltroSolicitudesFechaInicio(''); setFiltroSolicitudesFechaFin(''); }}><RotateCcw size={14} /> Reiniciar</Button>
               </div>
 
-              {cargandoSolicitudes && <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>Cargando solicitudes...</p>}
+              {cargandoSolicitudes && <p className="m-0 text-sm text-muted-foreground">Cargando solicitudes...</p>}
 
               {/* Barra de Pago en Lote — solo Administrador/Coordinadora Administrativa. Aparece en
                   cuanto hay al menos un Reembolso o Pago a Tercero marcado con el checkbox de la
@@ -7866,38 +7904,37 @@ const App = () => {
                 const totalSeleccion = seleccionados.reduce((sum, s) => sum + calcularAccionFinanzasSolicitud(s).monto, 0);
                 const totalFormateado = esTerceroSeleccion ? formatMoneyByMoneda(totalSeleccion, monedaSeleccion) : formatMoney(totalSeleccion, empresaSeleccion);
                 return (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FBF3DC', border: '1px solid #C4A747', borderRadius: '8px', padding: '0.85rem 1.25rem', marginBottom: '1rem' }}>
-                    <span style={{ color: '#6B5A1E', fontSize: '0.85rem' }}>
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-solid border-primary bg-[#FBF3DC] px-5 py-3">
+                    <span className="text-sm text-[#6B5A1E]">
                       <strong>{seleccionados.length}</strong> {etiquetaTipoLote(seleccionados.map(x => x.tipo), seleccionados.length !== 1)} {!esTerceroSeleccion && <>de <strong>{colaboradoresPublico.find(c => c.id === seleccionados[0]?.responsableId)?.nombre || seleccionados[0]?.responsableNombre || 'colaborador'}</strong> </>}— <strong>{empresaSeleccion}</strong> seleccionado{seleccionados.length !== 1 ? 's' : ''} — total <strong>{totalFormateado}</strong>
                     </span>
-                    <div style={{ display: 'flex', gap: '0.6rem' }}>
-                      <button onClick={() => setSeleccionReembolsosPago([])} style={{ padding: '0.6rem 1rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>Cancelar selección</button>
-                      <button onClick={handleAbrirPagoLoteReembolsos} style={{ padding: '0.6rem 1.25rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>💳 Pagar seleccionados en lote</button>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setSeleccionReembolsosPago([])}>Cancelar selección</Button>
+                      <Button size="sm" onClick={handleAbrirPagoLoteReembolsos}>💳 Pagar seleccionados en lote</Button>
                     </div>
                   </div>
                 );
               })()}
 
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                  <thead style={{ backgroundColor: '#F8F6F1' }}>
-                    <tr style={{ borderBottom: '2px solid #C4A747' }}>
-                      {canApprove && <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}></th>}
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Fecha</th>
-                      {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Colaborador</th>}
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Tipo</th>
-                      <th style={{ textAlign: 'left', padding: '0.75rem', color: '#C4A747' }}>Concepto</th>
-                      <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Valor</th>
-                      <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Anticipo original</th>
-                      <th style={{ textAlign: 'right', padding: '0.75rem', color: '#C4A747' }}>Dif. a Reembolsar</th>
-                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Docs</th>
-                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Estado</th>
-                      <th style={{ textAlign: 'center', padding: '0.75rem', color: '#C4A747' }}>Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    {canApprove && <TableHead className="text-center"></TableHead>}
+                    <TableHead>Fecha</TableHead>
+                    {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <TableHead>Colaborador</TableHead>}
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Concepto</TableHead>
+                    <TableHead className="text-right">Valor</TableHead>
+                    <TableHead className="text-right">Anticipo original</TableHead>
+                    <TableHead className="text-right">Dif. a Reembolsar</TableHead>
+                    <TableHead className="text-center">Docs</TableHead>
+                    <TableHead className="text-center">Estado</TableHead>
+                    <TableHead className="text-center">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                     {solicitudesFiltradas.length === 0 ? (
-                      <tr><td colSpan={canApprove ? 11 : 10} style={{ padding: '1.5rem', textAlign: 'center', color: '#AFA897' }}>Sin solicitudes para estos filtros.</td></tr>
+                      <TableRow className="hover:bg-transparent"><TableCell colSpan={canApprove ? 11 : 10} className="py-8 text-center text-muted-foreground">Sin solicitudes para estos filtros.</TableCell></TableRow>
                     ) : solicitudesFiltradas.map(s => {
                       // Legalización con anticipo vinculado: base para las 2 columnas nuevas y para
                       // marcar el anticipo original como "ya legalizado" (solo visual, no toca s.estado).
@@ -7927,55 +7964,55 @@ const App = () => {
                         (tipoLoteActual === 'Pago a Tercero' && monedaSolicitud !== monedaLoteActual)
                       );
                       return (
-                      <tr key={s.id} style={{ borderBottom: '1px solid #E6E0D2' }}>
+                      <TableRow key={s.id}>
                         {canApprove && (
-                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                          <TableCell className="text-center">
                             {elegibleParaLote && (
                               <input
                                 type="checkbox"
+                                className={claseCheckbox}
                                 checked={seleccionReembolsosPago.includes(s.id)}
                                 disabled={deshabilitadoPorEmpresa}
                                 onChange={() => handleToggleSeleccionReembolso(s.id)}
                                 title={deshabilitadoPorEmpresa ? (grupoPagoLote(tipoLoteActual) === 'colaboradores' && grupoPagoLote(s.tipo) === 'colaboradores' && s.responsableId !== primeraSeleccionada?.responsableId && s.empresa === empresaLoteActual ? `Ya elegiste reembolsos/anticipos de ${colaboradoresPublico.find(c => c.id === primeraSeleccionada?.responsableId)?.nombre || primeraSeleccionada?.responsableNombre || 'otro colaborador'} — un lote es de un solo colaborador (una sola cuenta destino)` : `Ya elegiste ${grupoPagoLote(tipoLoteActual) === 'terceros' ? 'pagos a tercero' : 'reembolsos/anticipos'} de ${empresaLoteActual}${monedaLoteActual ? ` en ${monedaLoteActual}` : ''} — un lote es de una sola empresa${tipoLoteActual === 'Pago a Tercero' ? ', moneda y solo pagos a tercero' : ', un solo colaborador y sin mezclar con pagos a tercero'}`) : 'Elegir para pago en lote'}
-                                style={{ cursor: deshabilitadoPorEmpresa ? 'not-allowed' : 'pointer', width: '16px', height: '16px' }}
                               />
                             )}
-                          </td>
+                          </TableCell>
                         )}
-                        <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}>{s.fecha}</td>
-                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <td style={{ padding: '0.75rem', color: '#6B6458', fontSize: '0.8rem' }}><div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ColaboradorAvatar foto={colaboradoresPublico.find(c => c.id === s.responsableId)?.foto_url} nombre={colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre} size={22} />{colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—'}</div></td>}
-                        <td style={{ padding: '0.75rem', color: '#C4A747', fontWeight: 'bold' }}>{s.tipo}</td>
-                        <td style={{ padding: '0.75rem', color: '#6B6458', maxWidth: '260px' }}>
+                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{s.fecha}</TableCell>
+                        {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <TableCell className="text-xs"><div className="flex items-center gap-2"><ColaboradorAvatar foto={colaboradoresPublico.find(c => c.id === s.responsableId)?.foto_url} nombre={colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre} size={22} />{colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—'}</div></TableCell>}
+                        <TableCell className="whitespace-nowrap font-bold text-primary">{s.tipo}</TableCell>
+                        <TableCell className="min-w-[200px] max-w-[280px] text-muted-foreground">
                           <TextoResumido texto={s.detalle} />
                           {s.tipo === 'Pago a Tercero' && s.terceroInfo?.nombre && (
-                            <div style={{ fontSize: '0.7rem', color: '#8F8877' }}>👤 {s.terceroInfo.nombre}{s.terceroInfo.dni ? ` · ${s.terceroInfo.dni}` : ''}</div>
+                            <div className="text-[0.7rem] text-muted-foreground">👤 {s.terceroInfo.nombre}{s.terceroInfo.dni ? ` · ${s.terceroInfo.dni}` : ''}</div>
                           )}
                           {s.estado === 'Devuelto' && s.motivoDevolucion && (
-                            <div style={{ marginTop: '0.35rem', backgroundColor: '#FBEAE0', border: '1px solid #C4622D', borderRadius: '4px', padding: '0.4rem 0.6rem', fontSize: '0.7rem', color: '#8A3E17' }}>
+                            <div className="mt-1.5 rounded-md border border-solid border-[#C4622D] bg-[#FBEAE0] px-2.5 py-1.5 text-[0.7rem] text-[#8A3E17]">
                               ↩️ <strong>Motivo de devolución:</strong> {s.motivoDevolucion}
                             </div>
                           )}
-                        </td>
-                        <td style={{ padding: '0.75rem', color: '#2F9E52', textAlign: 'right', fontWeight: 'bold' }}>{s.tipo === 'Pago a Tercero' ? formatMoneyByMoneda(parseFloat(s.valor) || 0, s.moneda || getMoneda(s.empresa)) : formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</td>
-                        <td style={{ padding: '0.75rem', color: '#6B6458', textAlign: 'right' }}>{esLegalizacionConAnticipo ? formatMoney(parseFloat(s.valorAnticipoOriginal), s.empresa) : '—'}</td>
-                        <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: 'bold' }}>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-right font-bold text-success">{s.tipo === 'Pago a Tercero' ? formatMoneyByMoneda(parseFloat(s.valor) || 0, s.moneda || getMoneda(s.empresa)) : formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</TableCell>
+                        <TableCell className="whitespace-nowrap text-right text-muted-foreground">{esLegalizacionConAnticipo ? formatMoney(parseFloat(s.valorAnticipoOriginal), s.empresa) : '—'}</TableCell>
+                        <TableCell className="whitespace-nowrap text-right font-bold">
                           {esLegalizacionConAnticipo ? (
-                            <span style={{ color: diferenciaReembolso > 0 ? '#2F9E52' : diferenciaReembolso < 0 ? '#CC4B4B' : '#8F8877' }}>
+                            <span className={diferenciaReembolso > 0 ? 'text-success' : diferenciaReembolso < 0 ? 'text-destructive' : 'text-muted-foreground'}>
                               {diferenciaReembolso > 0 ? '+' : diferenciaReembolso < 0 ? '−' : ''}{formatMoney(Math.abs(diferenciaReembolso), s.empresa)}
                             </span>
                           ) : '—'}
-                        </td>
+                        </TableCell>
                         {/* "documentos" solo se llena en Legalización/Reembolso (desglose de la
                             Bandeja de Soportes); Pago a Tercero (y cualquier archivo suelto) sube
                             directo a public.soportes sin pasar por ahí — por eso, si "documentos"
                             viene vacío, se muestra el conteo real de soportes en su lugar. */}
                         {(() => {
                           const numDocs = (s.documentos && s.documentos.length > 0) ? s.documentos.length : (s.cantidadSoportes || 0);
-                          return <td style={{ padding: '0.75rem', textAlign: 'center', color: numDocs > 0 ? '#2F9E52' : '#8F8877' }}>{numDocs}</td>;
+                          return <TableCell className={cn('text-center', numDocs > 0 ? 'text-success' : 'text-muted-foreground')}>{numDocs}</TableCell>;
                         })()}
-                        <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                        <TableCell className="text-center">
                           {canApprove ? (
-                            <select value={s.estado} onChange={(e) => {
+                            <select aria-label="Cambiar estado" value={s.estado} onChange={(e) => {
                               const nuevoEstado = e.target.value;
                               // Pasar a "Pagado" pide antes Cuenta (+ CECO si no es Pago a Tercero) +
                               // Comprobante del banco en el modal "Confirmar Pago" — pero solo cuando
@@ -7994,45 +8031,46 @@ const App = () => {
                               } else {
                                 handleChangeEstado(s.id, nuevoEstado);
                               }
-                            }} style={{ backgroundColor: getColorEstado(s.estado), color: '#332D1E', border: 'none', padding: '0.4rem 0.6rem', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
+                            }} className={cn(badgeVariants({ variant: estadoBadge(s.estado) }), claseSelectEstado)}>
                               {estadosParaSolicitud(s).map(e => <option key={e} value={e}>{e}</option>)}
                             </select>
                           ) : (
-                            <span style={{ backgroundColor: getColorEstado(s.estado), color: '#221E15', padding: '0.4rem 0.8rem', borderRadius: '3px', fontWeight: 'bold', fontSize: '0.8rem' }}>{s.estado}</span>
+                            <Badge variant={estadoBadge(s.estado)}>{s.estado}</Badge>
                           )}
                           {legalizacionVinculada && (
-                            <div style={{ marginTop: '0.35rem', fontSize: '0.65rem', color: '#6C63D1', fontWeight: 'bold' }}>✅ Ya legalizado</div>
+                            <div className="mt-1.5 text-[0.65rem] font-bold text-[#6C63D1]">✅ Ya legalizado</div>
                           )}
                           {s.estado === 'Aprobado' && lotePorClave[`solicitud:${s.id}`] && (
-                            <div title="Ya va en un archivo PAB generado para el banco; falta confirmar el pago" style={{ marginTop: '0.35rem', fontSize: '0.65rem', color: '#3B72D9', fontWeight: 'bold' }}>📤 Exportado · lote #{lotePorClave[`solicitud:${s.id}`]}</div>
+                            <div title="Ya va en un archivo PAB generado para el banco; falta confirmar el pago" className="mt-1.5 text-[0.65rem] font-bold text-chart-3">📤 Exportado · lote #{lotePorClave[`solicitud:${s.id}`]}</div>
                           )}
                           {s.lotePagoId && (
-                            <button onClick={() => handleVerLotePagoSolicitudes(s.lotePagoId)} style={{ display: 'block', marginTop: '0.35rem', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.65rem', color: '#6C63D1', fontWeight: 'bold', padding: 0 }}>
+                            <button type="button" onClick={() => handleVerLotePagoSolicitudes(s.lotePagoId)} className="mx-auto mt-1.5 block cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-[0.65rem] font-bold text-[#6C63D1] hover:underline">
                               🔗 Pagado en lote
                             </button>
                           )}
-                        </td>
-                        <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center justify-center">
                           {(s.tipo === 'Legalización' || s.tipo === 'Reembolso' || s.tipo === 'Legalización T. Pro') && s.documentos?.length > 0 && (() => {
                             const esDueño = s.responsableId === user.id;
                             return (
                               <>
                                 {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || esDueño) && (
-                                  <button onClick={() => handleGenerarPDF(s)} disabled={generandoPDF === s.id} style={{ background: 'none', border: 'none', cursor: 'pointer', color: generandoPDF === s.id ? '#8F8877' : '#6C63D1', fontSize: '1rem', marginRight: '0.5rem' }} title="PDF">
-                                    {generandoPDF === s.id ? '⏳' : '📄'}
-                                  </button>
+                                  <Button variant="ghost" size="icon" onClick={() => handleGenerarPDF(s)} disabled={generandoPDF === s.id} className="text-[#6C63D1]" title="PDF" aria-label="PDF">
+                                    {generandoPDF === s.id ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} />}
+                                  </Button>
                                 )}
                                 {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente') && (
-                                  <button onClick={() => handleGenerarExcel(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }} title="Excel">
-                                    📊
-                                  </button>
+                                  <Button variant="ghost" size="icon" onClick={() => handleGenerarExcel(s)} className="text-success" title="Excel" aria-label="Excel">
+                                    <FileSpreadsheet size={16} />
+                                  </Button>
                                 )}
                                 {/* Ver Soportes: los roles de gestión/auditoría lo ven en cualquier solicitud, y
                                     el dueño (Responsable/Gerente incluidos) siempre puede ver lo que él mismo subió. */}
                                 {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente' || esDueño) && (
-                                  <button onClick={() => handleVerSoportesSolicitud(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }} title="Ver Soportes">
-                                    📎
-                                  </button>
+                                  <Button variant="ghost" size="icon" onClick={() => handleVerSoportesSolicitud(s)} className="text-success" title="Ver Soportes" aria-label="Ver Soportes">
+                                    <Paperclip size={16} />
+                                  </Button>
                                 )}
                               </>
                             );
@@ -8047,34 +8085,35 @@ const App = () => {
                             const puedeVer = user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente' || esDueño;
                             return puedeVer && (
                               <>
-                                <button onClick={() => setVerDetalleTercero(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#C4A747', fontSize: '1rem', marginRight: '0.5rem' }} title="Ver Detalle del Tercero">
-                                  🔍
-                                </button>
-                                <button onClick={() => handleGenerarPDFPagoTercero(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.5rem' }} title="PDF">
-                                  📄
-                                </button>
-                                <button onClick={() => handleVerSoportesSolicitud(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F9E52', fontSize: '1rem', marginRight: '0.5rem' }} title="Ver Soportes">
-                                  📎
-                                </button>
+                                <Button variant="ghost" size="icon" onClick={() => setVerDetalleTercero(s)} title="Ver Detalle del Tercero" aria-label="Ver Detalle del Tercero">
+                                  <Eye size={16} />
+                                </Button>
+                                <Button variant="ghost" size="icon" onClick={() => handleGenerarPDFPagoTercero(s)} className="text-[#6C63D1]" title="PDF" aria-label="PDF">
+                                  <FileDown size={16} />
+                                </Button>
+                                <Button variant="ghost" size="icon" onClick={() => handleVerSoportesSolicitud(s)} className="text-success" title="Ver Soportes" aria-label="Ver Soportes">
+                                  <Paperclip size={16} />
+                                </Button>
                               </>
                             );
                           })()}
                           {/* Editar: solo mientras está Pendiente — quien la creó, o Administrador/
                               Coordinadora Administrativa. Reabre el formulario de arriba precargado. */}
                           {puedeEditarSolicitud(s) && (
-                            <button onClick={() => handleIniciarEdicionSolicitud(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '1rem', marginRight: '0.5rem' }} title="Editar">✏️</button>
+                            <Button variant="ghost" size="icon" onClick={() => handleIniciarEdicionSolicitud(s)} className="text-[#6C63D1]" title="Editar" aria-label="Editar"><Pencil size={16} /></Button>
                           )}
                           {(user.rol === 'Responsable' || user.rol === 'Gerente' || user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && puedeEliminarSolicitud(s) && (
-                            <button onClick={() => handleDeleteSolicitud(s.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '1rem' }} title="Eliminar">✕</button>
+                            <Button variant="ghost" size="icon" onClick={() => handleDeleteSolicitud(s.id)} className="text-destructive" title="Eliminar" aria-label="Eliminar"><Trash2 size={16} /></Button>
                           )}
-                        </td>
-                      </tr>
+                          </div>
+                        </TableCell>
+                      </TableRow>
                       );
                     })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                </TableBody>
+              </Table>
+              </CardContent>
+            </Card>
           </div>
         )}
 
@@ -9995,25 +10034,13 @@ const App = () => {
               </div>
 
               {/* CARGA DE SOPORTES */}
-              <div className="flex flex-col gap-2 rounded-lg border border-solid border-border bg-background p-4">
-                <Label htmlFor="cc-soportes" className="text-foreground"><Paperclip size={14} /> Soportes (PDF u otros archivos)</Label>
-                <Input id="cc-soportes" type="file" multiple onChange={handleAddSoporteCuentaCobro} className="h-auto cursor-pointer py-2 text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1 file:font-[inherit] file:text-xs file:font-semibold file:text-secondary-foreground" />
-
-                {soportesCuentaCobroTemp.length > 0 && (
-                  <div className="mt-2 flex flex-col gap-2">
-                    <p className="m-0 text-xs text-muted-foreground">Archivos cargados: {soportesCuentaCobroTemp.length}</p>
-                    {soportesCuentaCobroTemp.map(soporte => (
-                      <div key={soporte.id} className="flex items-center justify-between gap-2 rounded-md border border-solid border-border bg-card px-3 py-2">
-                        <div className="min-w-0 flex-1">
-                          <p className="m-0 truncate text-sm font-semibold">{soporte.nombre}</p>
-                          <p className="m-0 text-xs text-muted-foreground">{(soporte.tamaño / 1024).toFixed(2)} KB</p>
-                        </div>
-                        <Button variant="ghost" size="icon" onClick={() => handleRemoveSoporteCuentaCobro(soporte.id)} className="text-destructive" title="Quitar archivo" aria-label="Quitar archivo"><Trash2 size={16} /></Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <ListaSoportesUI
+                titulo="Soportes (PDF u otros archivos)"
+                inputProps={{ multiple: true, onChange: handleAddSoporteCuentaCobro }}
+                archivos={soportesCuentaCobroTemp}
+                resumen={`Archivos cargados: ${soportesCuentaCobroTemp.length}`}
+                onQuitar={handleRemoveSoporteCuentaCobro}
+              />
               <Button size="lg" onClick={handleAddCuentaCobro} disabled={isReadOnly || guardandoCuentaCobro} className="w-full">{guardandoCuentaCobro ? '⏳ Guardando...' : 'Crear Cuenta de Cobro'}</Button>
               </CardContent>
               )}
@@ -10081,7 +10108,7 @@ const App = () => {
                       <TableCell className="whitespace-nowrap text-right font-bold text-success">{formatMoney(c.monto, c.empresa)}</TableCell>
                       <TableCell className="text-center">
                         {canApprove ? (
-                          <select aria-label="Cambiar estado" value={c.estado} onChange={(e) => handleUpdateCuentaCobro(c.id, 'estado', e.target.value)} disabled={isReadOnly || !canApprove} className={cn(badgeVariants({ variant: estadoBadge(c.estado) }), 'cursor-pointer py-1 font-[inherit] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60')}>
+                          <select aria-label="Cambiar estado" value={c.estado} onChange={(e) => handleUpdateCuentaCobro(c.id, 'estado', e.target.value)} disabled={isReadOnly || !canApprove} className={cn(badgeVariants({ variant: estadoBadge(c.estado) }), claseSelectEstado)}>
                             {estadosCuentaCobro.map(e => <option key={e} value={e}>{e}</option>)}
                           </select>
                         ) : (
