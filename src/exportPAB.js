@@ -9,7 +9,7 @@
 // La plantilla no trae fila de control/totales; los totales se muestran en la vista previa y se
 // guardan en el lote.
 
-import { BANCOS_ACH, TIPOS_DOCUMENTO, problemasDatosBancarios } from './datosBancarios';
+import { BANCOS_ACH, TIPOS_DOCUMENTO, problemasDatosBancarios, inferirCodigoBanco, limpiarDocumento, limpiarNumeroCuenta } from './datosBancarios';
 
 export const TIPO_TRANSACCION = { Ahorros: 37, Corriente: 27 }; // comentario de la columna D
 export const TIPOS_PAGO_PAB = { 220: 'Pago a Proveedores', 225: 'Pago de Nómina', 238: 'Pagos a Terceros' };
@@ -115,19 +115,44 @@ const beneficiarioDeUsuario = (u) => u ? ({
   codigoBanco: u.codigoBanco, tipoCuenta: u.tipoCuentaBancaria, numeroCuenta: u.numeroCuenta
 }) : null;
 
-const beneficiarioDeTercero = (t, info) => {
-  if (t) return {
-    tipoDocumento: t.tipo_documento, documento: t.dni, nombre: t.nombre,
+// Pago a Tercero: combina el catálogo (public.terceros) con lo que trae la solicitud — si el
+// catálogo tiene un dato vacío, se usa el de la solicitud (y viceversa). Banco escrito como
+// texto ("Bancolombia") → se deduce su código; NIT con dígito de verificación → se le quita.
+export const beneficiarioDeTercero = (t, info) => {
+  const c = t ? {
+    tipoDocumento: t.tipo_documento, documento: t.dni, nombre: t.nombre, banco: t.banco,
     codigoBanco: t.codigo_banco, tipoCuenta: t.tipo_cuenta, numeroCuenta: t.numero_cuenta
-  };
-  if (info) return {
-    tipoDocumento: info.tipoDocumento, documento: info.dni, nombre: info.nombre,
+  } : {};
+  const s = info ? {
+    tipoDocumento: info.tipoDocumento, documento: info.dni, nombre: info.nombre, banco: info.banco,
     codigoBanco: info.codigoBanco, tipoCuenta: info.tipoCuenta, numeroCuenta: info.numeroCuenta
+  } : {};
+  if (!t && !info) return null;
+  const dato = (k) => (c[k] !== undefined && c[k] !== null && c[k] !== '') ? c[k] : s[k];
+  const tipoDocumento = dato('tipoDocumento');
+  return {
+    tipoDocumento,
+    documento: limpiarDocumento(dato('documento'), tipoDocumento),
+    nombre: dato('nombre'),
+    codigoBanco: dato('codigoBanco') || inferirCodigoBanco(dato('banco')),
+    tipoCuenta: dato('tipoCuenta'),
+    numeroCuenta: limpiarNumeroCuenta(dato('numeroCuenta'))
   };
-  return null;
 };
 
 export const TIPOS_PRESUPUESTO_PAB = { 'Nómina': 'nomina', 'Prestación de Servicio': 'proveedores' };
+export const TIPO_PROVEEDOR_PRESUPUESTO = 'Proveedor / servicio';
+
+// Por qué un concepto de Presupuesto NO va por PAB (y cómo se paga), o null si sí puede ir.
+// Nómina / Prestación de Servicio sin forma de pago definida se asumen PAB (como siempre).
+export const motivoPresupuestoNoPAB = (i) => {
+  const forma = i.formaPago || '';
+  const esColaborador = !!TIPOS_PRESUPUESTO_PAB[i.tipo];
+  if (forma && forma !== 'PAB') return `se paga por ${forma}: regístralo con "Marcar Pagado" en Presupuesto → Mensual`;
+  if (esColaborador) return null;
+  if (i.tipo === TIPO_PROVEEDOR_PRESUPUESTO) return forma === 'PAB' ? null : 'sin forma de pago: elige "PAB" en Gestión de Conceptos si se le transfiere a una cuenta';
+  return forma ? 'sin tipo: elige Nómina, Prestación de Servicio o Proveedor / servicio en Gestión de Conceptos' : 'sin tipo ni forma de pago: defínelos en Presupuesto → Gestión de Conceptos';
+};
 const TIPOS_SOLICITUD_PAB = { Reembolso: 'proveedores', Anticipo: 'proveedores', 'Pago a Tercero': 'terceros' };
 
 // Devuelve los candidatos: { clave, origen, entidadTipo, entidadId, anio, mes, etiqueta,
@@ -143,24 +168,37 @@ export const construirCandidatosPAB = ({
     const { fila, problemas } = construirFilaPAB({ beneficiario: c.beneficiario, valor: c.valor, referencia: c.referencia, fechaAplicacion });
     const bloqueos = [...(c.bloqueos || [])];
     if (lotePorClave[c.clave]) bloqueos.unshift(`ya exportado en el lote #${lotePorClave[c.clave]}`);
-    if (!c.beneficiario) bloqueos.push('sin beneficiario vinculado');
+    // No va por PAB: basta con el motivo (cómo se paga); no tiene sentido pedir datos bancarios.
+    if (c.noPAB) { candidatos.push({ ...c, fila, bloqueos }); return; }
+    if (!c.beneficiario) bloqueos.push(c.origen === 'Presupuesto' ? 'sin colaborador vinculado: asígnalo en Presupuesto → Gestión de Conceptos' : 'sin beneficiario vinculado');
     else bloqueos.push(...problemas);
     candidatos.push({ ...c, fila, bloqueos });
   };
 
+  // Presupuesto: Nómina / Prestación de Servicio → al colaborador; "Proveedor / servicio" → al
+  // Beneficiario (tercero). Lo que no se paga por PAB NO se puede agregar: sale en la lista de
+  // "no se pueden exportar" con el motivo y cómo se paga.
   presupuestoDetalle
-    .filter(i => i.empresa === empresa && TIPOS_PRESUPUESTO_PAB[i.tipo] && !i.pagado)
+    .filter(i => i.empresa === empresa && !i.pagado && i.activo !== false)
     .forEach(i => {
+      const grupo = TIPOS_PRESUPUESTO_PAB[i.tipo];
+      const esProveedor = i.tipo === TIPO_PROVEEDOR_PRESUPUESTO;
+      const motivoNoPAB = motivoPresupuestoNoPAB(i);
+      if (!grupo && !esProveedor && !motivoNoPAB) return;
       const bloqueos = [];
-      if (!i.aprobado) bloqueos.push(i.requisitoCuentaCobro && !i.requisitoCuentaCobro.ok ? i.requisitoCuentaCobro.motivo : (i.aprobacionDesactualizada ? 'aprobación desactualizada: reaprobar en Presupuesto' : 'no aprobado en Presupuesto'));
+      if (motivoNoPAB) bloqueos.push(motivoNoPAB);
+      else if (!i.aprobado) bloqueos.push(i.requisitoCuentaCobro && !i.requisitoCuentaCobro.ok ? i.requisitoCuentaCobro.motivo : (i.aprobacionDesactualizada ? 'aprobación desactualizada: reaprobar en Presupuesto' : 'no aprobado en Presupuesto'));
+      const tercero = esProveedor ? terceros.find(t => t.id === i.terceroId) : null;
+      if (esProveedor && !motivoNoPAB && !tercero) bloqueos.push('sin Beneficiario (tercero): asígnalo en Presupuesto → Gestión de Conceptos');
       agregar({
         clave: `presupuesto:${i.id}:${anio}-${mes}`, origen: 'Presupuesto', entidadTipo: 'presupuesto', entidadId: String(i.id), anio, mes,
-        etiqueta: `${i.tipo} — ${i.nombre}`, tipoPago: tipoPagoDe(TIPOS_PRESUPUESTO_PAB[i.tipo]),
-        beneficiario: beneficiarioDeUsuario(usuarios.find(u => u.id === i.responsableId)),
-        valor: i.netoAPagar, referencia: referenciaPAB(i.tipo === 'Nómina' ? 'NOM' : 'HON', `${anio}${String(mes).padStart(2, '0')}${i.id}`), bloqueos,
+        noPAB: !!motivoNoPAB,
+        etiqueta: `${i.tipo || 'Sin tipo'} — ${i.nombre}`, tipoPago: tipoPagoDe(esProveedor ? 'proveedores' : (grupo || 'proveedores')),
+        beneficiario: esProveedor ? beneficiarioDeTercero(tercero, null) : beneficiarioDeUsuario(usuarios.find(u => u.id === i.responsableId)),
+        valor: i.netoAPagar, referencia: referenciaPAB(i.tipo === 'Nómina' ? 'NOM' : esProveedor ? 'PRV' : 'HON', `${anio}${String(mes).padStart(2, '0')}${i.id}`), bloqueos,
         // Lo necesario para registrar el pago en Finanzas al cerrar el lote (mismo Gasto que
         // crea "Marcar Pagado" en Presupuesto).
-        meta: { nombre: i.nombre, ceco: i.ceco, responsableId: i.responsableId || null, valorBruto: i.valorEsperado, deduccion: i.totalDeducciones || 0 }
+        meta: { nombre: i.nombre, ceco: i.ceco, responsableId: i.responsableId || null, terceroId: tercero?.id || null, valorBruto: i.valorEsperado, deduccion: i.totalDeducciones || 0 }
       });
     });
 

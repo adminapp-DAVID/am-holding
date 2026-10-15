@@ -67,7 +67,8 @@ const ExportadorPABView = ({
   const [configId, setConfigId] = useState('');
   const [fechaAplicacion, setFechaAplicacion] = useState(hoyLocal());
   const [deseleccionados, setDeseleccionados] = useState([]);
-  const [mostrarBloqueados, setMostrarBloqueados] = useState(false);
+  // Abierto por defecto: lo que no se puede pagar debe verse con su motivo, no quedar escondido.
+  const [mostrarBloqueados, setMostrarBloqueados] = useState(true);
   const [generando, setGenerando] = useState(false);
   const [trabajandoLote, setTrabajandoLote] = useState(null);
   // Modal "Marcar pagado": { lote, fechaPago, comprobante, ajustes: { [entidad_clave]: { resultado,

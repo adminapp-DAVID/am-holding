@@ -53,6 +53,11 @@ const EmpresaLogo = ({ empresa, height = 20, style = {} }) => {
 const claseCheckbox = 'size-4 cursor-pointer accent-[#C4A747] disabled:cursor-not-allowed';
 const claseInputArchivo = 'h-auto cursor-pointer py-2 text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1 file:font-[inherit] file:text-xs file:font-semibold file:text-secondary-foreground';
 const claseSelectEstado = 'cursor-pointer py-1 font-[inherit] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60';
+// Presupuesto → PAB: tipo del concepto (define el beneficiario y el tipo de pago del archivo) y
+// cómo se paga. Nómina / Prestación de Servicio le pagan al colaborador; "Proveedor / servicio" le
+// paga al Beneficiario (tercero del catálogo). Solo los de forma de pago "PAB" entran al archivo.
+const TIPOS_CONCEPTO_PRESUPUESTO = ['Nómina', 'Prestación de Servicio', 'Proveedor / servicio'];
+const FORMAS_PAGO_PRESUPUESTO = ['PAB', 'Convenio / PSE', 'Débito automático', 'Tarjeta de crédito', 'Otro'];
 const claseBotonMorado = 'bg-[#6C63D1] text-white hover:bg-[#6C63D1]/90';
 // Para CampoBanco / SelectTipoDocumento (CamposBancarios.js), que solo reciben `style`.
 const estiloCampoCompactoUI = { width: '100%', height: '32px', padding: '0 0.5rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '8px', color: '#221E15', fontSize: '0.8rem', fontFamily: 'inherit', boxSizing: 'border-box', minWidth: '120px' };
@@ -728,7 +733,7 @@ const App = () => {
   const deduccionVacia = { presupuestoItemId: '', tipo: 'Préstamo', valorCuota: '', saldoTotal: '', fechaInicio: new Date().toISOString().split('T')[0], observaciones: '', activo: true };
   const [newDeduccion, setNewDeduccion] = useState(deduccionVacia);
   const [editingDeduccionId, setEditingDeduccionId] = useState(null);
-  const [newPresupuestoItem, setNewPresupuestoItem] = useState({ empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-001-GF', nombre: '', valorMensual: '', diaLimitePago: '', activo: true, responsableId: '' });
+  const [newPresupuestoItem, setNewPresupuestoItem] = useState({ empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-001-GF', nombre: '', valorMensual: '', diaLimitePago: '', activo: true, responsableId: '', tipo: '', formaPago: '', terceroId: '' });
   // Si tiene valor, el formulario de arriba de "Gestión de Conceptos" está editando ESTE
   // concepto (en vez de crear uno nuevo) — mismo patrón que editingDeduccionId.
   const [editingPresupuestoItemId, setEditingPresupuestoItemId] = useState(null);
@@ -1540,13 +1545,16 @@ const App = () => {
     // automáticamente al "Marcar Pagado" en la pestaña Mensual quede con responsable_id
     // correcto, sin tener que emparejar por el texto libre de "nombre" cada mes.
     responsableId: row.responsable_id || '',
-    responsableNombre: row.usuarios?.nombre || ''
+    responsableNombre: row.usuarios?.nombre || '',
+    // Beneficiario del pago cuando NO es un colaborador (EPM, administración…) y cómo se paga.
+    terceroId: row.tercero_id || '',
+    formaPago: row.forma_pago || ''
   });
 
   const cargarPresupuestoItems = async () => {
     const { data, error } = await supabase
       .from('presupuesto_items')
-      .select('id, nombre, tipo, valor_mensual, dia_limite_pago, activo, responsable_id, empresas ( nombre ), cecos ( codigo ), usuarios ( nombre )')
+      .select('id, nombre, tipo, valor_mensual, dia_limite_pago, activo, responsable_id, tercero_id, forma_pago, empresas ( nombre ), cecos ( codigo ), usuarios ( nombre )')
       .order('created_at', { ascending: true });
     if (error) {
       console.error('Error cargando presupuesto_items:', error);
@@ -2021,7 +2029,7 @@ const App = () => {
     if (currentView === 'finanzas' || currentView === 'dashboardFinanciero') { cargarGastos(); cargarIngresos(); }
     // Al entrar a Finanzas el formulario de registro siempre arranca plegado.
     if (currentView === 'finanzas') setMostrarNuevoMovimientoFinanzas(false);
-    if (currentView === 'presupuesto') { cargarPresupuestoItems(); cargarPresupuestoAnual(); cargarPresupuestoOverrides(); cargarPresupuestoAprobaciones(); cargarCuentasCobro(); }
+    if (currentView === 'presupuesto') { cargarTodosTerceros(); cargarPresupuestoItems(); cargarPresupuestoAnual(); cargarPresupuestoOverrides(); cargarPresupuestoAprobaciones(); cargarCuentasCobro(); }
     if (currentView === 'responsables') { cargarUsuarios(); cargarColaboradoresPublico(); }
     if (currentView === 'datosBancarios' || currentView === 'auditoria') { cargarUsuarios(); cargarTodosTerceros(); }
     if (currentView === 'pagosPAB') { cargarUsuarios(); cargarTodosTerceros(); cargarSolicitudes(); cargarCuentasCobro(); cargarPresupuestoItems(); cargarPresupuestoOverrides(); cargarPresupuestoAprobaciones(); cargarLotesPago(); }
@@ -4932,6 +4940,10 @@ const App = () => {
       alert('El valor mensual debe ser mayor a cero');
       return;
     }
+    if (newPresupuestoItem.formaPago === 'PAB' && newPresupuestoItem.tipo === 'Proveedor / servicio' && !newPresupuestoItem.terceroId) {
+      alert('Para pagarlo por PAB elige el Beneficiario (tercero) — a él se le transfiere.');
+      return;
+    }
     const [empresaId, cecoId] = await Promise.all([resolverEmpresaId(newPresupuestoItem.empresa), resolverCecoId(newPresupuestoItem.ceco)]);
     const payload = {
       empresa_id: empresaId,
@@ -4939,7 +4951,10 @@ const App = () => {
       nombre: newPresupuestoItem.nombre,
       valor_mensual: newPresupuestoItem.valorMensual,
       dia_limite_pago: newPresupuestoItem.diaLimitePago ? parseInt(newPresupuestoItem.diaLimitePago) : null,
-      responsable_id: newPresupuestoItem.responsableId || null
+      responsable_id: newPresupuestoItem.responsableId || null,
+      tipo: newPresupuestoItem.tipo || null,
+      forma_pago: newPresupuestoItem.formaPago || null,
+      tercero_id: newPresupuestoItem.terceroId || null
     };
 
     if (editingPresupuestoItemId) {
@@ -4961,7 +4976,7 @@ const App = () => {
     }
     await cargarPresupuestoItems();
     setEditingPresupuestoItemId(null);
-    setNewPresupuestoItem({ empresa: newPresupuestoItem.empresa, ceco: newPresupuestoItem.ceco, nombre: '', valorMensual: '', diaLimitePago: '', activo: true, responsableId: '' });
+    setNewPresupuestoItem({ empresa: newPresupuestoItem.empresa, ceco: newPresupuestoItem.ceco, nombre: '', valorMensual: '', diaLimitePago: '', activo: true, responsableId: '', tipo: '', formaPago: '', terceroId: '' });
   };
 
   // Carga el concepto elegido en el formulario de arriba para editarlo (igual que
@@ -4975,13 +4990,16 @@ const App = () => {
       valorMensual: item.valorMensual,
       diaLimitePago: item.diaLimitePago || '',
       activo: item.activo !== false,
-      responsableId: item.responsableId || ''
+      responsableId: item.responsableId || '',
+      tipo: item.tipo || '',
+      formaPago: item.formaPago || '',
+      terceroId: item.terceroId || ''
     });
   };
 
   const handleCancelEditPresupuestoItem = () => {
     setEditingPresupuestoItemId(null);
-    setNewPresupuestoItem({ empresa: newPresupuestoItem.empresa, ceco: newPresupuestoItem.ceco, nombre: '', valorMensual: '', diaLimitePago: '', activo: true, responsableId: '' });
+    setNewPresupuestoItem({ empresa: newPresupuestoItem.empresa, ceco: newPresupuestoItem.ceco, nombre: '', valorMensual: '', diaLimitePago: '', activo: true, responsableId: '', tipo: '', formaPago: '', terceroId: '' });
   };
 
   const handleUpdatePresupuestoItem = async (id, campo, valor) => {
@@ -5268,6 +5286,7 @@ const App = () => {
           estado: 'Pagado',
           observaciones: OBSERVACIONES_GASTO_DESDE_PRESUPUESTO,
           presupuesto_item_id: it.entidad_id,
+          tercero_id: meta.terceroId || null,
           lote_pago_id: lote.id
         }).select('id').single();
         if (error) throw error;
@@ -10140,6 +10159,26 @@ const App = () => {
                               {[...personasFinanzas].sort((a, b) => a.nombre.localeCompare(b.nombre)).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                             </Select>
                           </CampoUI>
+                          <CampoUI label="Tipo" htmlFor="pc-tipo">
+                            <Select id="pc-tipo" value={newPresupuestoItem.tipo} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, tipo: e.target.value})}>
+                              <option value="">Sin tipo</option>
+                              {TIPOS_CONCEPTO_PRESUPUESTO.map(t => <option key={t} value={t}>{t}</option>)}
+                            </Select>
+                          </CampoUI>
+                          <CampoUI label="Forma de pago" htmlFor="pc-forma">
+                            <Select id="pc-forma" value={newPresupuestoItem.formaPago} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, formaPago: e.target.value})}>
+                              <option value="">Sin definir</option>
+                              {FORMAS_PAGO_PRESUPUESTO.map(f => <option key={f} value={f}>{f}</option>)}
+                            </Select>
+                          </CampoUI>
+                          {newPresupuestoItem.tipo === 'Proveedor / servicio' && (
+                            <CampoUI label="Beneficiario (tercero)" htmlFor="pc-tercero">
+                              <Select id="pc-tercero" value={newPresupuestoItem.terceroId} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, terceroId: e.target.value})}>
+                                <option value="">Elegir del catálogo de terceros…</option>
+                                {todosTerceros.filter(t => t.activo !== false || t.id === newPresupuestoItem.terceroId).map(t => <option key={t.id} value={t.id}>{t.nombre}{t.dni ? ` — ${t.dni}` : ''}</option>)}
+                              </Select>
+                            </CampoUI>
+                          )}
                         </div>
                         <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-[2fr_1fr_auto]">
                           <CampoUI label="Nombre / Responsable / Concepto" htmlFor="pc-nombre">
@@ -10153,7 +10192,7 @@ const App = () => {
                         {editingPresupuestoItemId && (
                           <Button variant="outline" onClick={handleCancelEditPresupuestoItem} className="self-start">Cancelar</Button>
                         )}
-                        <p className="m-0 text-xs text-muted-foreground">Vincular el colaborador es opcional, pero permite que el Gasto que se genere al "Marcar Pagado" en la pestaña Mensual quede con el Responsable correcto desde el primer clic.</p>
+                        <p className="m-0 text-xs text-muted-foreground">Vincular el colaborador es opcional, pero permite que el Gasto que se genere al "Marcar Pagado" en la pestaña Mensual quede con el Responsable correcto desde el primer clic. Pagos PAB: Nómina y Prestación de Servicio le pagan al colaborador; "Proveedor / servicio" con forma de pago PAB le paga al Beneficiario (sus datos bancarios vienen del catálogo de terceros). Facturas por convenio (EPM, Tigo…) van con "Convenio / PSE" y se marcan pagadas en la pestaña Mensual.</p>
                       </div>
                     )}
 
@@ -10177,7 +10216,14 @@ const App = () => {
                             <TableRow key={item.id} className={cn(item.activo === false && 'opacity-50')}>
                               <TableCell className="text-xs text-muted-foreground"><div className="flex items-center gap-2"><EmpresaLogo empresa={item.empresa} height={16} />{item.empresa}</div></TableCell>
                               <TableCell className="text-xs text-muted-foreground">{cecos.find(c => c.codigo === item.ceco)?.nombre || item.ceco}</TableCell>
-                              <TableCell className="min-w-[160px]">{item.nombre}</TableCell>
+                              <TableCell className="min-w-[160px]">
+                                {item.nombre}
+                                {(item.tipo || item.formaPago) && (
+                                  <div className="text-[0.7rem] text-muted-foreground">
+                                    {[item.tipo, item.formaPago, item.terceroId && `→ ${todosTerceros.find(t => t.id === item.terceroId)?.nombre || 'tercero'}`].filter(Boolean).join(' · ')}
+                                  </div>
+                                )}
+                              </TableCell>
                               <TableCell className="text-xs text-muted-foreground">
                                 {puedeEditarPresupuesto ? (
                                   <Select aria-label="Colaborador" value={item.responsableId} onChange={(e) => handleUpdatePresupuestoItemResponsable(item.id, e.target.value)} className="h-8 min-w-[160px] text-xs">

@@ -3,7 +3,7 @@ import path from 'path';
 import JSZip from 'jszip';
 import * as XLSX from 'xlsx';
 import {
-  normalizarNombrePAB, fechaPAB, valorPAB, referenciaPAB, referenciaLotePAB, descripcionLotePAB, secuenciaPAB,
+  normalizarNombrePAB, fechaPAB, valorPAB, referenciaPAB, referenciaLotePAB, beneficiarioDeTercero, descripcionLotePAB, secuenciaPAB,
   problemasEncabezadoPAB, construirEncabezadoPAB, construirFilaPAB, totalesPAB,
   construirCandidatosPAB, llenarHojaPAB, generarArchivoPAB
 } from './exportPAB';
@@ -70,7 +70,10 @@ describe('candidatos', () => {
     { id: 'p1', empresa: base.empresa, tipo: 'Nómina', nombre: 'Nómina Uno', responsableId: 'u1', pagado: false, aprobado: true, netoAPagar: 2000000, requisitoCuentaCobro: { ok: true } },
     { id: 'p2', empresa: base.empresa, tipo: 'Prestación de Servicio', nombre: 'Honorario Dos', responsableId: 'u1', pagado: false, aprobado: false, netoAPagar: 1000000, requisitoCuentaCobro: { ok: false, motivo: 'Sin cuenta de cobro del mes' } },
     { id: 'p3', empresa: base.empresa, tipo: 'Servicios Públicos', nombre: 'Luz', pagado: false, aprobado: true, netoAPagar: 50000 },
-    { id: 'p4', empresa: base.empresa, tipo: 'Nómina', nombre: 'Ya pagada', responsableId: 'u1', pagado: true, aprobado: true, netoAPagar: 10 }
+    { id: 'p4', empresa: base.empresa, tipo: 'Nómina', nombre: 'Ya pagada', responsableId: 'u1', pagado: true, aprobado: true, netoAPagar: 10 },
+    { id: 'p5', empresa: base.empresa, tipo: 'Proveedor / servicio', formaPago: 'PAB', terceroId: 't1', nombre: 'Administración', pagado: false, aprobado: true, netoAPagar: 80000 },
+    { id: 'p6', empresa: base.empresa, tipo: 'Proveedor / servicio', formaPago: 'Convenio / PSE', nombre: 'EPM', pagado: false, aprobado: true, netoAPagar: 90000 },
+    { id: 'p7', empresa: base.empresa, tipo: 'Proveedor / servicio', formaPago: 'PAB', nombre: 'Sin beneficiario', pagado: false, aprobado: true, netoAPagar: 1000 }
   ];
   const solicitudes = [
     { id: 's1', empresa: base.empresa, estado: 'Aprobado', tipo: 'Reembolso', responsableId: 'u1', totalCalculado: 300000, valor: 0 },
@@ -84,7 +87,7 @@ describe('candidatos', () => {
   const por = (clave) => lista.find(c => c.clave === clave);
 
   test('solo Nómina/Honorarios no pagados y solicitudes Aprobadas de la empresa', () => {
-    expect(lista.map(c => c.clave).sort()).toEqual(['presupuesto:p1:2026-10', 'presupuesto:p2:2026-10', 'solicitud:s1', 'solicitud:s2', 'solicitud:s3', 'solicitud:s4'].sort());
+    expect(lista.map(c => c.clave).sort()).toEqual(['presupuesto:p1:2026-10', 'presupuesto:p2:2026-10', 'presupuesto:p3:2026-10', 'presupuesto:p5:2026-10', 'presupuesto:p6:2026-10', 'presupuesto:p7:2026-10', 'solicitud:s1', 'solicitud:s2', 'solicitud:s3', 'solicitud:s4'].sort());
   });
   test('tipo de pago por origen', () => {
     expect(por('presupuesto:p1:2026-10').tipoPago).toBe(225);
@@ -99,6 +102,18 @@ describe('candidatos', () => {
     expect(por('solicitud:s2').bloqueos).toEqual(expect.arrayContaining(['sin tipo de documento', 'sin banco']));
     expect(por('solicitud:s3').bloqueos).toEqual([]);
     expect(por('solicitud:s4').bloqueos[0]).toMatch(/USD/);
+  });
+  test('Presupuesto que no va por PAB: sale bloqueado con el motivo y cómo se paga', () => {
+    expect(por('presupuesto:p3:2026-10').bloqueos[0]).toMatch(/sin tipo ni forma de pago/);
+    expect(por('presupuesto:p6:2026-10').bloqueos[0]).toMatch(/Convenio \/ PSE/);
+    expect(por('presupuesto:p7:2026-10').bloqueos[0]).toMatch(/sin Beneficiario/);
+  });
+  test('Proveedor / servicio por PAB: le paga al tercero, como 220', () => {
+    const c = por('presupuesto:p5:2026-10');
+    expect(c.bloqueos).toEqual([]);
+    expect(c.tipoPago).toBe(220);
+    expect(c.fila).toMatchObject({ documento: '900000002', codigoBanco: 1051 });
+    expect(c.meta.terceroId).toBe('t1');
   });
   test('valores y nombre del titular', () => {
     expect(por('solicitud:s1').fila.valor).toBe(300000);
@@ -153,4 +168,13 @@ describe('escritura en la plantilla', () => {
 test('referencia del archivo: solo números (lote + fila)', () => {
   expect(referenciaLotePAB(12, 3)).toBe('120003');
   expect(referenciaLotePAB(12, 3)).toMatch(/^\d{1,21}$/);
+});
+
+test('Pago a Tercero: completa el catálogo con la solicitud, deduce el banco y quita el DV', () => {
+  const b = beneficiarioDeTercero(
+    { tipo_documento: 3, dni: '', nombre: 'PROVEEDOR', codigo_banco: '', banco: '', tipo_cuenta: 'Ahorros', numero_cuenta: '' },
+    { dni: '900123456-7', banco: 'Bancolombia', numeroCuenta: '123-456-78' }
+  );
+  expect(b).toMatchObject({ tipoDocumento: 3, documento: '900123456', nombre: 'PROVEEDOR', tipoCuenta: 'Ahorros', numeroCuenta: '12345678' });
+  expect(b.codigoBanco).toBeTruthy();
 });
