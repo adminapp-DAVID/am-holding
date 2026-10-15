@@ -2513,7 +2513,7 @@ const App = () => {
     // quien crea sea Responsable/Gerente (puede pagarse desde una empresa distinta a la suya, ej.
     // ARKO en USD) — para los demás tipos, la Empresa de un Responsable/Gerente sigue siendo
     // siempre la propia, sin excepción.
-    const empresaNombre = (newSolicitud.tipo !== 'Pago a Tercero' && (user.rol === 'Responsable' || user.rol === 'Gerente')) ? user.empresa : newSolicitud.empresa;
+    const empresaNombre = (newSolicitud.tipo !== 'Pago a Tercero' && user.rol === 'Responsable') ? user.empresa : newSolicitud.empresa;
 
     setGuardandoSolicitud(true);
     try {
@@ -7864,7 +7864,7 @@ const App = () => {
                                 <TableCell className="whitespace-nowrap text-muted-foreground">{item.fecha}</TableCell>
                                 <TableCell className="text-muted-foreground">{item.proveedor}</TableCell>
                                 <TableCell className="text-muted-foreground">{item.descripcion}</TableCell>
-                                <TableCell className="whitespace-nowrap text-right font-bold text-success">{formatMoney(item.valor, user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)}</TableCell>
+                                <TableCell className="whitespace-nowrap text-right font-bold text-success">{formatMoney(item.valor, user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)}</TableCell>
                                 <TableCell className="text-muted-foreground">{item.nombre}</TableCell>
                                 <TableCell className="whitespace-nowrap text-center">
                                   <Button variant="ghost" size="icon" onClick={() => handlePreviewSoporte(item)} disabled={cargandoPreviewSoporte} title="Ver archivo" aria-label="Ver archivo"><Eye size={16} /></Button>
@@ -7933,7 +7933,7 @@ const App = () => {
                       // propia del Responsable/Gerente (ej. un pago en USD que sale de ARKO en vez
                       // de su empresa de siempre) — se precarga con la suya como punto de partida,
                       // pero el selector de Empresa (abajo) queda editable para ese tipo.
-                      empresa: (nuevoTipo === 'Pago a Tercero' && (user.rol === 'Responsable' || user.rol === 'Gerente')) ? user.empresa : newSolicitud.empresa
+                      empresa: ((nuevoTipo === 'Pago a Tercero' && user.rol === 'Responsable') || (user.rol === 'Gerente' && !newSolicitud.tipo && !editingSolicitudId && user.empresa)) ? user.empresa : newSolicitud.empresa
                     });
                   }}>
                     <option value="">Seleccionar Tipo</option>
@@ -7951,14 +7951,15 @@ const App = () => {
                     )}
                   </Select>
                   </CampoUI>
-                  {/* Anticipo/Legalización/Reembolso: para Responsable/Gerente la Empresa siempre es
-                      la suya (ese gasto sale de su propio presupuesto), por eso el selector queda
-                      oculto para esos tipos. Pago a Tercero es la excepción: el pago puede necesitar
+                  {/* Empresa a la que se le hace la solicitud: lista elegible para Administrador,
+                      Coordinadora, Gerente y Colaborador (como en Cuentas de Cobro). Solo el
+                      Responsable la tiene fija en su empresa (ese gasto sale de su propio
+                      presupuesto), por eso el selector queda oculto para él. Pago a Tercero es la excepción: el pago puede necesitar
                       salir de OTRA empresa de la holding (ej. ARKO para pagar en USD) — sin esto,
                       quedaba fijo en su empresa de siempre y, al momento de pagar, el modal de
                       Confirmar Pago solo ofrecía las cuentas de esa empresa, sin forma de elegir la
                       cuenta correcta. */}
-                  {((user.rol !== 'Responsable' && user.rol !== 'Gerente') || newSolicitud.tipo === 'Pago a Tercero') && (
+                  {(user.rol !== 'Responsable' || newSolicitud.tipo === 'Pago a Tercero') && (
                     <CampoUI label="Empresa" htmlFor="sol-empresa">
                       <Select id="sol-empresa" value={newSolicitud.empresa} onChange={(e) => setNewSolicitud({...newSolicitud, empresa: e.target.value})}>
                         {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
@@ -7966,13 +7967,13 @@ const App = () => {
                     </CampoUI>
                   )}
                   {esTipoValorUnico(newSolicitud.tipo) && (
-                    <CampoUI label={`${newSolicitud.tipo === 'Comisión' ? 'Valor de la Comisión' : 'Valor Solicitado'} (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} htmlFor="sol-valor">
-                      <Input id="sol-valor" type="number" placeholder={`${newSolicitud.tipo === 'Comisión' ? 'Valor de la Comisión' : 'Valor Solicitado'} (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} />
+                    <CampoUI label={`${newSolicitud.tipo === 'Comisión' ? 'Valor de la Comisión' : 'Valor Solicitado'} (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} htmlFor="sol-valor">
+                      <Input id="sol-valor" type="number" placeholder={`${newSolicitud.tipo === 'Comisión' ? 'Valor de la Comisión' : 'Valor Solicitado'} (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} />
                     </CampoUI>
                   )}
                   {newSolicitud.tipo === 'Legalización' && (
-                    <CampoUI label={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} htmlFor="sol-anticipo">
-                      <Input id="sol-anticipo" type="number" placeholder={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} disabled={newSolicitud.anticipoIds.length > 0} value={newSolicitud.valorAnticipoOriginal} onChange={(e) => setNewSolicitud({...newSolicitud, valorAnticipoOriginal: e.target.value})} />
+                    <CampoUI label={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} htmlFor="sol-anticipo">
+                      <Input id="sol-anticipo" type="number" placeholder={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} disabled={newSolicitud.anticipoIds.length > 0} value={newSolicitud.valorAnticipoOriginal} onChange={(e) => setNewSolicitud({...newSolicitud, valorAnticipoOriginal: e.target.value})} />
                     </CampoUI>
                   )}
                   {/* Pago a Tercero: la moneda del pago se elige aparte — no depende de la empresa
@@ -8154,7 +8155,7 @@ const App = () => {
 
                       {newSolicitud.documentos.length > 0 && (
                         <p className="m-0 text-right text-sm font-bold">
-                          Total: {formatMoney(newSolicitud.documentos.reduce((sum, d) => sum + (parseFloat(d.valor) || 0), 0), user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)}
+                          Total: {formatMoney(newSolicitud.documentos.reduce((sum, d) => sum + (parseFloat(d.valor) || 0), 0), user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)}
                         </p>
                       )}
                     </div>
