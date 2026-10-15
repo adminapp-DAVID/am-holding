@@ -7538,10 +7538,6 @@ const App = () => {
             Nombre, Email, Rol, Empresa, Cargo, Fecha de Ingreso y Tipo de Vinculación NO son
             editables desde acá — esos siguen siendo responsabilidad de Administrador/Coordinadora. */}
         {currentView === 'mi-perfil' && (() => {
-          const inputStyle = { padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', width: '100%' };
-          const labelStyle = { display: 'block', color: '#221E15', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 'bold' };
-          const readOnlyStyle = { ...inputStyle, backgroundColor: '#EFEBE0', color: '#514A39' };
-
           const cumpleanosEsteMesTodos = colaboradoresPublico
             .filter(c => c.fecha_nacimiento)
             .map(c => ({ ...c, diaCumple: parseInt(c.fecha_nacimiento.substring(8, 10), 10), mesCumple: parseInt(c.fecha_nacimiento.substring(5, 7), 10) }))
@@ -7549,179 +7545,188 @@ const App = () => {
             .sort((a, b) => a.diaCumple - b.diaCumple);
 
           if (!miPerfilForm) {
-            return <p style={{ color: '#8F8877' }}>Cargando tu perfil...</p>;
+            return <p className="m-0 inline-flex items-center gap-2 text-sm text-muted-foreground"><Loader2 size={16} className="animate-spin" /> Cargando tu perfil...</p>;
           }
 
+          // Etapa 3 del sistema de diseño: misma lógica; solo cambia la presentación.
+          const seccion = (titulo, contenido, extra) => (
+            <section className="flex flex-col gap-3">
+              <h3 className="m-0 border-0 border-b border-solid border-border pb-2 text-sm font-bold">{titulo}</h3>
+              {extra}
+              {contenido}
+            </section>
+          );
+          const grilla = 'grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]';
+          const soloLectura = 'bg-muted text-muted-foreground disabled:opacity-100';
+
           return (
-            <div>
+            <div className="flex flex-col gap-6">
               {cumpleanosEsteMesTodos.length > 0 && (
-                <div style={{ backgroundColor: '#FFFFFF', padding: '1.5rem 2rem', borderRadius: '10px', border: '1px solid #E6E0D2', borderLeft: '4px solid #C4A747', marginBottom: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
-                  <h2 style={{ color: '#C4A747', margin: '0 0 1rem 0', fontSize: '1.1rem' }}>🎂 Cumpleaños de {nombresMeses[new Date().getMonth()]}</h2>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
+                <Card className="gap-3 border-l-4 border-l-primary px-0 py-5">
+                  <CardHeader className="sm:px-7">
+                    <CardTitle>🎂 Cumpleaños de {nombresMeses[new Date().getMonth()]}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex flex-wrap gap-3 sm:px-7">
                     {cumpleanosEsteMesTodos.map(c => (
-                      <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '20px', padding: '0.5rem 1rem 0.5rem 0.5rem' }}>
+                      <div key={c.id} className="flex items-center gap-2 rounded-full border border-solid border-border bg-background py-1.5 pl-1.5 pr-4">
                         <ColaboradorAvatar foto={c.foto_url} nombre={c.nombre} size={28} />
-                        <span style={{ color: '#221E15', fontSize: '0.85rem' }}>{c.nombre} — día {c.diaCumple}</span>
+                        <span className="text-sm">{c.nombre} — día {c.diaCumple}</span>
                       </div>
                     ))}
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
               )}
 
-              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
-                <h2 style={{ color: '#C4A747', margin: '0 0 1.5rem 0' }}>🙋 Mi Perfil</h2>
+              <Card className="gap-6 px-0 py-6">
+                <CardHeader className="sm:px-7">
+                  <CardTitle className="text-lg">🙋 Mi Perfil</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-6 sm:px-7">
+                  {seccion('Datos de la organización', (
+                    <div className={grilla}>
+                      <CampoUI label="Nombre Completo" htmlFor="mp-nombre"><Input id="mp-nombre" value={miPerfilForm.nombre} disabled className={soloLectura} /></CampoUI>
+                      <CampoUI label="Email" htmlFor="mp-email"><Input id="mp-email" type="email" value={miPerfilForm.email} disabled className={soloLectura} /></CampoUI>
+                      <CampoUI label="Rol" htmlFor="mp-rol"><Input id="mp-rol" value={miPerfilForm.rol} disabled className={soloLectura} /></CampoUI>
+                      <CampoUI label="Empresa" htmlFor="mp-empresa"><Input id="mp-empresa" value={miPerfilForm.empresa} disabled className={soloLectura} /></CampoUI>
+                      <CampoUI label="Cargo / Puesto" htmlFor="mp-cargo"><Input id="mp-cargo" value={miPerfilForm.cargo} disabled className={soloLectura} /></CampoUI>
+                      <CampoUI label="Fecha de Ingreso" htmlFor="mp-ingreso"><Input id="mp-ingreso" value={miPerfilForm.fechaIngreso} disabled className={soloLectura} /></CampoUI>
+                      <CampoUI label="Tipo de Vinculación" htmlFor="mp-vinculacion"><Input id="mp-vinculacion" value={miPerfilForm.tipoVinculacion} disabled className={soloLectura} /></CampoUI>
+                    </div>
+                  ), <p className="m-0 text-xs text-muted-foreground">Estos los administra Coordinadora Administrativa o Administrador — si algo está mal, avísales.</p>)}
 
-                <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Datos de la organización</h3>
-                <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>Estos los administra Coordinadora Administrativa o Administrador — si algo está mal, avísales.</p>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-                  <div><label style={labelStyle}>Nombre Completo</label><input type="text" value={miPerfilForm.nombre} disabled style={readOnlyStyle} /></div>
-                  <div><label style={labelStyle}>Email</label><input type="email" value={miPerfilForm.email} disabled style={readOnlyStyle} /></div>
-                  <div><label style={labelStyle}>Rol</label><input type="text" value={miPerfilForm.rol} disabled style={readOnlyStyle} /></div>
-                  <div><label style={labelStyle}>Empresa</label><input type="text" value={miPerfilForm.empresa} disabled style={readOnlyStyle} /></div>
-                  <div><label style={labelStyle}>Cargo / Puesto</label><input type="text" value={miPerfilForm.cargo} disabled style={readOnlyStyle} /></div>
-                  <div><label style={labelStyle}>Fecha de Ingreso</label><input type="text" value={miPerfilForm.fechaIngreso} disabled style={readOnlyStyle} /></div>
-                  <div><label style={labelStyle}>Tipo de Vinculación</label><input type="text" value={miPerfilForm.tipoVinculacion} disabled style={readOnlyStyle} /></div>
-                </div>
-
-                <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Datos personales</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'auto repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '2rem', alignItems: 'end' }}>
-                  <div style={{ textAlign: 'center' }}>
-                    <label style={labelStyle}>Foto</label>
-                    <ColaboradorAvatar foto={miPerfilForm.foto} nombre={miPerfilForm.nombre} size={64} style={{ marginBottom: '0.5rem' }} />
-                    <input type="file" accept="image/*" disabled={subiendoMiArchivo === 'foto'} onChange={handleMiPerfilFoto} style={{ fontSize: '0.75rem', maxWidth: '140px' }} />
-                    {miPerfilForm.foto && <button type="button" onClick={handleMiPerfilQuitarFoto} style={{ display: 'block', margin: '0.35rem auto 0', background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '0.75rem' }}>Quitar foto</button>}
-                    {subiendoMiArchivo === 'foto' && <p style={{ color: '#8F8877', fontSize: '0.75rem', margin: '0.35rem 0 0 0' }}>Subiendo...</p>}
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Tipo de Documento</label>
-                    <SelectTipoDocumento value={miPerfilForm.tipoDocumento} placeholder="Seleccionar" onChange={(v) => setMiPerfilForm({ ...miPerfilForm, tipoDocumento: v })} style={inputStyle} />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Número de Documento</label>
-                    <input type="text" placeholder="Solo números" value={miPerfilForm.cedula} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, cedula: e.target.value })} style={inputStyle} />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Teléfono</label>
-                    <input type="text" placeholder="Teléfono" value={miPerfilForm.telefono} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, telefono: e.target.value })} style={inputStyle} />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Fecha de Nacimiento</label>
-                    <input type="date" value={miPerfilForm.fechaNacimiento} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, fechaNacimiento: e.target.value })} style={inputStyle} />
-                  </div>
-                </div>
-
-                <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Funciones</h3>
-                <div style={{ marginBottom: '2rem' }}>
-                  <label style={labelStyle}>Funciones (para la Cuenta de Cobro)</label>
-                  <textarea placeholder="Ej: Coordinar estrategias en el desarrollo de los proyectos deportivos asignados." value={miPerfilForm.funciones} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, funciones: e.target.value })} rows={2} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
-                  <p style={{ color: '#8F8877', fontSize: '0.75rem', margin: '0.35rem 0 0 0' }}>Se usa como el texto entre paréntesis del PDF de Cuenta de Cobro — se guarda una sola vez y se reutiliza cada mes.</p>
-                </div>
-
-                <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Datos bancarios (para consignación y Cuenta de Cobro)</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-                  <div>
-                    <label style={labelStyle}>Banco</label>
-                    <CampoBanco codigo={miPerfilForm.codigoBanco} texto={miPerfilForm.banco} onChange={({ codigo, texto }) => setMiPerfilForm({ ...miPerfilForm, codigoBanco: codigo, banco: texto })} style={inputStyle} />
-                    {!miPerfilForm.codigoBanco && miPerfilForm.banco && <p style={{ color: '#C4622D', fontSize: '0.75rem', margin: '0.35rem 0 0 0' }}>Antes: "{miPerfilForm.banco}" — elige el banco de la lista</p>}
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Tipo de Cuenta</label>
-                    <select value={miPerfilForm.tipoCuentaBancaria} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, tipoCuentaBancaria: e.target.value })} style={inputStyle}>
-                      <option value="">Seleccionar</option>
-                      <option value="Ahorros">Ahorros</option>
-                      <option value="Corriente">Corriente</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Número de Cuenta</label>
-                    <input type="text" value={miPerfilForm.numeroCuenta} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, numeroCuenta: e.target.value })} style={inputStyle} />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Titular de la Cuenta</label>
-                    <input type="text" placeholder="Si es distinto a tu nombre" value={miPerfilForm.titularCuenta} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, titularCuenta: e.target.value })} style={inputStyle} />
-                  </div>
-                </div>
-
-                <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Contacto de emergencia y salud</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-                  <div>
-                    <label style={labelStyle}>Nombre Contacto de Emergencia</label>
-                    <input type="text" value={miPerfilForm.contactoEmergenciaNombre} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, contactoEmergenciaNombre: e.target.value })} style={inputStyle} />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Teléfono Contacto de Emergencia</label>
-                    <input type="text" value={miPerfilForm.contactoEmergenciaTelefono} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, contactoEmergenciaTelefono: e.target.value })} style={inputStyle} />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>EPS</label>
-                    <input type="text" value={miPerfilForm.eps} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, eps: e.target.value })} style={inputStyle} />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>ARL</label>
-                    <input type="text" value={miPerfilForm.arl} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, arl: e.target.value })} style={inputStyle} />
-                  </div>
-                </div>
-
-                <h3 style={{ color: '#221E15', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>Documentos</h3>
-                <p style={{ color: '#8F8877', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>Se guardan en un almacenamiento privado — solo tú, Administrador y Coordinadora Administrativa pueden verlos.</p>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-                  {['documentoCedula', 'documentoPasaporte'].map(campo => (
-                    <div key={campo} style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem' }}>
-                      <label style={labelStyle}>{campo === 'documentoCedula' ? 'Cédula' : 'Pasaporte'}</label>
-                      {miPerfilForm[campo] ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                          <span style={{ color: '#2F9E52', fontSize: '0.85rem' }}>📎 Archivo cargado</span>
-                          <button type="button" onClick={() => handleMiPerfilVerDocumento(miPerfilForm[campo])} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C63D1', fontSize: '0.8rem', textDecoration: 'underline' }}>Ver</button>
-                          <button type="button" onClick={() => handleMiPerfilEliminarDocumento(campo)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '0.8rem' }}>Quitar</button>
-                        </div>
-                      ) : (
-                        <input type="file" accept=".pdf,image/*" disabled={subiendoMiArchivo === campo} onChange={(e) => handleMiPerfilDocumento(e, campo)} style={{ fontSize: '0.75rem', width: '100%' }} />
-                      )}
-                      {subiendoMiArchivo === campo && <p style={{ color: '#8F8877', fontSize: '0.75rem', margin: '0.5rem 0 0 0' }}>Subiendo...</p>}
+                  {seccion('Datos personales', (
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                      <div className="flex flex-col items-center gap-2">
+                        <Label>Foto</Label>
+                        <ColaboradorAvatar foto={miPerfilForm.foto} nombre={miPerfilForm.nombre} size={64} />
+                        <label className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'text-xs', subiendoMiArchivo === 'foto' && 'pointer-events-none opacity-50')}>
+                          {subiendoMiArchivo === 'foto' ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />} {subiendoMiArchivo === 'foto' ? 'Subiendo...' : (miPerfilForm.foto ? 'Cambiar' : 'Subir foto')}
+                          <input type="file" accept="image/*" disabled={subiendoMiArchivo === 'foto'} onChange={handleMiPerfilFoto} className="hidden" />
+                        </label>
+                        {miPerfilForm.foto && <Button variant="link" size="sm" onClick={handleMiPerfilQuitarFoto} className="h-auto p-0 text-xs text-destructive">Quitar foto</Button>}
+                      </div>
+                      <div className={cn(grilla, 'flex-1')}>
+                        <CampoUI label="Tipo de Documento">
+                          <SelectTipoDocumento value={miPerfilForm.tipoDocumento} placeholder="Seleccionar" onChange={(v) => setMiPerfilForm({ ...miPerfilForm, tipoDocumento: v })} style={estiloCampoUI} />
+                        </CampoUI>
+                        <CampoUI label="Número de Documento" htmlFor="mp-cedula">
+                          <Input id="mp-cedula" placeholder="Solo números" value={miPerfilForm.cedula} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, cedula: e.target.value })} />
+                        </CampoUI>
+                        <CampoUI label="Teléfono" htmlFor="mp-telefono">
+                          <Input id="mp-telefono" placeholder="Teléfono" value={miPerfilForm.telefono} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, telefono: e.target.value })} />
+                        </CampoUI>
+                        <CampoUI label="Fecha de Nacimiento" htmlFor="mp-nacimiento">
+                          <Input id="mp-nacimiento" type="date" value={miPerfilForm.fechaNacimiento} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, fechaNacimiento: e.target.value })} />
+                        </CampoUI>
+                      </div>
                     </div>
                   ))}
-                </div>
 
-                <button onClick={handleGuardarMiPerfil} disabled={guardandoMiPerfil} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoMiPerfil ? 'not-allowed' : 'pointer', opacity: guardandoMiPerfil ? 0.6 : 1 }}>
-                  {guardandoMiPerfil ? '⏳ Guardando...' : 'Guardar Cambios'}
-                </button>
-              </div>
+                  {seccion('Funciones', (
+                    <CampoUI label="Funciones (para la Cuenta de Cobro)" htmlFor="mp-funciones">
+                      <Textarea id="mp-funciones" placeholder="Ej: Coordinar estrategias en el desarrollo de los proyectos deportivos asignados." value={miPerfilForm.funciones} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, funciones: e.target.value })} rows={2} />
+                      <p className="m-0 text-xs text-muted-foreground">Se usa como el texto entre paréntesis del PDF de Cuenta de Cobro — se guarda una sola vez y se reutiliza cada mes.</p>
+                    </CampoUI>
+                  ))}
+
+                  {seccion('Datos bancarios (para consignación y Cuenta de Cobro)', (
+                    <div className={grilla}>
+                      <CampoUI label="Banco">
+                        <CampoBanco codigo={miPerfilForm.codigoBanco} texto={miPerfilForm.banco} onChange={({ codigo, texto }) => setMiPerfilForm({ ...miPerfilForm, codigoBanco: codigo, banco: texto })} style={estiloCampoUI} />
+                        {!miPerfilForm.codigoBanco && miPerfilForm.banco && <p className="m-0 text-xs text-[#C4622D]">Antes: "{miPerfilForm.banco}" — elige el banco de la lista</p>}
+                      </CampoUI>
+                      <CampoUI label="Tipo de Cuenta" htmlFor="mp-tipo-cuenta">
+                        <Select id="mp-tipo-cuenta" value={miPerfilForm.tipoCuentaBancaria} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, tipoCuentaBancaria: e.target.value })}>
+                          <option value="">Seleccionar</option>
+                          <option value="Ahorros">Ahorros</option>
+                          <option value="Corriente">Corriente</option>
+                        </Select>
+                      </CampoUI>
+                      <CampoUI label="Número de Cuenta" htmlFor="mp-numero-cuenta">
+                        <Input id="mp-numero-cuenta" value={miPerfilForm.numeroCuenta} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, numeroCuenta: e.target.value })} />
+                      </CampoUI>
+                      <CampoUI label="Titular de la Cuenta" htmlFor="mp-titular">
+                        <Input id="mp-titular" placeholder="Si es distinto a tu nombre" value={miPerfilForm.titularCuenta} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, titularCuenta: e.target.value })} />
+                      </CampoUI>
+                    </div>
+                  ))}
+
+                  {seccion('Contacto de emergencia y salud', (
+                    <div className={grilla}>
+                      <CampoUI label="Nombre Contacto de Emergencia" htmlFor="mp-emergencia-nombre">
+                        <Input id="mp-emergencia-nombre" value={miPerfilForm.contactoEmergenciaNombre} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, contactoEmergenciaNombre: e.target.value })} />
+                      </CampoUI>
+                      <CampoUI label="Teléfono Contacto de Emergencia" htmlFor="mp-emergencia-telefono">
+                        <Input id="mp-emergencia-telefono" value={miPerfilForm.contactoEmergenciaTelefono} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, contactoEmergenciaTelefono: e.target.value })} />
+                      </CampoUI>
+                      <CampoUI label="EPS" htmlFor="mp-eps">
+                        <Input id="mp-eps" value={miPerfilForm.eps} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, eps: e.target.value })} />
+                      </CampoUI>
+                      <CampoUI label="ARL" htmlFor="mp-arl">
+                        <Input id="mp-arl" value={miPerfilForm.arl} onChange={(e) => setMiPerfilForm({ ...miPerfilForm, arl: e.target.value })} />
+                      </CampoUI>
+                    </div>
+                  ))}
+
+                  {seccion('Documentos', (
+                    <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
+                      {['documentoCedula', 'documentoPasaporte'].map(campo => (
+                        <div key={campo} className="flex flex-col gap-2 rounded-lg border border-solid border-border bg-background p-4">
+                          <Label>{campo === 'documentoCedula' ? 'Cédula' : 'Pasaporte'}</Label>
+                          {miPerfilForm[campo] ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="flex items-center gap-1 text-sm text-success"><Paperclip size={14} /> Archivo cargado</span>
+                              <Button variant="outline" size="sm" onClick={() => handleMiPerfilVerDocumento(miPerfilForm[campo])}><Eye size={14} /> Ver</Button>
+                              <Button variant="ghost" size="sm" onClick={() => handleMiPerfilEliminarDocumento(campo)} className="text-destructive"><Trash2 size={14} /> Quitar</Button>
+                            </div>
+                          ) : (
+                            <Input type="file" accept=".pdf,image/*" aria-label={campo === 'documentoCedula' ? 'Cédula' : 'Pasaporte'} disabled={subiendoMiArchivo === campo} onChange={(e) => handleMiPerfilDocumento(e, campo)} className={claseInputArchivo} />
+                          )}
+                          {subiendoMiArchivo === campo && <p className="m-0 inline-flex items-center gap-1 text-xs text-muted-foreground"><Loader2 size={12} className="animate-spin" /> Subiendo...</p>}
+                        </div>
+                      ))}
+                    </div>
+                  ), <p className="m-0 text-xs text-muted-foreground">Se guardan en un almacenamiento privado — solo tú, Administrador y Coordinadora Administrativa pueden verlos.</p>)}
+
+                  <Button size="lg" onClick={handleGuardarMiPerfil} disabled={guardandoMiPerfil} className={cn(guardandoMiPerfil && 'cursor-wait')}>
+                    {guardandoMiPerfil ? <><Loader2 className="animate-spin" /> Guardando...</> : <><Check /> Guardar Cambios</>}
+                  </Button>
+                </CardContent>
+              </Card>
 
               {/* SEGURIDAD — cambiar la contraseña de inicio de sesión, sin depender de Admin/Coordinadora */}
-              <div style={{ backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '10px', border: '1px solid #E6E0D2', marginTop: '2rem', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
-                <h2 style={{ color: '#C4A747', margin: '0 0 0.5rem 0' }}>🔒 Seguridad</h2>
-
-                {!mostrarCambiarPassword ? (
-                  <>
-                    <p style={{ color: '#6B6458', fontSize: '0.9rem', margin: '0 0 1rem 0' }}>Cambia la contraseña con la que inicias sesión.</p>
-                    <button onClick={() => setMostrarCambiarPassword(true)} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Cambiar mi contraseña</button>
-                  </>
-                ) : (
-                  <>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                      <div>
-                        <label style={labelStyle}>Contraseña actual</label>
-                        <input type="password" value={passwordActual} onChange={(e) => setPasswordActual(e.target.value)} style={inputStyle} />
+              <Card className="gap-4 px-0 py-6">
+                <CardHeader className="sm:px-7">
+                  <CardTitle className="text-lg">🔒 Seguridad</CardTitle>
+                  {!mostrarCambiarPassword && <CardDescription>Cambia la contraseña con la que inicias sesión.</CardDescription>}
+                </CardHeader>
+                <CardContent className="flex flex-col gap-4 sm:px-7">
+                  {!mostrarCambiarPassword ? (
+                    <Button variant="secondary" onClick={() => setMostrarCambiarPassword(true)} className="self-start">Cambiar mi contraseña</Button>
+                  ) : (
+                    <>
+                      <div className={grilla}>
+                        <CampoUI label="Contraseña actual" htmlFor="mp-pass-actual">
+                          <Input id="mp-pass-actual" type="password" autoComplete="current-password" value={passwordActual} onChange={(e) => setPasswordActual(e.target.value)} />
+                        </CampoUI>
+                        <CampoUI label="Nueva contraseña" htmlFor="mp-pass-nueva">
+                          <Input id="mp-pass-nueva" type="password" autoComplete="new-password" value={passwordNueva} onChange={(e) => setPasswordNueva(e.target.value)} />
+                        </CampoUI>
+                        <CampoUI label="Confirmar nueva contraseña" htmlFor="mp-pass-confirmar">
+                          <Input id="mp-pass-confirmar" type="password" autoComplete="new-password" value={passwordConfirmar} onChange={(e) => setPasswordConfirmar(e.target.value)} />
+                        </CampoUI>
                       </div>
-                      <div>
-                        <label style={labelStyle}>Nueva contraseña</label>
-                        <input type="password" value={passwordNueva} onChange={(e) => setPasswordNueva(e.target.value)} style={inputStyle} />
+                      <p className="m-0 text-xs text-muted-foreground">Mínimo 6 caracteres.</p>
+                      <div className="flex gap-3">
+                        <Button onClick={handleCambiarPassword} disabled={cambiandoPassword} className={cn('flex-1', cambiandoPassword && 'cursor-wait')}>
+                          {cambiandoPassword ? <><Loader2 className="animate-spin" /> Cambiando...</> : 'Guardar nueva contraseña'}
+                        </Button>
+                        <Button variant="outline" onClick={() => { setMostrarCambiarPassword(false); setPasswordActual(''); setPasswordNueva(''); setPasswordConfirmar(''); }}>Cancelar</Button>
                       </div>
-                      <div>
-                        <label style={labelStyle}>Confirmar nueva contraseña</label>
-                        <input type="password" value={passwordConfirmar} onChange={(e) => setPasswordConfirmar(e.target.value)} style={inputStyle} />
-                      </div>
-                    </div>
-                    <p style={{ color: '#8F8877', fontSize: '0.75rem', margin: '0 0 1rem 0' }}>Mínimo 6 caracteres.</p>
-                    <div style={{ display: 'flex', gap: '1rem' }}>
-                      <button onClick={handleCambiarPassword} disabled={cambiandoPassword} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: cambiandoPassword ? 'not-allowed' : 'pointer', opacity: cambiandoPassword ? 0.6 : 1 }}>
-                        {cambiandoPassword ? '⏳ Cambiando...' : 'Guardar nueva contraseña'}
-                      </button>
-                      <button onClick={() => { setMostrarCambiarPassword(false); setPasswordActual(''); setPasswordNueva(''); setPasswordConfirmar(''); }} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#E6E0D2', color: '#6B6458', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Cancelar</button>
-                    </div>
-                  </>
-                )}
-              </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           );
         })()}
