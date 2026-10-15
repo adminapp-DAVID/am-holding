@@ -11075,6 +11075,11 @@ const App = () => {
                   {puedeGestionarSolicitudOrigen && <p className="m-0 -mt-2 text-xs text-muted-foreground">Al guardar se actualiza la solicitud y también el concepto de su registro en Finanzas.</p>}
                   <div className="flex flex-wrap gap-2">
                     <Button variant="outline" onClick={() => handleVerSoportesSolicitud(so)}><Paperclip size={14} /> Ver soportes</Button>
+                    {/* Mismo Excel del botón de Solicitudes (Legalización / Reembolso): no es un soporte
+                        guardado, se arma al momento con los datos actuales de la solicitud. */}
+                    {['Legalización', 'Reembolso', 'Legalización T. Pro'].includes(so.tipo) && (
+                      <Button variant="outline" onClick={() => handleGenerarExcel(so)} className="text-success"><FileSpreadsheet size={14} /> Descargar Excel</Button>
+                    )}
                     <div className="flex-1" />
                     <Button variant="outline" disabled={verSolicitudOrigen.guardando} onClick={() => setVerSolicitudOrigen(null)}>Cerrar</Button>
                     {puedeGestionarSolicitudOrigen && (
