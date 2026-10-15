@@ -1008,20 +1008,34 @@ const App = () => {
         alert('❌ No se pudo eliminar: ' + errorOtras.message);
         return;
       }
-      const esCompartido = (otras || []).some(o => o.id !== soporte.id);
-      // Primero la fila (con .select para confirmar que RLS sí la borró: sin él, un bloqueo
+      // En Finanzas, un movimiento generado desde una Solicitud comparte soportes con ella: al
+      // eliminar se quita el archivo de AMBOS (movimiento y solicitud original), si no volvería
+      // a aparecer como "de la solicitud original".
+      const ctxDueños = verSoportesContexto;
+      const filtroDueños = ctxDueños?.solicitudOrigenId
+        ? `and(entidad_tipo.eq.${ctxDueños.entidadTipo},entidad_id.eq.${ctxDueños.entidadId}),and(entidad_tipo.eq.solicitud,entidad_id.eq.${ctxDueños.solicitudOrigenId})`
+        : null;
+      // Primero la(s) fila(s) (con .select para confirmar que RLS sí las borró: sin él, un bloqueo
       // devuelve error null y 0 filas) y solo después el archivo, para no dejar una fila
       // apuntando a un archivo ya borrado si la base rechaza el cambio.
-      const { data: borradas, error: errorDelete } = await supabase.from('soportes').delete().eq('id', soporte.id).select('id');
+      const { data: borradas, error: errorDelete } = filtroDueños
+        ? await supabase.from('soportes').delete().eq('bucket_path', soporte.bucketPath).or(filtroDueños).select('id')
+        : await supabase.from('soportes').delete().eq('id', soporte.id).select('id');
       if (errorDelete || !borradas || borradas.length === 0) {
         console.error('Error eliminando soporte:', errorDelete);
         alert('❌ No se pudo eliminar: ' + (errorDelete?.message || 'no tienes permiso para borrar este soporte.'));
         return;
       }
+      const idsBorrados = new Set((borradas || []).map(b => b.id));
+      const esCompartido = (otras || []).some(o => !idsBorrados.has(o.id));
       if (!esCompartido) {
         await supabase.storage.from('soportes').remove([soporte.bucketPath]);
       }
-      setVerSoportes(prev => (prev || []).filter(s => s.id !== soporte.id));
+      setVerSoportes(prev => (prev || []).filter(s => (filtroDueños ? s.bucketPath !== soporte.bucketPath : s.id !== soporte.id)));
+      if (ctxDueños?.solicitudOrigenId) {
+        const conteoSol = await contarSoportesPorEntidad('solicitud', [ctxDueños.solicitudOrigenId]);
+        setSolicitudes(prev => prev.map(x => x.id === ctxDueños.solicitudOrigenId ? { ...x, cantidadSoportes: conteoSol[ctxDueños.solicitudOrigenId] || 0 } : x));
+      }
       const ctx = verSoportesContexto;
       if (ctx?.entidadTipo === 'solicitud' || ctx?.entidadTipo === 'gasto' || ctx?.entidadTipo === 'ingreso') {
         const mov = ctx.entidadTipo === 'gasto' ? gastos.find(x => x.id === ctx.entidadId) : ctx.entidadTipo === 'ingreso' ? ingresos.find(x => x.id === ctx.entidadId) : null;
@@ -6367,8 +6381,7 @@ const App = () => {
   // directamente esa URL; si tiene soportes reales subidos a Storage, se abre el modal compartido.
   // Ver soportes de un Gasto/Ingreso: si es un registro histórico con link de Drive, se abre
   // directamente esa URL; si tiene soportes reales subidos a Storage, se abre el modal compartido.
-  // Si viene de una Solicitud pagada, también se muestran TODOS los soportes de esa solicitud
-  // (de solo lectura aquí: se gestionan desde Solicitudes).
+  // Si viene de una Solicitud pagada, también se muestran TODOS los soportes de esa solicitud.
   const verSoportesMovimiento = async (entidadTipo, m) => {
     if (m.soporteDriveLink) { window.open(m.soporteDriveLink, '_blank'); return; }
     const [{ data, error }, { data: deSol, error: errorSol }] = await Promise.all([
@@ -6382,7 +6395,9 @@ const App = () => {
     const rutasPropias = new Set(propios.map(p => p.bucketPath));
     const deSolicitud = (deSol || []).filter(r => !rutasPropias.has(r.bucket_path))
       .map(r => ({ id: r.id, nombre: r.nombre_original, tamaño: (r.tamano_kb || 0) * 1024, bucketPath: r.bucket_path, deSolicitud: true }));
-    setVerSoportesContexto({ entidadTipo, entidadId: m.id, puedeEliminar: user?.rol === 'Administrador' || user?.rol === 'Coordinadora Administrativa' });
+    // Admin, Coordinadora y Gerente pueden eliminar soportes desde Finanzas (también los de la
+    // solicitud original: se quitan de ambos lados).
+    setVerSoportesContexto({ entidadTipo, entidadId: m.id, solicitudOrigenId: m.solicitudOrigenId || null, puedeEliminar: ['Administrador', 'Coordinadora Administrativa', 'Gerente'].includes(user?.rol) });
     setVerSoportes([...propios, ...deSolicitud]);
   };
   const handleVerSoportesGasto = (g) => verSoportesMovimiento('gasto', g);
@@ -11091,7 +11106,7 @@ const App = () => {
                         <Button variant="outline" onClick={() => handlePreviewSoporte(soporte)} disabled={cargandoPreviewSoporte} className="flex-1"><Eye size={16} /> Ver</Button>
                       )}
                       <Button onClick={() => handleDownloadSoporte(soporte)} className="flex-1"><FileDown size={16} /> Descargar</Button>
-                      {verSoportesContexto?.puedeEliminar && soporte.id && !soporte.deSolicitud && (
+                      {verSoportesContexto?.puedeEliminar && soporte.id && (
                         <Button variant="outline" size="icon" onClick={() => handleEliminarUnSoporte(soporte)} disabled={eliminandoSoporteId === soporte.id} title="Eliminar este soporte" aria-label="Eliminar este soporte" className="text-destructive">
                           {eliminandoSoporteId === soporte.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
                         </Button>
