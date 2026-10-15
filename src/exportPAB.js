@@ -153,7 +153,7 @@ export const motivoPresupuestoNoPAB = (i) => {
   if (i.tipo === TIPO_PROVEEDOR_PRESUPUESTO) return forma === 'PAB' ? null : 'sin forma de pago: elige "PAB" en Gestión de Conceptos si se le transfiere a una cuenta';
   return forma ? 'sin tipo: elige Nómina, Prestación de Servicio o Proveedor / servicio en Gestión de Conceptos' : 'sin tipo ni forma de pago: defínelos en Presupuesto → Gestión de Conceptos';
 };
-const TIPOS_SOLICITUD_PAB = { Reembolso: 'proveedores', Anticipo: 'proveedores', 'Pago a Tercero': 'terceros' };
+const TIPOS_SOLICITUD_PAB = { Reembolso: 'proveedores', Anticipo: 'proveedores', Comisión: 'proveedores', 'Pago a Tercero': 'terceros' };
 
 // Devuelve los candidatos: { clave, origen, entidadTipo, entidadId, anio, mes, etiqueta,
 // tipoPago, beneficiario, valor, referencia, bloqueos[] } — un bloqueo es un motivo que impide
@@ -216,7 +216,7 @@ export const construirCandidatosPAB = ({
           ? beneficiarioDeTercero(terceros.find(t => t.id === s.terceroId), s.terceroInfo)
           : beneficiarioDeUsuario(usuarios.find(u => u.id === s.responsableId)),
         valor: s.tipo === 'Reembolso' ? s.totalCalculado : s.valor,
-        referencia: referenciaPAB({ Reembolso: 'REE', Anticipo: 'ANT', 'Pago a Tercero': 'TER' }[s.tipo], s.id),
+        referencia: referenciaPAB({ Reembolso: 'REE', Anticipo: 'ANT', Comisión: 'COM', 'Pago a Tercero': 'TER' }[s.tipo], s.id),
         bloqueos,
         meta: { tipo: s.tipo, detalle: s.detalle || '' }
       });

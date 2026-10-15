@@ -380,7 +380,9 @@ const App = () => {
 
   const empresas = ['AM SPORTS GROUP SAS', 'PRO INVESTMENTS GLOBAL SAS', 'PRONOVA CAPITAL SAS', 'FOR SEVEN MEDIA SAS', 'ARKO'];
   const estadosSolicitud = ['Pendiente', 'Aprobado', 'Devuelto', 'Pagado', 'Legalizado'];
-  const tiposSolicitud = ['Anticipo', 'Legalización', 'Reembolso', 'Pago a Tercero', 'Legalización T. Pro'];
+  const tiposSolicitud = ['Anticipo', 'Legalización', 'Reembolso', 'Pago a Tercero', 'Legalización T. Pro', 'Comisión'];
+  // Tipos con un solo valor digitado (no por ítems): Anticipo y Comisión.
+  const esTipoValorUnico = (tipo) => tipo === 'Anticipo' || tipo === 'Comisión';
   const tiposSoporte = ['Factura/Electrónica', 'Recibo/Entradas', 'Consignación', 'Cuenta de Cobro', 'Efectivo/T.Personal', 'Otro'];
 
   // "Legalización T. Pro": gastos pagados con efectivo o tarjeta personal del colaborador (no hay
@@ -2463,13 +2465,19 @@ const App = () => {
       return;
     }
 
-    if (newSolicitud.tipo === 'Anticipo' && !newSolicitud.valor) {
-      alert('Ingresa valor solicitado');
+    if (esTipoValorUnico(newSolicitud.tipo) && !newSolicitud.valor) {
+      alert(newSolicitud.tipo === 'Comisión' ? 'Ingresa el valor de la comisión' : 'Ingresa valor solicitado');
       return;
     }
 
-    if (newSolicitud.tipo === 'Anticipo' && parseFloat(newSolicitud.valor) <= 0) {
-      alert('El valor solicitado debe ser mayor a cero');
+    if (esTipoValorUnico(newSolicitud.tipo) && parseFloat(newSolicitud.valor) <= 0) {
+      alert(newSolicitud.tipo === 'Comisión' ? 'El valor de la comisión debe ser mayor a cero' : 'El valor solicitado debe ser mayor a cero');
+      return;
+    }
+
+    // Comisión: el soporte (cuenta de cobro, factura, liquidación…) es obligatorio al crearla.
+    if (newSolicitud.tipo === 'Comisión' && !editingSolicitudId && soportesLegalizacionTemp.length === 0) {
+      alert('Adjunta al menos un soporte de la comisión');
       return;
     }
 
@@ -2614,7 +2622,7 @@ const App = () => {
         : 'Pendiente';
       const camposSolicitud = {
         fecha: newSolicitud.fecha,
-        valor: (newSolicitud.tipo === 'Anticipo' || newSolicitud.tipo === 'Pago a Tercero') ? (parseFloat(newSolicitud.valor) || 0) : 0,
+        valor: (esTipoValorUnico(newSolicitud.tipo) || newSolicitud.tipo === 'Pago a Tercero') ? (parseFloat(newSolicitud.valor) || 0) : 0,
         total_calculado: totalCalculado,
         detalle: newSolicitud.detalle.trim(),
         empresa_id: empresaId,
@@ -2852,14 +2860,14 @@ const App = () => {
   // Pago en Lote (Solicitudes): tipos que se pueden pagar juntos con un solo comprobante.
   // Reembolsos y Anticipos son pagos a colaboradores y SÍ se pueden combinar en un lote; los
   // Pagos a Tercero van siempre en un lote aparte (otra moneda/beneficiario externo).
-  const TIPOS_PAGO_LOTE_SOLICITUD = ['Reembolso', 'Anticipo', 'Pago a Tercero'];
+  const TIPOS_PAGO_LOTE_SOLICITUD = ['Reembolso', 'Anticipo', 'Comisión', 'Pago a Tercero'];
   const grupoPagoLote = (tipo) => (tipo === 'Pago a Tercero' ? 'terceros' : 'colaboradores');
   // Etiqueta para una lista de solicitudes del lote: "reembolsos", "anticipos", "pagos a
   // tercero" o, si se combinan, "reembolsos y anticipos".
   const etiquetaTipoLote = (tipos, plural) => {
     const unicos = [...new Set([].concat(tipos).filter(Boolean))];
-    const nombre = { Reembolso: ['reembolso', 'reembolsos'], Anticipo: ['anticipo', 'anticipos'], 'Pago a Tercero': ['pago a tercero', 'pagos a tercero'] };
-    if (unicos.length > 1) return 'reembolsos y anticipos';
+    const nombre = { Reembolso: ['reembolso', 'reembolsos'], Anticipo: ['anticipo', 'anticipos'], Comisión: ['comisión', 'comisiones'], 'Pago a Tercero': ['pago a tercero', 'pagos a tercero'] };
+    if (unicos.length > 1) return unicos.includes('Comisión') ? 'pagos a colaboradores' : 'reembolsos y anticipos';
     return (nombre[unicos[0]] || ['solicitud', 'solicitudes'])[plural ? 1 : 0];
   };
 
@@ -2873,7 +2881,7 @@ const App = () => {
 
   const calcularAccionFinanzasSolicitud = (s) => {
     if (s.tipo === 'Pago a Tercero') return { accion: 'gasto', monto: parseFloat(s.valor) || 0 };
-    if (s.tipo === 'Anticipo') return { accion: 'gasto', monto: parseFloat(s.valor) || 0 };
+    if (esTipoValorUnico(s.tipo)) return { accion: 'gasto', monto: parseFloat(s.valor) || 0 };
     if (s.tipo === 'Reembolso') return { accion: 'gasto', monto: s.totalCalculado || 0 };
     if (s.tipo === 'Legalización T. Pro') return { accion: 'gasto', monto: s.totalCalculado || 0 };
     if (s.tipo === 'Legalización') {
@@ -2923,6 +2931,7 @@ const App = () => {
         'Pago a Tercero': 'Generado automáticamente al marcar la Solicitud de Pago a Tercero como Pagado.',
         'Anticipo': 'Generado automáticamente al marcar la Solicitud de Anticipo como Pagado.',
         'Reembolso': 'Generado automáticamente al marcar la Solicitud de Reembolso como Pagado.',
+        'Comisión': 'Generado automáticamente al marcar la Solicitud de Comisión como Pagado.',
         'Legalización': accion === 'ingreso'
           ? 'Generado automáticamente: la Legalización quedó por debajo del anticipo original (el colaborador debe devolver la diferencia).'
           : 'Generado automáticamente: la Legalización superó el anticipo original (diferencia a reembolsar).'
@@ -3282,7 +3291,7 @@ const App = () => {
   };
 
   const totalSolicitudes = solicitudesUsuario.length;
-  const montoSolicitud = (s) => (s.tipo === 'Anticipo' || s.tipo === 'Pago a Tercero') ? parseFloat(s.valor) || 0 : s.totalCalculado || 0;
+  const montoSolicitud = (s) => (esTipoValorUnico(s.tipo) || s.tipo === 'Pago a Tercero') ? parseFloat(s.valor) || 0 : s.totalCalculado || 0;
   // Montos separados por moneda: sumar pesos y dólares directamente daría un número sin sentido.
   // "Pago a Tercero" tiene su propia moneda (independiente de la empresa que paga), así que se
   // agrupa por esa moneda en vez de la de la empresa.
@@ -3332,7 +3341,7 @@ const App = () => {
       let yPos = 20;
 
       doc.setFontSize(16);
-      doc.text(s.tipo === 'Anticipo' ? 'SOLICITUD DE ANTICIPO' : s.tipo === 'Legalización' ? 'LEGALIZACIÓN DE ANTICIPO' : s.tipo === 'Legalización T. Pro' ? 'LEGALIZACIÓN EFECTIVO/TARJETA PERSONAL' : 'REPORTE DE REEMBOLSO', pageWidth / 2, yPos, { align: 'center' });
+      doc.text(s.tipo === 'Anticipo' ? 'SOLICITUD DE ANTICIPO' : s.tipo === 'Comisión' ? 'SOLICITUD DE COMISIÓN' : s.tipo === 'Legalización' ? 'LEGALIZACIÓN DE ANTICIPO' : s.tipo === 'Legalización T. Pro' ? 'LEGALIZACIÓN EFECTIVO/TARJETA PERSONAL' : 'REPORTE DE REEMBOLSO', pageWidth / 2, yPos, { align: 'center' });
       yPos += 15;
 
       doc.setFontSize(10);
@@ -3343,7 +3352,7 @@ const App = () => {
       doc.text(`Concepto: ${s.detalle}`, pageWidth / 2, yPos);
       yPos += 12;
 
-      if (s.tipo !== 'Anticipo') {
+      if (!esTipoValorUnico(s.tipo)) {
         if (s.documentos && s.documentos.length > 0) {
           doc.setFontSize(11);
           doc.text('DOCUMENTOS', 20, yPos);
@@ -3370,8 +3379,8 @@ const App = () => {
 
       yPos += 5;
       doc.setFontSize(11);
-      const totalLabel = s.tipo === 'Anticipo' ? 'TOTAL SOLICITADO' : 'TOTAL';
-      const totalValue = s.tipo === 'Anticipo' ? formatMoneyByMoneda(s.valor, getMoneda(s.empresa)) : formatMoneyByMoneda(s.totalCalculado, getMoneda(s.empresa));
+      const totalLabel = esTipoValorUnico(s.tipo) ? 'TOTAL SOLICITADO' : 'TOTAL';
+      const totalValue = esTipoValorUnico(s.tipo) ? formatMoneyByMoneda(s.valor, getMoneda(s.empresa)) : formatMoneyByMoneda(s.totalCalculado, getMoneda(s.empresa));
       doc.text(`${totalLabel}: ${totalValue}`, 20, yPos);
 
       doc.save(`${s.tipo}-${s.id}.pdf`);
@@ -7507,7 +7516,7 @@ const App = () => {
                           <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{s.fecha}</TableCell>
                           {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <TableCell className="text-xs"><div className="flex items-center gap-2"><ColaboradorAvatar foto={colaboradoresPublico.find(c => c.id === s.responsableId)?.foto_url} nombre={colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre} size={22} />{colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—'}</div></TableCell>}
                           <TableCell className="whitespace-nowrap font-bold text-primary">{s.tipo}</TableCell>
-                          <TableCell className="whitespace-nowrap text-right font-bold text-success">{s.tipo === 'Pago a Tercero' ? formatMoneyByMoneda(parseFloat(s.valor) || 0, s.moneda || getMoneda(s.empresa)) : formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</TableCell>
+                          <TableCell className="whitespace-nowrap text-right font-bold text-success">{s.tipo === 'Pago a Tercero' ? formatMoneyByMoneda(parseFloat(s.valor) || 0, s.moneda || getMoneda(s.empresa)) : formatMoney(esTipoValorUnico(s.tipo) ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</TableCell>
                           <TableCell className="text-center"><Badge variant={estadoBadge(s.estado)}>{s.estado}</Badge></TableCell>
                         </TableRow>
                       ))}
@@ -7932,6 +7941,7 @@ const App = () => {
                     <option value="Legalización">Legalización</option>
                     <option value="Reembolso">Reembolso</option>
                     <option value="Pago a Tercero">Pago a Tercero</option>
+                    <option value="Comisión">Comisión</option>
                     {/* "Legalización T. Pro" (gastos pagados con efectivo/tarjeta personal): hoy
                         solo aplica a un colaborador — se ofrece en el desplegable para él, y se
                         mantiene visible si ya se está editando una solicitud de ese tipo (para
@@ -7955,9 +7965,9 @@ const App = () => {
                       </Select>
                     </CampoUI>
                   )}
-                  {newSolicitud.tipo === 'Anticipo' && (
-                    <CampoUI label={`Valor Solicitado (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} htmlFor="sol-valor">
-                      <Input id="sol-valor" type="number" placeholder={`Valor Solicitado (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} />
+                  {esTipoValorUnico(newSolicitud.tipo) && (
+                    <CampoUI label={`${newSolicitud.tipo === 'Comisión' ? 'Valor de la Comisión' : 'Valor Solicitado'} (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} htmlFor="sol-valor">
+                      <Input id="sol-valor" type="number" placeholder={`${newSolicitud.tipo === 'Comisión' ? 'Valor de la Comisión' : 'Valor Solicitado'} (${getMoneda(user.rol === 'Responsable' || user.rol === 'Gerente' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} />
                     </CampoUI>
                   )}
                   {newSolicitud.tipo === 'Legalización' && (
@@ -8167,6 +8177,16 @@ const App = () => {
                   </>
                 )}
 
+                {newSolicitud.tipo === 'Comisión' && !editingSolicitudId && (
+                  <ListaSoportesUI
+                    titulo="Soportes de la comisión * (PDFs e imágenes — se unen en un solo PDF)"
+                    inputProps={{ multiple: true, accept: 'application/pdf,image/*', onChange: handleAddSoporteLegalizacion }}
+                    archivos={soportesLegalizacionTemp}
+                    resumen={`Archivos cargados: ${soportesLegalizacionTemp.length} (se unirán en un solo PDF al guardar)`}
+                    onQuitar={handleRemoveSoporteLegalizacion}
+                  />
+                )}
+
                 {editingSolicitudId && (
                   <div className="flex flex-col gap-2 rounded-lg border border-solid border-border bg-background p-4">
                     <h3 className="m-0 flex items-center gap-1.5 text-sm font-bold text-[#6C63D1]"><Paperclip size={15} /> Agregar soporte(s) de los ítems nuevos / faltante</h3>
@@ -8349,7 +8369,7 @@ const App = () => {
                             </div>
                           )}
                         </TableCell>
-                        <TableCell className="whitespace-nowrap text-right font-bold text-success">{s.tipo === 'Pago a Tercero' ? formatMoneyByMoneda(parseFloat(s.valor) || 0, s.moneda || getMoneda(s.empresa)) : formatMoney(s.tipo === 'Anticipo' ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</TableCell>
+                        <TableCell className="whitespace-nowrap text-right font-bold text-success">{s.tipo === 'Pago a Tercero' ? formatMoneyByMoneda(parseFloat(s.valor) || 0, s.moneda || getMoneda(s.empresa)) : formatMoney(esTipoValorUnico(s.tipo) ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</TableCell>
                         <TableCell className="whitespace-nowrap text-right text-muted-foreground">{esLegalizacionConAnticipo ? formatMoney(parseFloat(s.valorAnticipoOriginal), s.empresa) : '—'}</TableCell>
                         <TableCell className="whitespace-nowrap text-right font-bold">
                           {esLegalizacionConAnticipo ? (
@@ -10989,7 +11009,7 @@ const App = () => {
         {/* MODAL SOLICITUD DE ORIGEN — desde "🔗 Generado desde Solicitudes" en Finanzas */}
         {verSolicitudOrigen && (() => {
           const so = verSolicitudOrigen.solicitud;
-          const valorSo = so.tipo === 'Pago a Tercero' ? formatMoneyByMoneda(parseFloat(so.valor) || 0, so.moneda || getMoneda(so.empresa)) : formatMoney(so.tipo === 'Anticipo' ? parseFloat(so.valor) : so.totalCalculado || 0, so.empresa);
+          const valorSo = so.tipo === 'Pago a Tercero' ? formatMoneyByMoneda(parseFloat(so.valor) || 0, so.moneda || getMoneda(so.empresa)) : formatMoney(esTipoValorUnico(so.tipo) ? parseFloat(so.valor) : so.totalCalculado || 0, so.empresa);
           const nombreSo = colaboradoresPublico.find(c => c.id === so.responsableId)?.nombre || so.responsableNombre || '—';
           return (
             <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
