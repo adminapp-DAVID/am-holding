@@ -1008,23 +1008,38 @@ const App = () => {
         alert('❌ No se pudo eliminar: ' + errorOtras.message);
         return;
       }
-      const esCompartido = (otras || []).some(o => o.id !== soporte.id);
-      // Primero la fila (con .select para confirmar que RLS sí la borró: sin él, un bloqueo
+      // En Finanzas, un movimiento generado desde una Solicitud comparte soportes con ella: al
+      // eliminar se quita el archivo de AMBOS (movimiento y solicitud original), si no volvería
+      // a aparecer como "de la solicitud original".
+      const ctxDueños = verSoportesContexto;
+      const filtroDueños = ctxDueños?.solicitudOrigenId
+        ? `and(entidad_tipo.eq.${ctxDueños.entidadTipo},entidad_id.eq.${ctxDueños.entidadId}),and(entidad_tipo.eq.solicitud,entidad_id.eq.${ctxDueños.solicitudOrigenId})`
+        : null;
+      // Primero la(s) fila(s) (con .select para confirmar que RLS sí las borró: sin él, un bloqueo
       // devuelve error null y 0 filas) y solo después el archivo, para no dejar una fila
       // apuntando a un archivo ya borrado si la base rechaza el cambio.
-      const { data: borradas, error: errorDelete } = await supabase.from('soportes').delete().eq('id', soporte.id).select('id');
+      const { data: borradas, error: errorDelete } = filtroDueños
+        ? await supabase.from('soportes').delete().eq('bucket_path', soporte.bucketPath).or(filtroDueños).select('id')
+        : await supabase.from('soportes').delete().eq('id', soporte.id).select('id');
       if (errorDelete || !borradas || borradas.length === 0) {
         console.error('Error eliminando soporte:', errorDelete);
         alert('❌ No se pudo eliminar: ' + (errorDelete?.message || 'no tienes permiso para borrar este soporte.'));
         return;
       }
+      const idsBorrados = new Set((borradas || []).map(b => b.id));
+      const esCompartido = (otras || []).some(o => !idsBorrados.has(o.id));
       if (!esCompartido) {
         await supabase.storage.from('soportes').remove([soporte.bucketPath]);
       }
-      setVerSoportes(prev => (prev || []).filter(s => s.id !== soporte.id));
+      setVerSoportes(prev => (prev || []).filter(s => (filtroDueños ? s.bucketPath !== soporte.bucketPath : s.id !== soporte.id)));
+      if (ctxDueños?.solicitudOrigenId) {
+        const conteoSol = await contarSoportesPorEntidad('solicitud', [ctxDueños.solicitudOrigenId]);
+        setSolicitudes(prev => prev.map(x => x.id === ctxDueños.solicitudOrigenId ? { ...x, cantidadSoportes: conteoSol[ctxDueños.solicitudOrigenId] || 0 } : x));
+      }
       const ctx = verSoportesContexto;
       if (ctx?.entidadTipo === 'solicitud' || ctx?.entidadTipo === 'gasto' || ctx?.entidadTipo === 'ingreso') {
-        const nuevoConteo = await contarSoportesPorEntidad(ctx.entidadTipo, [ctx.entidadId]);
+        const mov = ctx.entidadTipo === 'gasto' ? gastos.find(x => x.id === ctx.entidadId) : ctx.entidadTipo === 'ingreso' ? ingresos.find(x => x.id === ctx.entidadId) : null;
+        const nuevoConteo = mov ? await contarSoportesMovimientos(ctx.entidadTipo, [mov]) : await contarSoportesPorEntidad(ctx.entidadTipo, [ctx.entidadId]);
         const n = nuevoConteo[ctx.entidadId] || 0;
         const actualizar = prev => prev.map(x => x.id === ctx.entidadId ? { ...x, cantidadSoportes: n } : x);
         if (ctx.entidadTipo === 'solicitud') setSolicitudes(actualizar);
@@ -1709,6 +1724,29 @@ const App = () => {
     return conteo;
   };
 
+  // Movimientos de Finanzas generados desde una Solicitud pagada: sus soportes son los propios
+  // (comprobantes copiados al pagar) MÁS todos los de la solicitud original, aunque se hayan
+  // subido después. Se cuentan por archivo (bucket_path) para no duplicar los ya copiados.
+  const contarSoportesMovimientos = async (entidadTipo, lista) => {
+    if (lista.length === 0) return {};
+    const idsSol = [...new Set(lista.map(m => m.solicitudOrigenId).filter(Boolean))];
+    const [{ data: propios, error: e1 }, { data: deSol, error: e2 }] = await Promise.all([
+      supabase.from('soportes').select('entidad_id, bucket_path').eq('entidad_tipo', entidadTipo).in('entidad_id', lista.map(m => m.id)),
+      idsSol.length ? supabase.from('soportes').select('entidad_id, bucket_path').eq('entidad_tipo', 'solicitud').in('entidad_id', idsSol) : Promise.resolve({ data: [], error: null })
+    ]);
+    if (e1 || e2) console.error(`Error contando soportes de ${entidadTipo}:`, e1 || e2);
+    const rutas = {};
+    const agregar = (clave, ruta) => { (rutas[clave] = rutas[clave] || new Set()).add(ruta); };
+    (propios || []).forEach(r => agregar(`m:${r.entidad_id}`, r.bucket_path));
+    (deSol || []).forEach(r => agregar(`s:${r.entidad_id}`, r.bucket_path));
+    const conteo = {};
+    lista.forEach(m => {
+      const union = new Set([...(rutas[`m:${m.id}`] || []), ...(m.solicitudOrigenId ? rutas[`s:${m.solicitudOrigenId}`] || [] : [])]);
+      conteo[m.id] = union.size;
+    });
+    return conteo;
+  };
+
   const gastoDBToLocal = (row) => ({
     id: row.id,
     fecha: row.fecha,
@@ -1764,7 +1802,7 @@ const App = () => {
     }
     const lista = (data || []).map(gastoDBToLocal);
     if (lista.length > 0) {
-      const conteo = await contarSoportesPorEntidad('gasto', lista.map(g => g.id));
+      const conteo = await contarSoportesMovimientos('gasto', lista);
       lista.forEach(g => { g.cantidadSoportes = conteo[g.id] || 0; });
     }
     setGastos(lista);
@@ -1808,7 +1846,7 @@ const App = () => {
     }
     const lista = (data || []).map(ingresoDBToLocal);
     if (lista.length > 0) {
-      const conteo = await contarSoportesPorEntidad('ingreso', lista.map(i => i.id));
+      const conteo = await contarSoportesMovimientos('ingreso', lista);
       lista.forEach(i => { i.cantidadSoportes = conteo[i.id] || 0; });
     }
     setIngresos(lista);
@@ -4416,7 +4454,7 @@ const App = () => {
         const tipo = file.type || inferirMimePorExtension(file.name);
         await subirSoporteEntidad({ nombre: file.name, tipo, tamaño: file.size, data: dataUrl }, entidadTipo, r.id);
       }
-      const conteo = await contarSoportesPorEntidad(entidadTipo, [r.id]);
+      const conteo = await contarSoportesMovimientos(entidadTipo, [r]);
       const nuevoConteo = conteo[r.id] || 0;
       if (entidadTipo === 'ingreso') {
         setIngresos(prev => prev.map(i => i.id === r.id ? { ...i, cantidadSoportes: nuevoConteo } : i));
@@ -6341,31 +6379,29 @@ const App = () => {
 
   // Ver soportes de un Gasto/Ingreso: si es un registro histórico con link de Drive, se abre
   // directamente esa URL; si tiene soportes reales subidos a Storage, se abre el modal compartido.
-  const handleVerSoportesGasto = async (g) => {
-    if (g.soporteDriveLink) { window.open(g.soporteDriveLink, '_blank'); return; }
-    const { data, error } = await supabase
-      .from('soportes')
-      .select('id, bucket_path, nombre_original, tamano_kb')
-      .eq('entidad_tipo', 'gasto')
-      .eq('entidad_id', g.id)
-      .order('created_at');
-    if (error) { console.error('Error cargando soportes:', error); alert('❌ No se pudieron cargar los soportes: ' + error.message); return; }
-    setVerSoportesContexto({ entidadTipo: 'gasto', entidadId: g.id, puedeEliminar: user?.rol === 'Administrador' || user?.rol === 'Coordinadora Administrativa' });
-    setVerSoportes((data || []).map(r => ({ id: r.id, nombre: r.nombre_original, tamaño: (r.tamano_kb || 0) * 1024, bucketPath: r.bucket_path })));
+  // Ver soportes de un Gasto/Ingreso: si es un registro histórico con link de Drive, se abre
+  // directamente esa URL; si tiene soportes reales subidos a Storage, se abre el modal compartido.
+  // Si viene de una Solicitud pagada, también se muestran TODOS los soportes de esa solicitud.
+  const verSoportesMovimiento = async (entidadTipo, m) => {
+    if (m.soporteDriveLink) { window.open(m.soporteDriveLink, '_blank'); return; }
+    const [{ data, error }, { data: deSol, error: errorSol }] = await Promise.all([
+      supabase.from('soportes').select('id, bucket_path, nombre_original, tamano_kb').eq('entidad_tipo', entidadTipo).eq('entidad_id', m.id).order('created_at'),
+      m.solicitudOrigenId
+        ? supabase.from('soportes').select('id, bucket_path, nombre_original, tamano_kb').eq('entidad_tipo', 'solicitud').eq('entidad_id', m.solicitudOrigenId).order('created_at')
+        : Promise.resolve({ data: [], error: null })
+    ]);
+    if (error || errorSol) { console.error('Error cargando soportes:', error || errorSol); alert('❌ No se pudieron cargar los soportes: ' + (error || errorSol).message); return; }
+    const propios = (data || []).map(r => ({ id: r.id, nombre: r.nombre_original, tamaño: (r.tamano_kb || 0) * 1024, bucketPath: r.bucket_path }));
+    const rutasPropias = new Set(propios.map(p => p.bucketPath));
+    const deSolicitud = (deSol || []).filter(r => !rutasPropias.has(r.bucket_path))
+      .map(r => ({ id: r.id, nombre: r.nombre_original, tamaño: (r.tamano_kb || 0) * 1024, bucketPath: r.bucket_path, deSolicitud: true }));
+    // Admin, Coordinadora y Gerente pueden eliminar soportes desde Finanzas (también los de la
+    // solicitud original: se quitan de ambos lados).
+    setVerSoportesContexto({ entidadTipo, entidadId: m.id, solicitudOrigenId: m.solicitudOrigenId || null, puedeEliminar: ['Administrador', 'Coordinadora Administrativa', 'Gerente'].includes(user?.rol) });
+    setVerSoportes([...propios, ...deSolicitud]);
   };
-
-  const handleVerSoportesIngreso = async (i) => {
-    if (i.soporteDriveLink) { window.open(i.soporteDriveLink, '_blank'); return; }
-    const { data, error } = await supabase
-      .from('soportes')
-      .select('id, bucket_path, nombre_original, tamano_kb')
-      .eq('entidad_tipo', 'ingreso')
-      .eq('entidad_id', i.id)
-      .order('created_at');
-    if (error) { console.error('Error cargando soportes:', error); alert('❌ No se pudieron cargar los soportes: ' + error.message); return; }
-    setVerSoportesContexto({ entidadTipo: 'ingreso', entidadId: i.id, puedeEliminar: user?.rol === 'Administrador' || user?.rol === 'Coordinadora Administrativa' });
-    setVerSoportes((data || []).map(r => ({ id: r.id, nombre: r.nombre_original, tamaño: (r.tamano_kb || 0) * 1024, bucketPath: r.bucket_path })));
-  };
+  const handleVerSoportesGasto = (g) => verSoportesMovimiento('gasto', g);
+  const handleVerSoportesIngreso = (i) => verSoportesMovimiento('ingreso', i);
 
   // Filtrar gastos e ingresos
   const gastosUsuario = user?.rol === 'Responsable' 
@@ -11063,7 +11099,7 @@ const App = () => {
                   <div key={idx} className="flex flex-col gap-3 rounded-lg border border-solid border-border bg-background p-4">
                     <div className="min-w-0">
                       <p className="m-0 flex items-center gap-1.5 truncate text-sm font-bold"><FileText size={15} className="shrink-0 text-primary" /> {soporte.nombre}</p>
-                      <p className="m-0 text-xs text-muted-foreground">{(soporte.tamaño / 1024).toFixed(2)} KB</p>
+                      <p className="m-0 text-xs text-muted-foreground">{(soporte.tamaño / 1024).toFixed(2)} KB{soporte.deSolicitud ? ' · de la solicitud original' : ''}</p>
                     </div>
                     <div className="flex gap-2">
                       {previsualizable && (
