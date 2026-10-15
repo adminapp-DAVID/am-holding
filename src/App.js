@@ -3560,7 +3560,7 @@ const App = () => {
   // mano (encabezado formal, párrafo narrativo automático con los datos bancarios del
   // colaborador, resumen de anticipo/reembolso, y Revisado/Aprobado tomados de quien realmente
   // movió el estado en el sistema, nunca escritos a mano).
-  const handleGenerarExcel = (s) => {
+  const construirExcelSolicitud = (s) => {
     const moneda = getMoneda(s.empresa);
     const responsable = usuariosDB.find(u => u.id === s.responsableId);
     // Puede haber varios Anticipos vinculados a una misma Legalización — se suman los valores y
@@ -3616,12 +3616,21 @@ const App = () => {
     rows.push(['Estado', s.estado || '']);
     rows.push(['', '', '', '', 'SOPORTES:', 'Ver PDF consolidado adjunto a esta solicitud']);
 
+    return { rows, moneda, nombreArchivo: `${s.tipo}_${s.responsableNombre}_${s.fecha}.xlsx` };
+  };
+
+  const descargarExcelSolicitud = ({ rows, nombreArchivo }, tipo) => {
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws['!cols'] = [{ wch: 22 }, { wch: 26 }, { wch: 16 }, { wch: 20 }, { wch: 18 }, { wch: 32 }];
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, s.tipo.substring(0, 30));
-    XLSX.writeFile(wb, `${s.tipo}_${s.responsableNombre}_${s.fecha}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, tipo.substring(0, 30));
+    XLSX.writeFile(wb, nombreArchivo);
   };
+
+  const handleGenerarExcel = (s) => descargarExcelSolicitud(construirExcelSolicitud(s), s.tipo);
+
+  // Vista previa del mismo Excel en un modal (sin descargar); la descarga queda opcional ahí.
+  const handlePreviewExcelSolicitud = (s) => setPreviewExcelSolicitud({ solicitud: s, ...construirExcelSolicitud(s) });
 
   // Eliminar solicitud — borra también sus soportes (metadata + archivos en Storage)
   const handleDeleteSolicitud = async (id) => {
@@ -4850,7 +4859,9 @@ const App = () => {
   // "🔗 Generado desde Solicitudes" (Finanzas): abre la Solicitud original. Administrador y
   // Coordinadora pueden corregir su concepto desde ahí: se actualiza la Solicitud y también el
   // detalle del Gasto/Ingreso que generó, para que ambos digan lo mismo.
-  const [verSolicitudOrigen, setVerSolicitudOrigen] = useState(null); // { solicitud, concepto, guardando }
+  const [verSolicitudOrigen, setVerSolicitudOrigen] = useState(null);
+  // Vista previa del Excel de una Legalización/Reembolso: { solicitud, rows, moneda, nombreArchivo }.
+  const [previewExcelSolicitud, setPreviewExcelSolicitud] = useState(null); // { solicitud, concepto, guardando }
   const puedeGestionarSolicitudOrigen = user?.rol === 'Administrador' || user?.rol === 'Coordinadora Administrativa';
 
   const handleVerSolicitudOrigen = async (solicitudId) => {
@@ -11078,13 +11089,53 @@ const App = () => {
                     {/* Mismo Excel del botón de Solicitudes (Legalización / Reembolso): no es un soporte
                         guardado, se arma al momento con los datos actuales de la solicitud. */}
                     {['Legalización', 'Reembolso', 'Legalización T. Pro'].includes(so.tipo) && (
-                      <Button variant="outline" onClick={() => handleGenerarExcel(so)} className="text-success"><FileSpreadsheet size={14} /> Descargar Excel</Button>
+                      <Button variant="outline" onClick={() => handlePreviewExcelSolicitud(so)} className="text-success" title="Ver el Excel sin descargarlo"><Search size={14} /> Ver Excel</Button>
                     )}
                     <div className="flex-1" />
                     <Button variant="outline" disabled={verSolicitudOrigen.guardando} onClick={() => setVerSolicitudOrigen(null)}>Cerrar</Button>
                     {puedeGestionarSolicitudOrigen && (
                       <Button disabled={verSolicitudOrigen.guardando} onClick={handleGuardarConceptoSolicitudOrigen}>{verSolicitudOrigen.guardando ? 'Guardando...' : 'Guardar concepto'}</Button>
                     )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          );
+        })()}
+
+        {/* MODAL VISTA PREVIA DEL EXCEL DE LA SOLICITUD — el mismo contenido que se descarga. */}
+        {previewExcelSolicitud && (() => {
+          const { solicitud: sx, rows, moneda } = previewExcelSolicitud;
+          const ancho = Math.max(...rows.map(r => r.length), 1);
+          const celda = (v) => (typeof v === 'number' ? formatMoneyByMoneda(v, moneda) : v);
+          return (
+            <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 p-4">
+              <Card className="flex max-h-[90vh] w-full max-w-5xl flex-col gap-3 px-0 py-5">
+                <CardHeader className="sm:px-7">
+                  <CardTitle className="flex items-center gap-2 text-lg"><FileSpreadsheet size={18} className="text-success" /> {sx.tipo} — {sx.responsableNombre}</CardTitle>
+                  <CardDescription>Vista previa del Excel. Descargarlo es opcional.</CardDescription>
+                </CardHeader>
+                <CardContent className="flex min-h-0 flex-1 flex-col gap-3 sm:px-7">
+                  <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-solid border-border">
+                    <table className="w-full border-collapse text-xs">
+                      <tbody>
+                        {rows.map((r, i) => (
+                          r.length === 0 ? <tr key={i}><td colSpan={ancho} className="h-3" /></tr> : (
+                            <tr key={i} className={cn(i === 0 && 'bg-primary/15 font-bold', r.length === 1 && i > 0 && 'font-semibold')}>
+                              {r.length === 1 ? (
+                                <td colSpan={ancho} className="border-0 border-b border-solid border-border px-2 py-1.5">{celda(r[0])}</td>
+                              ) : r.map((v, j) => (
+                                <td key={j} className={cn('border-0 border-b border-r border-solid border-border px-2 py-1.5 align-top', typeof v === 'number' && 'whitespace-nowrap text-right tabular-nums')}>{celda(v)}</td>
+                              ))}
+                            </tr>
+                          )
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => descargarExcelSolicitud(previewExcelSolicitud, sx.tipo)}><FileDown size={16} /> Descargar</Button>
+                    <Button onClick={() => setPreviewExcelSolicitud(null)}>Cerrar</Button>
                   </div>
                 </CardContent>
               </Card>
