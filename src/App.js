@@ -4216,28 +4216,27 @@ const App = () => {
   };
 
   // Eliminar cuenta de cobro — borra también sus soportes (metadata + archivos en Storage)
-  const handleDeleteCuentaCobro = async (id) => {
-    if (!window.confirm('¿Eliminar cuenta de cobro?')) return;
+  // Eliminar cuenta de cobro: va por la función eliminar_cuenta_cobro (Supabase), que valida el
+  // permiso (Admin/Coordinadora: cualquiera; el dueño: solo las suyas en Pendiente) y borra la
+  // cuenta y sus soportes en una sola transacción. Antes era un delete directo que, si RLS lo
+  // bloqueaba, "funcionaba" solo en pantalla y el colaborador la seguía viendo.
+  const puedeEliminarCuentaCobro = (c) => user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa'
+    || (c.responsableId === user.id && c.estado === 'Pendiente');
 
-    const { data: soportesRelacionados } = await supabase
-      .from('soportes')
-      .select('bucket_path')
-      .eq('entidad_tipo', 'cuenta_cobro')
-      .eq('entidad_id', id);
-
-    if (soportesRelacionados && soportesRelacionados.length > 0) {
-      await supabase.storage.from('soportes').remove(soportesRelacionados.map(r => r.bucket_path));
-      await supabase.from('soportes').delete().eq('entidad_tipo', 'cuenta_cobro').eq('entidad_id', id);
-    }
-
-    const { error } = await supabase.from('cuentas_cobro').delete().eq('id', id);
+  const handleDeleteCuentaCobro = async (c) => {
+    if (!window.confirm(`¿Eliminar la cuenta de cobro${c.numero ? ` N° ${c.numero}` : ''}? También se borran sus soportes y desaparece para todos.`)) return;
+    const { data: rutas, error } = await supabase.rpc('eliminar_cuenta_cobro', { p_id: String(c.id) });
     if (error) {
       console.error('Error eliminando cuenta de cobro:', error);
       alert('❌ No se pudo eliminar la cuenta de cobro: ' + error.message);
       return;
     }
-
-    setCuentasDeCobro(cuentasDeCobro.filter(c => c.id !== id));
+    if (rutas && rutas.length > 0) {
+      const { error: errorStorage } = await supabase.storage.from('soportes').remove(rutas);
+      if (errorStorage) console.error('La cuenta se eliminó, pero no se pudieron borrar sus archivos de Storage:', errorStorage);
+    }
+    setCuentasDeCobro(prev => prev.filter(x => x.id !== c.id));
+    await cargarCuentasCobro();
   };
 
   // Colaborador, Responsable y Gerente: solo sus propias Cuentas de Cobro.
@@ -10502,8 +10501,8 @@ const App = () => {
                           ) : (
                             <span className="px-2 text-xs text-muted-foreground">—</span>
                           )}
-                          {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
-                            <Button variant="ghost" size="icon" onClick={() => handleDeleteCuentaCobro(c.id)} className="text-destructive" title="Eliminar" aria-label="Eliminar"><Trash2 size={16} /></Button>
+                          {puedeEliminarCuentaCobro(c) && (
+                            <Button variant="ghost" size="icon" onClick={() => handleDeleteCuentaCobro(c)} className="text-destructive" title="Eliminar" aria-label="Eliminar"><Trash2 size={16} /></Button>
                           )}
                         </div>
                       </TableCell>
