@@ -100,9 +100,15 @@ describe('problemasDatosBancarios', () => {
   });
 
   test('límites de longitud de la plantilla', () => {
-    expect(problemasDatosBancarios({ ...beneficiarioOk, documento: '1'.repeat(15), numeroCuenta: '1'.repeat(17) })).toEqual([]);
+    expect(problemasDatosBancarios({ ...beneficiarioOk, tipoDocumento: 5, documento: '1'.repeat(15), numeroCuenta: '1'.repeat(17) })).toEqual([]);
     expect(problemasDatosBancarios({ ...beneficiarioOk, documento: '1'.repeat(16) })).toContain('documento debe ser solo números (máx. 15)');
     expect(problemasDatosBancarios({ ...beneficiarioOk, numeroCuenta: '1'.repeat(18) })).toContain('cuenta debe ser solo números (máx. 17)');
+  });
+
+  test('largo del documento: NIT 9 dígitos sin DV, cédula 5 a 10', () => {
+    expect(problemasDatosBancarios({ ...beneficiarioOk, tipoDocumento: 3, documento: '90012345' })[0]).toMatch(/NIT debe tener 9/);
+    expect(problemasDatosBancarios({ ...beneficiarioOk, tipoDocumento: 3, documento: '900123456' })).toEqual([]);
+    expect(problemasDatosBancarios({ ...beneficiarioOk, tipoDocumento: 1, documento: '1234' })[0]).toMatch(/cédula con 4/);
   });
 
   test('cuenta del exterior se marca como no pagable por PAB', () => {

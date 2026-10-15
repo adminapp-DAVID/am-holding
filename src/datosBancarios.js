@@ -161,6 +161,10 @@ export const problemasDatosBancarios = ({ tipoDocumento, documento, codigoBanco,
   const doc = String(documento || '').trim();
   if (!doc) problemas.push('sin documento');
   else if (!/^\d{1,15}$/.test(doc)) problemas.push('documento debe ser solo números (máx. 15)');
+  // Largo esperado: NIT sin DV = 9 dígitos; cédula de ciudadanía = 5 a 10. Un dígito de menos o
+  // de más es la causa típica de "NIT beneficiario no inscrito" en el banco.
+  else if (Number(tipoDocumento) === TIPO_DOCUMENTO_NIT && doc.length !== 9) problemas.push(`NIT debe tener 9 dígitos sin el de verificación (tiene ${doc.length})`);
+  else if (Number(tipoDocumento) === 1 && (doc.length < 5 || doc.length > 10)) problemas.push(`cédula con ${doc.length} dígitos: revisa el número`);
   if (!codigoBanco) problemas.push('sin banco');
   else if (codigoBanco === CODIGO_BANCO_EXTERIOR) problemas.push('cuenta en el exterior (no se paga por PAB)');
   else if (!BANCOS_ACH.some(b => b.codigo === String(codigoBanco))) problemas.push('código de banco no válido');

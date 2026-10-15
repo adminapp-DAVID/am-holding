@@ -116,6 +116,14 @@ const DatosBancariosView = ({ user, usuarios, terceros, cuentasPorEmpresa, nitEm
     tipoPagoProveedores: c.tipo_pago_proveedores, tipoPagoTerceros: c.tipo_pago_terceros, activo: c.activo !== false
   });
 
+  // Elegir empresa en "Agregar": si ya tiene cuenta origen, se carga para editarla (evita duplicar
+  // o mezclar datos de dos empresas); si no, NIT sugerido desde la empresa.
+  const elegirEmpresa = (empresa) => {
+    const existente = configs.find(c => c.empresas?.nombre === empresa);
+    if (existente) { editarConfig(existente); return; }
+    setForm({ ...configVacia, empresa, nitPagador: limpiarDocumento(nitEmpresas[empresa] || '', 3).replace(/\D.*$/, '') });
+  };
+
   // ---- Beneficiarios ----
   const filas = [
     ...usuarios.filter(u => !USUARIOS_EXCLUIDOS.includes(u.nombre)).map(u => ({
@@ -167,7 +175,7 @@ const DatosBancariosView = ({ user, usuarios, terceros, cuentasPorEmpresa, nitEm
           {esAdmin && (
             <div className={cn('grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] items-end gap-3 rounded-lg border border-solid p-4', form.id ? 'border-primary bg-primary/5' : 'border-border bg-background')}>
               <Campo label="Empresa" htmlFor="db-empresa">
-                <Select id="db-empresa" value={form.empresa} onChange={(e) => setForm({ ...form, empresa: e.target.value, nombreCuenta: '', nitPagador: form.id ? form.nitPagador : limpiarDocumento(nitEmpresas[e.target.value] || '', 3).replace(/\D.*$/, '') })}>
+                <Select id="db-empresa" value={form.empresa} disabled={!!form.id} title={form.id ? 'Al editar no se cambia la empresa: cancela y elige otra' : undefined} onChange={(e) => elegirEmpresa(e.target.value)}>
                   <option value="">Seleccionar</option>
                   {Object.keys(cuentasPorEmpresa).map(e => <option key={e} value={e}>{e}</option>)}
                 </Select>
