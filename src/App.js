@@ -105,6 +105,32 @@ const ListaSoportesUI = ({ titulo, inputProps, archivos, resumen, onQuitar }) =>
   </div>
 );
 
+// Contenedor común de los modales (etapa 3 del sistema de diseño): fondo oscuro + Card con
+// título, descripción opcional y contenido en columna.
+const ModalUI = ({ titulo, descripcion, className, children }) => (
+  <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
+    <Card className={cn('max-h-[88vh] w-full max-w-md gap-4 overflow-y-auto px-0 py-6', className)}>
+      <CardHeader className="sm:px-7">
+        <CardTitle className="text-lg">{titulo}</CardTitle>
+        {descripcion && <CardDescription>{descripcion}</CardDescription>}
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4 sm:px-7">{children}</CardContent>
+    </Card>
+  </div>
+);
+
+// Archivos ya elegidos en un input (comprobantes), cada uno con su botón para quitarlo.
+const ArchivosElegidosUI = ({ archivos, onQuitar, compacto = false }) => archivos.length > 0 && (
+  <div className={cn('flex flex-col', compacto ? 'items-end gap-0.5' : 'gap-1.5')}>
+    {archivos.map(c => (
+      <div key={c.id} className={cn('flex items-center justify-between gap-2', !compacto && 'rounded-md border border-solid border-border bg-background px-3 py-1.5')}>
+        <span className={cn('flex min-w-0 items-center gap-1 truncate text-success', compacto ? 'text-[0.7rem]' : 'text-xs')}><Check size={compacto ? 12 : 14} className="shrink-0" /> {c.nombre}</span>
+        <Button variant="ghost" size="icon" onClick={() => onQuitar(c.id)} className={cn('shrink-0 text-destructive', compacto ? 'size-6' : 'size-7')} title="Quitar archivo" aria-label="Quitar archivo"><Trash2 size={compacto ? 12 : 14} /></Button>
+      </div>
+    ))}
+  </div>
+);
+
 // Foto de perfil del colaborador — si no tiene foto cargada, muestra sus iniciales como avatar de respaldo.
 const ColaboradorAvatar = ({ foto, nombre, size = 32, style = {} }) => {
   if (foto) {
@@ -10502,60 +10528,26 @@ const App = () => {
 
         {/* MODAL IMPORTAR HISTÓRICO */}
         {mostrarImportar && (
-          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
-            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '520px', width: '90%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-              <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📥 Importar Histórico</h2>
-
-              {/* OPCIÓN PRINCIPAL: Excel/CSV combinado (Gastos + Ingresos + Traslados) */}
-              <div style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1.5rem', marginBottom: '1.5rem' }}>
-                <p style={{ color: '#6B6458', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>
-                  ⚠️ Esto agregará todos los registros del archivo al histórico — Gastos, Ingresos y Traslados en un mismo Excel (columna "Movimiento" indica a cuál va cada fila).
-                </p>
-                <p style={{ color: '#6B6458', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>
-                  Registros actuales: <strong style={{ color: '#C4A747' }}>{gastos.length} Gastos/Traslados</strong> · <strong style={{ color: '#C4A747' }}>{ingresos.length} Ingresos</strong>
-                </p>
-
-                <label style={{ display: 'block', marginBottom: '1rem' }}>
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls,.csv"
-                    onChange={handleImportarExcel}
-                    style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', cursor: 'pointer' }}
-                  />
-                </label>
-
-                <button type="button" onClick={handleDescargarPlantillaImportacion} style={{ width: '100%', padding: '0.6rem', backgroundColor: '#FFFFFF', border: '1px solid #C4A747', borderRadius: '4px', color: '#C4A747', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
-                  ⬇️ Descargar plantilla en blanco
-                </button>
-                <p style={{ color: '#6B6458', margin: '0.75rem 0 0 0', fontSize: '0.8rem' }}>
-                  Si no sabes cómo dejar el Excel en este formato, súbele el extracto bancario o la planilla original a Claude en el chat del proyecto y pídele que te lo entregue en la plantilla — luego solo subes el resultado aquí.
-                </p>
-              </div>
-
-              {/* OPCIÓN ANTIGUA: JSON, solo Gastos/Traslados — se deja disponible para quien
-                  todavía tenga archivos generados en ese formato de una migración anterior. */}
-              <details style={{ marginBottom: '1.5rem' }}>
-                <summary style={{ color: '#8F8877', fontSize: '0.8rem', cursor: 'pointer' }}>Formato anterior (JSON, solo Gastos/Traslados)</summary>
-                <div style={{ marginTop: '0.75rem' }}>
-                  <input
-                    type="file"
-                    accept=".json"
-                    onChange={handleImportarGastos}
-                    style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', cursor: 'pointer' }}
-                  />
-                  <p style={{ color: '#6B6458', margin: '0.5rem 0 0 0', fontSize: '0.8rem' }}>
-                    📄 Carga el archivo <code style={{ color: '#C4A747' }}>gastos_importar.json</code> generado desde DBAMHolding
-                  </p>
-                </div>
-              </details>
-
-              <div style={{ display: 'flex', gap: '1rem' }}>
-                <button onClick={() => setMostrarImportar(false)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  Cancelar
-                </button>
-              </div>
+          <ModalUI titulo="📥 Importar Histórico" className="max-w-lg">
+            {/* OPCIÓN PRINCIPAL: Excel/CSV combinado (Gastos + Ingresos + Traslados) */}
+            <div className="flex flex-col gap-3 rounded-lg border border-solid border-border bg-background p-4 text-sm">
+              <p className="m-0 text-muted-foreground">⚠️ Esto agregará todos los registros del archivo al histórico — Gastos, Ingresos y Traslados en un mismo Excel (columna "Movimiento" indica a cuál va cada fila).</p>
+              <p className="m-0 text-muted-foreground">Registros actuales: <strong className="text-primary">{gastos.length} Gastos/Traslados</strong> · <strong className="text-primary">{ingresos.length} Ingresos</strong></p>
+              <Input type="file" accept=".xlsx,.xls,.csv" aria-label="Archivo a importar" onChange={handleImportarExcel} className={claseInputArchivo} />
+              <Button variant="outline" onClick={handleDescargarPlantillaImportacion}><FileDown size={16} /> Descargar plantilla en blanco</Button>
+              <p className="m-0 text-xs text-muted-foreground">Si no sabes cómo dejar el Excel en este formato, súbele el extracto bancario o la planilla original a Claude en el chat del proyecto y pídele que te lo entregue en la plantilla — luego solo subes el resultado aquí.</p>
             </div>
-          </div>
+            {/* OPCIÓN ANTIGUA: JSON, solo Gastos/Traslados — se deja disponible para quien
+                todavía tenga archivos generados en ese formato de una migración anterior. */}
+            <details className="text-sm">
+              <summary className="cursor-pointer text-xs text-muted-foreground">Formato anterior (JSON, solo Gastos/Traslados)</summary>
+              <div className="mt-3 flex flex-col gap-2">
+                <Input type="file" accept=".json" aria-label="Archivo JSON" onChange={handleImportarGastos} className={claseInputArchivo} />
+                <p className="m-0 text-xs text-muted-foreground">📄 Carga el archivo <code className="text-primary">gastos_importar.json</code> generado desde DBAMHolding</p>
+              </div>
+            </details>
+            <Button variant="outline" onClick={() => setMostrarImportar(false)}>Cancelar</Button>
+          </ModalUI>
         )}
 
         {/* MODAL CONFIRMAR PAGO — al marcar como "Pagado" una Solicitud de Pago a Tercero,
@@ -10574,67 +10566,49 @@ const App = () => {
           const opcionesCeco = accion === 'ingreso' ? cecosIngreso : cecosGasto;
           const tituloAccion = esLegalizacionTPro ? 'Legalización' : (accion === 'ingreso' ? 'Reintegro' : 'Pago');
           return (
-          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
-            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '460px', width: '90%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
-              <h2 style={{ color: '#C4A747', marginBottom: '0.5rem' }}>💳 Confirmar {tituloAccion}</h2>
-              <p style={{ color: '#6B6458', fontSize: '0.85rem', marginTop: 0, marginBottom: '1.25rem' }}>
-                {subtitulo}
-              </p>
-
-              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta de la empresa {accion === 'ingreso' ? 'que recibió el dinero' : (esLegalizacionTPro ? 'con la que se le reembolsa' : 'con la que se pagó')} *</label>
-              <select value={confirmarPagoSolicitud.cuenta} onChange={(e) => setConfirmarPagoSolicitud({...confirmarPagoSolicitud, cuenta: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', marginBottom: '1rem' }}>
+          <ModalUI titulo={`💳 Confirmar ${tituloAccion}`} descripcion={subtitulo}>
+            <CampoUI label={`Cuenta de la empresa ${accion === 'ingreso' ? 'que recibió el dinero' : (esLegalizacionTPro ? 'con la que se le reembolsa' : 'con la que se pagó')} *`} htmlFor="cps-cuenta">
+              <Select id="cps-cuenta" value={confirmarPagoSolicitud.cuenta} onChange={(e) => setConfirmarPagoSolicitud({...confirmarPagoSolicitud, cuenta: e.target.value})}>
                 <option value="">Seleccionar</option>
                 {(cuentasPorEmpresa[solicitud.empresa] || []).map(cuenta => <option key={cuenta} value={cuenta}>{cuenta}</option>)}
-              </select>
+              </Select>
+            </CampoUI>
+            <CampoUI label={`Fecha ${accion === 'ingreso' ? 'en que se recibió el dinero' : 'del pago'} *`} htmlFor="cps-fecha">
+              <Input id="cps-fecha" type="date" value={confirmarPagoSolicitud.fechaPago || ''} onChange={(e) => setConfirmarPagoSolicitud({...confirmarPagoSolicitud, fechaPago: e.target.value})} />
+              <p className="m-0 text-xs text-muted-foreground">Es la fecha que queda en Finanzas.</p>
+            </CampoUI>
+            <CampoUI label="CECO *" htmlFor="cps-ceco">
+              <Select id="cps-ceco" value={confirmarPagoSolicitud.ceco} onChange={(e) => setConfirmarPagoSolicitud({...confirmarPagoSolicitud, ceco: e.target.value})}>
+                <option value="">Seleccionar</option>
+                {opcionesCeco.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
+              </Select>
+            </CampoUI>
 
-              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Fecha {accion === 'ingreso' ? 'en que se recibió el dinero' : 'del pago'} * <span style={{ fontWeight: 'normal', color: '#6B6458' }}>(es la fecha que queda en Finanzas)</span></label>
-              <input type="date" value={confirmarPagoSolicitud.fechaPago || ''} onChange={(e) => setConfirmarPagoSolicitud({...confirmarPagoSolicitud, fechaPago: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', marginBottom: '1rem' }} />
-
-              {(
-                <>
-                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>CECO *</label>
-                  <select value={confirmarPagoSolicitud.ceco} onChange={(e) => setConfirmarPagoSolicitud({...confirmarPagoSolicitud, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', marginBottom: '1rem' }}>
-                    <option value="">Seleccionar</option>
-                    {opcionesCeco.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
-                  </select>
-                </>
-              )}
-
-              {esPagoTerceroNeutro(solicitud, confirmarPagoSolicitud.ceco) && (
-                <div style={{ backgroundColor: '#F1F0EC', border: '1px solid #CFCBC0', borderRadius: '6px', padding: '0.9rem', marginBottom: '1rem' }}>
-                  <p style={{ margin: '0 0 0.75rem 0', color: '#221E15', fontSize: '0.85rem' }}>
-                    ⚪ <strong>Gasto Neutro</strong>: se registra en Finanzas en <strong>COP</strong> con el valor realmente pagado, pero <strong>no suma</strong> en los gastos de la empresa. Requiere al menos 2 soportes.
-                  </p>
-                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Concepto *</label>
-                  <input type="text" value={confirmarPagoSolicitud.detalleNeutro ?? (solicitud.detalle || '')} onChange={(e) => setConfirmarPagoSolicitud({ ...confirmarPagoSolicitud, detalleNeutro: e.target.value })} style={{ width: '100%', padding: '0.6rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', margin: '0.4rem 0 0.75rem 0' }} />
-                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Valor pagado en COP * <span style={{ fontWeight: 'normal', color: '#6B6458' }}>(solicitud original: {formatMoneyByMoneda(monto, 'USD')})</span></label>
-                  <input type="text" inputMode="decimal" placeholder="Ej: 4.250.000" value={confirmarPagoSolicitud.valorCOP || ''} onChange={(e) => setConfirmarPagoSolicitud({ ...confirmarPagoSolicitud, valorCOP: e.target.value })} style={{ width: '100%', padding: '0.6rem', backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.4rem' }} />
-                </div>
-              )}
-
-              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Comprobante(s) de {accion === 'ingreso' ? 'la consignación' : 'pago'} del banco * <span style={{ fontWeight: 'normal', color: '#6B6458' }}>(puedes adjuntar varios, ej. factura + soporte de pago)</span></label>
-              <input type="file" multiple onChange={handleSeleccionarComprobantePago} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '0.5rem', boxSizing: 'border-box', cursor: 'pointer' }} />
-              {(confirmarPagoSolicitud.comprobantes || []).length > 0 && (
-                <div style={{ margin: '0 0 1rem 0' }}>
-                  {confirmarPagoSolicitud.comprobantes.map(c => (
-                    <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '0.5rem 0.75rem', marginBottom: '0.4rem' }}>
-                      <span style={{ color: '#2F9E52', fontSize: '0.8rem' }}>✅ {c.nombre}</span>
-                      <button onClick={() => handleQuitarComprobantePago(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '0.9rem', padding: '0.25rem' }}>🗑️</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
-                <button disabled={guardandoConfirmarPago} onClick={handleConfirmarPagoSolicitud} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoConfirmarPago ? 'not-allowed' : 'pointer', opacity: guardandoConfirmarPago ? 0.6 : 1 }}>
-                  {guardandoConfirmarPago ? 'Guardando...' : `✅ Confirmar ${tituloAccion}`}
-                </button>
-                <button disabled={guardandoConfirmarPago} onClick={() => setConfirmarPagoSolicitud(null)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  Cancelar
-                </button>
+            {esPagoTerceroNeutro(solicitud, confirmarPagoSolicitud.ceco) && (
+              <div className="flex flex-col gap-3 rounded-lg border border-solid border-[#CFCBC0] bg-[#F1F0EC] p-4">
+                <p className="m-0 text-sm">⚪ <strong>Gasto Neutro</strong>: se registra en Finanzas en <strong>COP</strong> con el valor realmente pagado, pero <strong>no suma</strong> en los gastos de la empresa. Requiere al menos 2 soportes.</p>
+                <CampoUI label="Concepto *" htmlFor="cps-neutro-concepto">
+                  <Input id="cps-neutro-concepto" value={confirmarPagoSolicitud.detalleNeutro ?? (solicitud.detalle || '')} onChange={(e) => setConfirmarPagoSolicitud({ ...confirmarPagoSolicitud, detalleNeutro: e.target.value })} />
+                </CampoUI>
+                <CampoUI label={`Valor pagado en COP * (solicitud original: ${formatMoneyByMoneda(monto, 'USD')})`} htmlFor="cps-neutro-valor">
+                  <Input id="cps-neutro-valor" inputMode="decimal" placeholder="Ej: 4.250.000" value={confirmarPagoSolicitud.valorCOP || ''} onChange={(e) => setConfirmarPagoSolicitud({ ...confirmarPagoSolicitud, valorCOP: e.target.value })} />
+                </CampoUI>
               </div>
+            )}
+
+            <CampoUI label={`Comprobante(s) de ${accion === 'ingreso' ? 'la consignación' : 'pago'} del banco *`} htmlFor="cps-comprobantes">
+              <Input id="cps-comprobantes" type="file" multiple onChange={handleSeleccionarComprobantePago} className={claseInputArchivo} />
+              <p className="m-0 text-xs text-muted-foreground">Puedes adjuntar varios, ej. factura + soporte de pago.</p>
+              <ArchivosElegidosUI archivos={confirmarPagoSolicitud.comprobantes || []} onQuitar={handleQuitarComprobantePago} />
+            </CampoUI>
+
+            <div className="flex gap-3">
+              <Button size="lg" disabled={guardandoConfirmarPago} onClick={handleConfirmarPagoSolicitud} className={cn('flex-1', guardandoConfirmarPago && 'cursor-wait')}>
+                {guardandoConfirmarPago ? <><Loader2 className="animate-spin" /> Guardando...</> : <><Check /> Confirmar {tituloAccion}</>}
+              </Button>
+              <Button size="lg" variant="outline" disabled={guardandoConfirmarPago} onClick={() => setConfirmarPagoSolicitud(null)}>Cancelar</Button>
             </div>
-          </div>
+          </ModalUI>
           );
         })()}
 
@@ -10643,33 +10617,28 @@ const App = () => {
             El motivo es obligatorio y queda visible para el colaborador en la tabla de
             Solicitudes; puede editarla y reenviarla (vuelve a "Pendiente" y se limpia el motivo). */}
         {devolverSolicitud && (
-          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
-            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '460px', width: '90%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
-              <h2 style={{ color: '#C4622D', marginBottom: '0.5rem' }}>↩️ Devolver Solicitud</h2>
-              <p style={{ color: '#6B6458', fontSize: '0.85rem', marginTop: 0, marginBottom: '1.25rem' }}>
-                {devolverSolicitud.solicitud.tipo} de {colaboradoresPublico.find(c => c.id === devolverSolicitud.solicitud.responsableId)?.nombre || devolverSolicitud.solicitud.responsableNombre || 'colaborador'} — {devolverSolicitud.solicitud.detalle || 'sin concepto'}
-              </p>
-
-              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Motivo de la devolución *</label>
-              <p style={{ color: '#8F8877', fontSize: '0.75rem', margin: '0.25rem 0 0.5rem 0' }}>El colaborador verá este texto en su Solicitud y podrá editarla para corregirlo y reenviarla.</p>
-              <textarea
+          <ModalUI
+            titulo={<span className="text-[#C4622D]">↩️ Devolver Solicitud</span>}
+            descripcion={`${devolverSolicitud.solicitud.tipo} de ${colaboradoresPublico.find(c => c.id === devolverSolicitud.solicitud.responsableId)?.nombre || devolverSolicitud.solicitud.responsableNombre || 'colaborador'} — ${devolverSolicitud.solicitud.detalle || 'sin concepto'}`}
+            className="border-t-4 border-t-[#C4622D]"
+          >
+            <CampoUI label="Motivo de la devolución *" htmlFor="dev-motivo">
+              <p className="m-0 text-xs text-muted-foreground">El colaborador verá este texto en su Solicitud y podrá editarla para corregirlo y reenviarla.</p>
+              <Textarea
+                id="dev-motivo"
                 value={devolverSolicitud.motivo}
                 onChange={(e) => setDevolverSolicitud({ ...devolverSolicitud, motivo: e.target.value })}
                 rows={4}
                 placeholder="Ej: Falta el soporte de la factura de transporte, el valor no coincide con el anticipo original..."
-                style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginBottom: '1rem', fontFamily: 'inherit', resize: 'vertical' }}
               />
-
-              <div style={{ display: 'flex', gap: '0.75rem' }}>
-                <button disabled={guardandoDevolucion} onClick={handleConfirmarDevolucion} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4622D', color: '#FFFFFF', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoDevolucion ? 'not-allowed' : 'pointer', opacity: guardandoDevolucion ? 0.6 : 1 }}>
-                  {guardandoDevolucion ? 'Guardando...' : '↩️ Devolver Solicitud'}
-                </button>
-                <button disabled={guardandoDevolucion} onClick={() => setDevolverSolicitud(null)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  Cancelar
-                </button>
-              </div>
+            </CampoUI>
+            <div className="flex gap-3">
+              <Button size="lg" disabled={guardandoDevolucion} onClick={handleConfirmarDevolucion} className={cn('flex-1 bg-[#C4622D] text-white hover:bg-[#C4622D]/90', guardandoDevolucion && 'cursor-wait')}>
+                {guardandoDevolucion ? <><Loader2 className="animate-spin" /> Guardando...</> : <><Undo2 /> Devolver Solicitud</>}
+              </Button>
+              <Button size="lg" variant="outline" disabled={guardandoDevolucion} onClick={() => setDevolverSolicitud(null)}>Cancelar</Button>
             </div>
-          </div>
+          </ModalUI>
         )}
 
         {/* MODAL CONFIRMAR PAGO EN LOTE (Presupuesto -> Finanzas) — para los conceptos
@@ -10677,67 +10646,54 @@ const App = () => {
             lote, un comprobante por concepto (con opción de aplicar uno solo a todos), y al
             confirmar genera un Gasto por cada concepto sin volver a llenar el formulario. */}
         {confirmarPagoLotePresupuesto && (
-          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
-            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '560px', width: '90%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
-              <h2 style={{ color: '#C4A747', marginBottom: '0.5rem' }}>💳 Confirmar Pago — {confirmarPagoLotePresupuesto.items.length} concepto{confirmarPagoLotePresupuesto.items.length !== 1 ? 's' : ''}</h2>
-              <p style={{ color: '#6B6458', fontSize: '0.85rem', marginTop: 0, marginBottom: '1.25rem' }}>
-                {filtroPresupuesto.empresa} — Total: {formatMoney(confirmarPagoLotePresupuesto.items.reduce((sum, it) => sum + (it.netoAPagar || 0), 0), filtroPresupuesto.empresa)}
-              </p>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
-                <div>
-                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta de la empresa con la que se pagó *</label>
-                  <select value={confirmarPagoLotePresupuesto.cuenta} onChange={(e) => setConfirmarPagoLotePresupuesto({...confirmarPagoLotePresupuesto, cuenta: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }}>
-                    <option value="">Seleccionar</option>
-                    {(cuentasPorEmpresa[filtroPresupuesto.empresa] || []).map(cuenta => <option key={cuenta} value={cuenta}>{cuenta}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Fecha del pago *</label>
-                  <input type="date" value={confirmarPagoLotePresupuesto.fecha} onChange={(e) => setConfirmarPagoLotePresupuesto({...confirmarPagoLotePresupuesto, fecha: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem' }} />
-                </div>
-              </div>
-
-              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>📎 Usar el/los mismo(s) comprobante(s) para todos (opcional) <span style={{ fontWeight: 'normal', color: '#6B6458' }}>(puedes elegir varios)</span></label>
-              <input type="file" multiple onChange={handleSeleccionarComprobantePresupuestoTodos} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '1.25rem', boxSizing: 'border-box', cursor: 'pointer' }} />
-
-              <div style={{ borderTop: '1px solid #E6E0D2', paddingTop: '1rem' }}>
-                {confirmarPagoLotePresupuesto.items.map(item => {
-                  const archivosItem = confirmarPagoLotePresupuesto.comprobantes[item.id] || [];
-                  return (
-                  <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', padding: '0.6rem 0', borderBottom: '1px solid #F0EDE4', flexWrap: 'wrap' }}>
-                    <div>
-                      <p style={{ margin: 0, color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>{item.nombre}</p>
-                      <p style={{ margin: '0.15rem 0 0 0', color: '#6B6458', fontSize: '0.75rem' }}>{formatMoney(item.netoAPagar, filtroPresupuesto.empresa)}</p>
+          <ModalUI
+            titulo={`💳 Confirmar Pago — ${confirmarPagoLotePresupuesto.items.length} concepto${confirmarPagoLotePresupuesto.items.length !== 1 ? 's' : ''}`}
+            descripcion={`${filtroPresupuesto.empresa} — Total: ${formatMoney(confirmarPagoLotePresupuesto.items.reduce((sum, it) => sum + (it.netoAPagar || 0), 0), filtroPresupuesto.empresa)}`}
+            className="max-w-xl"
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <CampoUI label="Cuenta de la empresa con la que se pagó *" htmlFor="cpp-cuenta">
+                <Select id="cpp-cuenta" value={confirmarPagoLotePresupuesto.cuenta} onChange={(e) => setConfirmarPagoLotePresupuesto({...confirmarPagoLotePresupuesto, cuenta: e.target.value})}>
+                  <option value="">Seleccionar</option>
+                  {(cuentasPorEmpresa[filtroPresupuesto.empresa] || []).map(cuenta => <option key={cuenta} value={cuenta}>{cuenta}</option>)}
+                </Select>
+              </CampoUI>
+              <CampoUI label="Fecha del pago *" htmlFor="cpp-fecha">
+                <Input id="cpp-fecha" type="date" value={confirmarPagoLotePresupuesto.fecha} onChange={(e) => setConfirmarPagoLotePresupuesto({...confirmarPagoLotePresupuesto, fecha: e.target.value})} />
+              </CampoUI>
+            </div>
+            <CampoUI label="📎 Usar el/los mismo(s) comprobante(s) para todos (opcional)" htmlFor="cpp-todos">
+              <Input id="cpp-todos" type="file" multiple onChange={handleSeleccionarComprobantePresupuestoTodos} className={claseInputArchivo} />
+              <p className="m-0 text-xs text-muted-foreground">Puedes elegir varios.</p>
+            </CampoUI>
+            <div className="flex flex-col rounded-lg border border-solid border-border">
+              {confirmarPagoLotePresupuesto.items.map(item => {
+                const archivosItem = confirmarPagoLotePresupuesto.comprobantes[item.id] || [];
+                return (
+                  <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 border-0 border-b border-solid border-border px-3 py-2.5 last:border-b-0">
+                    <div className="min-w-0">
+                      <p className="m-0 text-sm font-bold">{item.nombre}</p>
+                      <p className="m-0 text-xs text-muted-foreground">{formatMoney(item.netoAPagar, filtroPresupuesto.empresa)}</p>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <input type="file" multiple onChange={(e) => handleSeleccionarComprobantePresupuestoItem(item.id, e)} style={{ fontSize: '0.75rem', maxWidth: '180px' }} />
+                    <div className="flex min-w-[180px] flex-col items-end gap-1">
+                      <Input type="file" multiple aria-label={`Comprobante de ${item.nombre}`} onChange={(e) => handleSeleccionarComprobantePresupuestoItem(item.id, e)} className={cn(claseInputArchivo, 'h-auto py-1 text-xs')} />
                       {archivosItem.length > 0 ? (
-                        archivosItem.map(c => (
-                          <p key={c.id} style={{ margin: '0.25rem 0 0 0', color: '#2F9E52', fontSize: '0.7rem', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.3rem' }}>
-                            ✅ {c.nombre}
-                            <button onClick={() => handleQuitarComprobantePresupuestoItem(item.id, c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '0.8rem', padding: 0 }}>🗑️</button>
-                          </p>
-                        ))
+                        <ArchivosElegidosUI archivos={archivosItem} onQuitar={(id) => handleQuitarComprobantePresupuestoItem(item.id, id)} compacto />
                       ) : (
-                        <p style={{ margin: '0.25rem 0 0 0', color: '#CC4B4B', fontSize: '0.7rem' }}>Falta comprobante</p>
+                        <span className="text-xs text-destructive">Falta comprobante</span>
                       )}
                     </div>
                   </div>
-                  );
-                })}
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
-                <button disabled={guardandoPagoLotePresupuesto} onClick={handleConfirmarPagoLotePresupuesto} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoPagoLotePresupuesto ? 'not-allowed' : 'pointer', opacity: guardandoPagoLotePresupuesto ? 0.6 : 1 }}>
-                  {guardandoPagoLotePresupuesto ? 'Guardando...' : `✅ Confirmar Pago (${confirmarPagoLotePresupuesto.items.length})`}
-                </button>
-                <button disabled={guardandoPagoLotePresupuesto} onClick={() => setConfirmarPagoLotePresupuesto(null)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  Cancelar
-                </button>
-              </div>
+                );
+              })}
             </div>
-          </div>
+            <div className="flex gap-3">
+              <Button size="lg" disabled={guardandoPagoLotePresupuesto} onClick={handleConfirmarPagoLotePresupuesto} className={cn('flex-1', guardandoPagoLotePresupuesto && 'cursor-wait')}>
+                {guardandoPagoLotePresupuesto ? <><Loader2 className="animate-spin" /> Guardando...</> : <><Check /> Confirmar Pago ({confirmarPagoLotePresupuesto.items.length})</>}
+              </Button>
+              <Button size="lg" variant="outline" disabled={guardandoPagoLotePresupuesto} onClick={() => setConfirmarPagoLotePresupuesto(null)}>Cancelar</Button>
+            </div>
+          </ModalUI>
         )}
 
         {/* MODAL CONFIRMAR PAGO EN LOTE — REEMBOLSOS o PAGO A TERCERO (Solicitudes -> Finanzas) —
@@ -10754,94 +10710,68 @@ const App = () => {
           const totalLote = items.reduce((sum, it) => sum + calcularAccionFinanzasSolicitud(it).monto, 0);
           const totalLoteFormateado = esLoteTerceroModal ? formatMoneyByMoneda(totalLote, monedaLoteModal) : formatMoney(totalLote, empresaLote);
           return (
-          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
-            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '520px', width: '90%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
-              <h2 style={{ color: '#C4A747', marginBottom: '0.5rem' }}>💳 Confirmar Pago en Lote — {items.length} {etiquetaTipoLote(items.map(x => x.tipo), items.length !== 1)}</h2>
-              <p style={{ color: '#6B6458', fontSize: '0.85rem', marginTop: 0, marginBottom: '1.25rem' }}>
-                {empresaLote} — Total: {totalLoteFormateado}
-              </p>
-
-              <div style={{ border: '1px solid #E6E0D2', borderRadius: '6px', padding: '0.75rem', marginBottom: '1.25rem', maxHeight: '150px', overflowY: 'auto' }}>
-                {items.map(it => (
-                  <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', padding: '0.3rem 0' }}>
-                    <span style={{ color: '#221E15' }}>{esLoteTerceroModal ? (it.terceroInfo?.nombre || 'Tercero') : (colaboradoresPublico.find(c => c.id === it.responsableId)?.nombre || it.responsableNombre || '—')} — {it.detalle || it.tipo}</span>
-                    <span style={{ color: '#2F9E52', fontWeight: 'bold' }}>{esLoteTerceroModal ? formatMoneyByMoneda(calcularAccionFinanzasSolicitud(it).monto, it.moneda || getMoneda(it.empresa)) : formatMoney(calcularAccionFinanzasSolicitud(it).monto, it.empresa)}</span>
-                  </div>
-                ))}
-              </div>
-
-              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Cuenta de la empresa con la que se pagó *</label>
-              <select value={cuenta} onChange={(e) => setConfirmarPagoLoteReembolsos({...confirmarPagoLoteReembolsos, cuenta: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', marginBottom: '1rem' }}>
+          <ModalUI titulo={`💳 Confirmar Pago en Lote — ${items.length} ${etiquetaTipoLote(items.map(x => x.tipo), items.length !== 1)}`} descripcion={`${empresaLote} — Total: ${totalLoteFormateado}`} className="max-w-lg">
+            <div className="max-h-40 overflow-y-auto rounded-lg border border-solid border-border px-3 py-1">
+              {items.map(it => (
+                <div key={it.id} className="flex justify-between gap-3 py-1.5 text-xs">
+                  <span>{esLoteTerceroModal ? (it.terceroInfo?.nombre || 'Tercero') : (colaboradoresPublico.find(c => c.id === it.responsableId)?.nombre || it.responsableNombre || '—')} — {it.detalle || it.tipo}</span>
+                  <span className="whitespace-nowrap font-bold text-success">{esLoteTerceroModal ? formatMoneyByMoneda(calcularAccionFinanzasSolicitud(it).monto, it.moneda || getMoneda(it.empresa)) : formatMoney(calcularAccionFinanzasSolicitud(it).monto, it.empresa)}</span>
+                </div>
+              ))}
+            </div>
+            <CampoUI label="Cuenta de la empresa con la que se pagó *" htmlFor="cpl-cuenta">
+              <Select id="cpl-cuenta" value={cuenta} onChange={(e) => setConfirmarPagoLoteReembolsos({...confirmarPagoLoteReembolsos, cuenta: e.target.value})}>
                 <option value="">Seleccionar</option>
                 {(cuentasPorEmpresa[empresaLote] || []).map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-
-              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Fecha del pago * <span style={{ fontWeight: 'normal', color: '#6B6458' }}>(es la fecha que queda en Finanzas para todo el lote)</span></label>
-              <input type="date" value={confirmarPagoLoteReembolsos.fechaPago || ''} onChange={(e) => setConfirmarPagoLoteReembolsos({...confirmarPagoLoteReembolsos, fechaPago: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', marginBottom: '1rem' }} />
-
-              {/* El CECO se pide para todos los tipos, incluido Pago a Tercero. */}
-              {(
-                <>
-                  <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>CECO del lote *</label>
-                  <select value={ceco} onChange={(e) => setConfirmarPagoLoteReembolsos({...confirmarPagoLoteReembolsos, ceco: e.target.value})} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#332D1E', boxSizing: 'border-box', marginTop: '0.5rem', marginBottom: '1rem' }}>
-                    <option value="">Seleccionar</option>
-                    {cecosGasto.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
-                  </select>
-                </>
-              )}
-
-              <label style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>Comprobante(s) de pago del banco * <span style={{ fontWeight: 'normal', color: '#6B6458' }}>(aplica a todo el lote, puedes adjuntar varios)</span></label>
-              <input type="file" multiple onChange={handleSeleccionarComprobantePagoLoteReembolsos} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', color: '#6B6458', marginTop: '0.5rem', marginBottom: '0.5rem', boxSizing: 'border-box', cursor: 'pointer' }} />
-              {(confirmarPagoLoteReembolsos.comprobantes || []).length > 0 && (
-                <div style={{ margin: '0 0 1rem 0' }}>
-                  {confirmarPagoLoteReembolsos.comprobantes.map(c => (
-                    <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '0.5rem 0.75rem', marginBottom: '0.4rem' }}>
-                      <span style={{ color: '#2F9E52', fontSize: '0.8rem' }}>✅ {c.nombre}</span>
-                      <button onClick={() => handleQuitarComprobantePagoLoteReembolsos(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#CC4B4B', fontSize: '0.9rem', padding: '0.25rem' }}>🗑️</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
-                <button disabled={guardandoPagoLoteReembolsos} onClick={handleConfirmarPagoLoteReembolsos} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: guardandoPagoLoteReembolsos ? 'not-allowed' : 'pointer', opacity: guardandoPagoLoteReembolsos ? 0.6 : 1 }}>
-                  {guardandoPagoLoteReembolsos ? 'Guardando...' : `✅ Confirmar Pago (${items.length})`}
-                </button>
-                <button disabled={guardandoPagoLoteReembolsos} onClick={() => setConfirmarPagoLoteReembolsos(null)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  Cancelar
-                </button>
-              </div>
+              </Select>
+            </CampoUI>
+            <CampoUI label="Fecha del pago *" htmlFor="cpl-fecha">
+              <Input id="cpl-fecha" type="date" value={confirmarPagoLoteReembolsos.fechaPago || ''} onChange={(e) => setConfirmarPagoLoteReembolsos({...confirmarPagoLoteReembolsos, fechaPago: e.target.value})} />
+              <p className="m-0 text-xs text-muted-foreground">Es la fecha que queda en Finanzas para todo el lote.</p>
+            </CampoUI>
+            {/* El CECO se pide para todos los tipos, incluido Pago a Tercero. */}
+            <CampoUI label="CECO del lote *" htmlFor="cpl-ceco">
+              <Select id="cpl-ceco" value={ceco} onChange={(e) => setConfirmarPagoLoteReembolsos({...confirmarPagoLoteReembolsos, ceco: e.target.value})}>
+                <option value="">Seleccionar</option>
+                {cecosGasto.map(c => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nombre}</option>)}
+              </Select>
+            </CampoUI>
+            <CampoUI label="Comprobante(s) de pago del banco *" htmlFor="cpl-comprobantes">
+              <Input id="cpl-comprobantes" type="file" multiple onChange={handleSeleccionarComprobantePagoLoteReembolsos} className={claseInputArchivo} />
+              <p className="m-0 text-xs text-muted-foreground">Aplica a todo el lote; puedes adjuntar varios.</p>
+              <ArchivosElegidosUI archivos={confirmarPagoLoteReembolsos.comprobantes || []} onQuitar={handleQuitarComprobantePagoLoteReembolsos} />
+            </CampoUI>
+            <div className="flex gap-3">
+              <Button size="lg" disabled={guardandoPagoLoteReembolsos} onClick={handleConfirmarPagoLoteReembolsos} className={cn('flex-1', guardandoPagoLoteReembolsos && 'cursor-wait')}>
+                {guardandoPagoLoteReembolsos ? <><Loader2 className="animate-spin" /> Guardando...</> : <><Check /> Confirmar Pago ({items.length})</>}
+              </Button>
+              <Button size="lg" variant="outline" disabled={guardandoPagoLoteReembolsos} onClick={() => setConfirmarPagoLoteReembolsos(null)}>Cancelar</Button>
             </div>
-          </div>
+          </ModalUI>
           );
         })()}
 
         {/* MODAL VER LOTE DE PAGO — lista simple (fecha, colaborador, valor) de qué otras
             Solicitudes o Gastos se pagaron junto con este, con el mismo comprobante. */}
         {verLotePago && (
-          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
-            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '460px', width: '90%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
-              <h2 style={{ color: '#C4A747', marginBottom: '1rem' }}>{verLotePago.titulo}</h2>
-              {verLotePago.items.length === 0 ? (
-                <p style={{ color: '#8F8877', fontSize: '0.85rem' }}>No se encontraron otros registros de este lote.</p>
-              ) : (
-                <div style={{ border: '1px solid #E6E0D2', borderRadius: '6px' }}>
-                  {verLotePago.items.map((it, idx) => (
-                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0.85rem', borderBottom: idx < verLotePago.items.length - 1 ? '1px solid #F0EDE4' : 'none' }}>
-                      <div>
-                        <p style={{ margin: 0, color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem' }}>{it.nombre}</p>
-                        <p style={{ margin: '0.15rem 0 0 0', color: '#6B6458', fontSize: '0.75rem' }}>{it.fecha} · {it.empresa}</p>
-                      </div>
-                      <span style={{ color: '#2F9E52', fontWeight: 'bold', fontSize: '0.85rem' }}>{it.valor}</span>
+          <ModalUI titulo={verLotePago.titulo}>
+            {verLotePago.items.length === 0 ? (
+              <p className="m-0 text-sm text-muted-foreground">No se encontraron otros registros de este lote.</p>
+            ) : (
+              <div className="flex flex-col rounded-lg border border-solid border-border">
+                {verLotePago.items.map((it, idx) => (
+                  <div key={idx} className="flex justify-between gap-3 border-0 border-b border-solid border-border px-3 py-2.5 last:border-b-0">
+                    <div>
+                      <p className="m-0 text-sm font-bold">{it.nombre}</p>
+                      <p className="m-0 text-xs text-muted-foreground">{it.fecha} · {it.empresa}</p>
                     </div>
-                  ))}
-                </div>
-              )}
-              <button onClick={() => setVerLotePago(null)} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1.25rem' }}>
-                Cerrar
-              </button>
-            </div>
-          </div>
+                    <span className="whitespace-nowrap text-sm font-bold text-success">{it.valor}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <Button variant="outline" onClick={() => setVerLotePago(null)}>Cerrar</Button>
+          </ModalUI>
         )}
 
         {/* MODAL PAGO A TERCERO EN LOTE (ej. Caelum manda varias facturas de distintos
@@ -10962,114 +10892,99 @@ const App = () => {
 
         {/* MODAL VER DETALLE DEL TERCERO — para que la Coordinadora Administrativa pueda
             ejecutar el pago sin abrir el PDF ni buscar en "Ver Soportes". */}
-        {verDetalleTercero && (
-          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
-            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '460px', width: '90%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
-              <h2 style={{ color: '#C4A747', marginBottom: '1.25rem' }}>👤 Detalle del Pago a Tercero</h2>
-              {(() => {
-                const t = verDetalleTercero.terceroInfo || {};
-                const fila = (label, valor) => (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', padding: '0.5rem 0', borderBottom: '1px solid #F0ECE1' }}>
-                    <span style={{ color: '#8F8877', fontSize: '0.8rem' }}>{label}</span>
-                    <span style={{ color: '#221E15', fontWeight: 'bold', fontSize: '0.85rem', textAlign: 'right' }}>{valor || '—'}</span>
-                  </div>
-                );
-                return (
-                  <div>
-                    {fila('Empresa que paga', verDetalleTercero.empresa)}
-                    {fila('Fecha', verDetalleTercero.fecha)}
-                    {fila('Solicitado por', verDetalleTercero.responsableNombre)}
-                    {fila('Concepto', verDetalleTercero.detalle)}
-                    {fila('Valor a pagar', formatMoneyByMoneda(parseFloat(verDetalleTercero.valor) || 0, verDetalleTercero.moneda || getMoneda(verDetalleTercero.empresa)))}
-                    <div style={{ margin: '1rem 0 0.25rem 0', color: '#C4A747', fontWeight: 'bold', fontSize: '0.8rem' }}>DATOS DEL TERCERO</div>
-                    {fila('Nombre', t.nombre)}
-                    {fila('DNI / Documento', t.dni)}
-                    {fila('País de origen', t.paisOrigen)}
-                    <div style={{ margin: '1rem 0 0.25rem 0', color: '#C4A747', fontWeight: 'bold', fontSize: '0.8rem' }}>DATOS BANCARIOS PARA EL PAGO</div>
-                    {fila('Banco', t.banco)}
-                    {fila('Tipo de cuenta', t.tipoCuenta)}
-                    {fila('Número de cuenta', t.numeroCuenta)}
-                  </div>
-                );
-              })()}
-              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
-                <button onClick={() => handleGenerarPDFPagoTercero(verDetalleTercero)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  📄 Descargar PDF
-                </button>
-                <button onClick={() => setVerDetalleTercero(null)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  Cerrar
-                </button>
-              </div>
+        {verDetalleTercero && (() => {
+          const t = verDetalleTercero.terceroInfo || {};
+          const fila = (label, valor) => (
+            <div className="flex justify-between gap-4 border-0 border-b border-solid border-border py-2 last:border-b-0">
+              <span className="text-xs text-muted-foreground">{label}</span>
+              <span className="text-right text-sm font-bold">{valor || '—'}</span>
             </div>
-          </div>
-        )}
+          );
+          const grupo = (titulo, filas) => (
+            <div className="flex flex-col">
+              <p className="m-0 mb-1 text-xs font-bold uppercase tracking-wide text-primary">{titulo}</p>
+              <div className="flex flex-col rounded-lg border border-solid border-border bg-background px-3">{filas}</div>
+            </div>
+          );
+          return (
+            <ModalUI titulo="👤 Detalle del Pago a Tercero">
+              {grupo('Pago', <>
+                {fila('Empresa que paga', verDetalleTercero.empresa)}
+                {fila('Fecha', verDetalleTercero.fecha)}
+                {fila('Solicitado por', verDetalleTercero.responsableNombre)}
+                {fila('Concepto', verDetalleTercero.detalle)}
+                {fila('Valor a pagar', formatMoneyByMoneda(parseFloat(verDetalleTercero.valor) || 0, verDetalleTercero.moneda || getMoneda(verDetalleTercero.empresa)))}
+              </>)}
+              {grupo('Datos del tercero', <>
+                {fila('Nombre', t.nombre)}
+                {fila('DNI / Documento', t.dni)}
+                {fila('País de origen', t.paisOrigen)}
+              </>)}
+              {grupo('Datos bancarios para el pago', <>
+                {fila('Banco', t.banco)}
+                {fila('Tipo de cuenta', t.tipoCuenta)}
+                {fila('Número de cuenta', t.numeroCuenta)}
+              </>)}
+              <div className="flex gap-3">
+                <Button size="lg" onClick={() => handleGenerarPDFPagoTercero(verDetalleTercero)} className="flex-1"><FileDown /> Descargar PDF</Button>
+                <Button size="lg" variant="outline" onClick={() => setVerDetalleTercero(null)}>Cerrar</Button>
+              </div>
+            </ModalUI>
+          );
+        })()}
 
         {/* MODAL INFORME DE FINANZAS — vista previa (resumen + gráficas + tabla) del filtro
             actualmente aplicado, antes de descargar el PDF. Usa exactamente lo mismo que arma
             handleDescargarInformeFinanzas, así que lo que se ve aquí es lo que trae el PDF. */}
         {informeFinanzas && (
-          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
-            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '820px', width: '95%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-                <div>
-                  <h2 style={{ color: '#C4A747', margin: '0 0 0.35rem 0' }}>👁️ Informe Financiero — Vista Previa</h2>
-                  <p style={{ color: '#8F8877', margin: 0, fontSize: '0.8rem' }}>{informeFinanzas.datos.filtrosTexto.join(' · ')}</p>
-                </div>
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
-                  {informeFinanzas.datos.empresaFiltro !== 'Todas' && <EmpresaLogo empresa={informeFinanzas.datos.empresaFiltro} height={32} />}
-                </div>
-              </div>
-
-              {informeFinanzas.datos.porMoneda.length === 0 && (
-                <p style={{ color: '#AFA897', textAlign: 'center', padding: '2rem 0' }}>Sin registros para este filtro.</p>
-              )}
-
-              {informeFinanzas.datos.porMoneda.map(pm => {
-                const g = informeFinanzas.graficas.find(x => x.moneda === pm.moneda);
-                return (
-                  <div key={pm.moneda} style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #E6E0D2' }}>
-                    <h3 style={{ color: '#221E15', margin: '0 0 1rem 0', fontSize: '1rem' }}>Resumen ({pm.moneda})</h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
-                      {[
-                        { label: 'Ingresos', valor: pm.ingresos, color: '#2F9E52' },
-                        { label: 'Gastos', valor: pm.gastos, color: '#CC4B4B' },
-                        { label: 'Neto', valor: pm.neto, color: pm.neto >= 0 ? '#2F9E52' : '#CC4B4B' },
-                        { label: 'Movimientos', valor: null, texto: String(pm.cantidadMovimientos), color: '#6C63D1' },
-                      ].map(card => (
-                        <div key={card.label} style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '6px', padding: '0.85rem' }}>
-                          <p style={{ margin: '0 0 0.35rem 0', color: '#8F8877', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{card.label}</p>
-                          <p style={{ margin: 0, color: card.color, fontWeight: 'bold', fontSize: '1rem' }}>{card.texto || formatMoneyByMoneda(card.valor, pm.moneda)}</p>
-                        </div>
-                      ))}
-                    </div>
-
-                    <img src={g.imgMensual} alt={`Ingresos vs Gastos por mes (${pm.moneda})`} style={{ width: '100%', border: '1px solid #E6E0D2', borderRadius: '4px', marginBottom: '1rem' }} />
-                    <img src={g.imgEmpresa} alt={`Ingresos vs Gastos por empresa (${pm.moneda})`} style={{ width: '100%', border: '1px solid #E6E0D2', borderRadius: '4px', marginBottom: '1rem' }} />
-                    {g.imgCategoria && (
-                      <img src={g.imgCategoria} alt={`Distribución por categoría (${pm.moneda})`} style={{ maxWidth: '100%', border: '1px solid #E6E0D2', borderRadius: '4px' }} />
-                    )}
+          <ModalUI
+            titulo={<span className="flex flex-wrap items-center justify-between gap-3"><span>👁️ Informe Financiero — Vista Previa</span>{informeFinanzas.datos.empresaFiltro !== 'Todas' && <EmpresaLogo empresa={informeFinanzas.datos.empresaFiltro} height={32} />}</span>}
+            descripcion={informeFinanzas.datos.filtrosTexto.join(' · ')}
+            className="max-w-3xl"
+          >
+            {informeFinanzas.datos.porMoneda.length === 0 && (
+              <p className="m-0 py-8 text-center text-muted-foreground">Sin registros para este filtro.</p>
+            )}
+            {informeFinanzas.datos.porMoneda.map(pm => {
+              const g = informeFinanzas.graficas.find(x => x.moneda === pm.moneda);
+              return (
+                <section key={pm.moneda} className="flex flex-col gap-4 border-0 border-t border-solid border-border pt-4">
+                  <h3 className="m-0 text-base font-bold">Resumen ({pm.moneda})</h3>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {[
+                      { label: 'Ingresos', valor: pm.ingresos, clase: 'text-success' },
+                      { label: 'Gastos', valor: pm.gastos, clase: 'text-destructive' },
+                      { label: 'Neto', valor: pm.neto, clase: pm.neto >= 0 ? 'text-success' : 'text-destructive' },
+                      { label: 'Movimientos', valor: null, texto: String(pm.cantidadMovimientos), clase: 'text-[#6C63D1]' },
+                    ].map(card => (
+                      <div key={card.label} className="min-w-0 rounded-lg border border-solid border-border bg-background p-3">
+                        <p className="m-0 mb-1 text-[0.7rem] uppercase tracking-wide text-muted-foreground">{card.label}</p>
+                        <p className={cn('m-0 truncate text-base font-bold', card.clase)}>{card.texto || formatMoneyByMoneda(card.valor, pm.moneda)}</p>
+                      </div>
+                    ))}
                   </div>
-                );
-              })}
-
-              {informeFinanzas.datos.totalRegistros > 0 && (
-                <p style={{ color: informeFinanzas.datos.truncado ? '#CC4B4B' : '#8F8877', fontSize: '0.8rem', marginTop: '1.5rem' }}>
-                  {informeFinanzas.datos.truncado
-                    ? `⚠️ El PDF incluirá el detalle de ${informeFinanzas.datos.filasTabla.length} de ${informeFinanzas.datos.totalRegistros} movimientos (límite ${LIMITE_FILAS_TABLA_INFORME}) — acota el filtro para verlos todos.`
-                    : `El PDF incluirá el detalle completo de los ${informeFinanzas.datos.totalRegistros} movimiento(s).`}
-                </p>
-              )}
-
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
-                <button onClick={handleDescargarInformeFinanzas} disabled={generandoInformePDF} style={{ flex: 1, padding: '0.75rem', backgroundColor: generandoInformePDF ? '#D8D2C2' : '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: generandoInformePDF ? 'not-allowed' : 'pointer' }}>
-                  {generandoInformePDF ? '⏳ Generando...' : '⬇️ Descargar PDF'}
-                </button>
-                <button onClick={() => setInformeFinanzas(null)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  Cerrar
-                </button>
-              </div>
+                  <img src={g.imgMensual} alt={`Ingresos vs Gastos por mes (${pm.moneda})`} className="block h-auto w-full rounded-md border border-solid border-border" />
+                  <img src={g.imgEmpresa} alt={`Ingresos vs Gastos por empresa (${pm.moneda})`} className="block h-auto w-full rounded-md border border-solid border-border" />
+                  {g.imgCategoria && (
+                    <img src={g.imgCategoria} alt={`Distribución por categoría (${pm.moneda})`} className="block h-auto max-w-full rounded-md border border-solid border-border" />
+                  )}
+                </section>
+              );
+            })}
+            {informeFinanzas.datos.totalRegistros > 0 && (
+              <p className={cn('m-0 text-xs', informeFinanzas.datos.truncado ? 'text-destructive' : 'text-muted-foreground')}>
+                {informeFinanzas.datos.truncado
+                  ? `⚠️ El PDF incluirá el detalle de ${informeFinanzas.datos.filasTabla.length} de ${informeFinanzas.datos.totalRegistros} movimientos (límite ${LIMITE_FILAS_TABLA_INFORME}) — acota el filtro para verlos todos.`
+                  : `El PDF incluirá el detalle completo de los ${informeFinanzas.datos.totalRegistros} movimiento(s).`}
+              </p>
+            )}
+            <div className="flex gap-3">
+              <Button size="lg" onClick={handleDescargarInformeFinanzas} disabled={generandoInformePDF} className={cn('flex-1', generandoInformePDF && 'cursor-wait')}>
+                {generandoInformePDF ? <><Loader2 className="animate-spin" /> Generando...</> : <><FileDown /> Descargar PDF</>}
+              </Button>
+              <Button size="lg" variant="outline" onClick={() => setInformeFinanzas(null)}>Cerrar</Button>
             </div>
-          </div>
+          </ModalUI>
         )}
 
         {/* MODAL SOLICITUD DE ORIGEN — desde "🔗 Generado desde Solicitudes" en Finanzas */}
@@ -11118,44 +11033,35 @@ const App = () => {
 
         {/* MODAL VER SOPORTES */}
         {verSoportes && (
-          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '9999' }}>
-            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '2rem', maxWidth: '500px', width: '90%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 1px 4px rgba(34,30,21,0.05)'}}>
-              <h2 style={{ color: '#C4A747', marginBottom: '1.5rem' }}>📎 Soportes</h2>
-              
-              {verSoportes.length === 0 ? (
-                <p style={{ color: '#6B6458', textAlign: 'center' }}>No hay soportes adjuntos</p>
-              ) : (
-                verSoportes.map((soporte, idx) => {
-                  const previsualizable = inferirTipoPreviewSoporte(soporte.nombre) !== 'otro';
-                  return (
-                  <div key={idx} style={{ backgroundColor: '#F8F6F1', border: '1px solid #E6E0D2', borderRadius: '4px', padding: '1rem', marginBottom: '1rem' }}>
-                    <p style={{ color: '#C4A747', fontWeight: 'bold', margin: '0 0 0.5rem 0' }}>📄 {soporte.nombre}</p>
-                    <p style={{ color: '#6B6458', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>{(soporte.tamaño / 1024).toFixed(2)} KB</p>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <ModalUI titulo="📎 Soportes">
+            {verSoportes.length === 0 ? (
+              <p className="m-0 text-center text-sm text-muted-foreground">No hay soportes adjuntos</p>
+            ) : (
+              verSoportes.map((soporte, idx) => {
+                const previsualizable = inferirTipoPreviewSoporte(soporte.nombre) !== 'otro';
+                return (
+                  <div key={idx} className="flex flex-col gap-3 rounded-lg border border-solid border-border bg-background p-4">
+                    <div className="min-w-0">
+                      <p className="m-0 flex items-center gap-1.5 truncate text-sm font-bold"><FileText size={15} className="shrink-0 text-primary" /> {soporte.nombre}</p>
+                      <p className="m-0 text-xs text-muted-foreground">{(soporte.tamaño / 1024).toFixed(2)} KB</p>
+                    </div>
+                    <div className="flex gap-2">
                       {previsualizable && (
-                        <button onClick={() => handlePreviewSoporte(soporte)} disabled={cargandoPreviewSoporte} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #C4A747', color: '#C4A747', borderRadius: '4px', fontWeight: 'bold', cursor: cargandoPreviewSoporte ? 'default' : 'pointer', fontSize: '0.85rem' }}>
-                          👁️ Ver
-                        </button>
+                        <Button variant="outline" onClick={() => handlePreviewSoporte(soporte)} disabled={cargandoPreviewSoporte} className="flex-1"><Eye size={16} /> Ver</Button>
                       )}
-                      <button onClick={() => handleDownloadSoporte(soporte)} style={{ flex: 1, padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>
-                        ⬇️ Descargar
-                      </button>
+                      <Button onClick={() => handleDownloadSoporte(soporte)} className="flex-1"><FileDown size={16} /> Descargar</Button>
                       {verSoportesContexto?.puedeEliminar && soporte.id && (
-                        <button onClick={() => handleEliminarUnSoporte(soporte)} disabled={eliminandoSoporteId === soporte.id} title="Eliminar este soporte" style={{ padding: '0.75rem', backgroundColor: '#FFFFFF', border: '1px solid #CC4B4B', color: '#CC4B4B', borderRadius: '4px', fontWeight: 'bold', cursor: eliminandoSoporteId === soporte.id ? 'default' : 'pointer', fontSize: '0.85rem' }}>
-                          {eliminandoSoporteId === soporte.id ? '⏳' : '🗑️'}
-                        </button>
+                        <Button variant="outline" size="icon" onClick={() => handleEliminarUnSoporte(soporte)} disabled={eliminandoSoporteId === soporte.id} title="Eliminar este soporte" aria-label="Eliminar este soporte" className="text-destructive">
+                          {eliminandoSoporteId === soporte.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                        </Button>
                       )}
                     </div>
                   </div>
-                  );
-                })
-              )}
-
-              <button onClick={() => { setVerSoportes(null); setVerSoportesContexto(null); }} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '1rem' }}>
-                Cerrar
-              </button>
-            </div>
-          </div>
+                );
+              })
+            )}
+            <Button variant="outline" onClick={() => { setVerSoportes(null); setVerSoportesContexto(null); }}>Cerrar</Button>
+          </ModalUI>
         )}
 
         {/* MODAL VISTA PREVIA DE SOPORTE — PDF o imagen mostrados directo, sin descargar
@@ -11163,30 +11069,25 @@ const App = () => {
             (Solicitudes, Gastos, Ingresos, Cuentas de Cobro, Pago a Tercero: todos comparten
             el mismo modal de arriba). */}
         {previewSoporte && (
-          <div style={{ position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: '10000' }}>
-            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E6E0D2', borderRadius: '10px', padding: '1.25rem', maxWidth: '900px', width: '95%', maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 1px 4px rgba(34,30,21,0.05)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem' }}>
-                <p style={{ color: '#C4A747', fontWeight: 'bold', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📄 {previewSoporte.nombre}</p>
-                <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/75 p-4">
+            <Card className="flex max-h-[92vh] w-full max-w-4xl flex-col gap-3 px-4 py-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="m-0 flex min-w-0 items-center gap-1.5 truncate text-sm font-bold"><FileText size={15} className="shrink-0 text-primary" /> {previewSoporte.nombre}</p>
+                <div className="flex shrink-0 gap-2">
                   {/* El archivo ya está cargado en memoria para la vista previa (object URL o
                       data URL) — se descarga directo desde ahí, sin volver a pedirlo a Storage. */}
-                  <button onClick={() => { const link = document.createElement('a'); link.href = previewSoporte.url; link.download = previewSoporte.nombre; link.click(); }} style={{ padding: '0.5rem 1rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
-                    ⬇️ Descargar
-                  </button>
-                  <button onClick={handleCerrarPreviewSoporte} style={{ padding: '0.5rem 1rem', backgroundColor: '#E6E0D2', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem' }}>
-                    ✕ Cerrar
-                  </button>
+                  <Button size="sm" onClick={() => { const link = document.createElement('a'); link.href = previewSoporte.url; link.download = previewSoporte.nombre; link.click(); }}><FileDown size={14} /> Descargar</Button>
+                  <Button size="sm" variant="outline" onClick={handleCerrarPreviewSoporte}><X size={14} /> Cerrar</Button>
                 </div>
               </div>
-
-              <div style={{ flex: 1, overflow: 'auto', backgroundColor: '#F8F6F1', borderRadius: '4px', display: 'flex', justifyContent: 'center', alignItems: previewSoporte.tipo === 'imagen' ? 'center' : 'stretch' }}>
+              <div className={cn('flex flex-1 justify-center overflow-auto rounded-md bg-background', previewSoporte.tipo === 'imagen' ? 'items-center' : 'items-stretch')}>
                 {previewSoporte.tipo === 'pdf' ? (
-                  <iframe src={previewSoporte.url} title={previewSoporte.nombre} style={{ width: '100%', height: '75vh', border: 'none', borderRadius: '4px' }} />
+                  <iframe src={previewSoporte.url} title={previewSoporte.nombre} className="h-[75vh] w-full rounded-md border-0" />
                 ) : (
-                  <img src={previewSoporte.url} alt={previewSoporte.nombre} style={{ maxWidth: '100%', maxHeight: '75vh', objectFit: 'contain' }} />
+                  <img src={previewSoporte.url} alt={previewSoporte.nombre} className="max-h-[75vh] max-w-full object-contain" />
                 )}
               </div>
-            </div>
+            </Card>
           </div>
         )}
       </main>
