@@ -11,7 +11,7 @@ En `original/` están los archivos **tal cual** están en Noss (sirven de refere
 - Antes de enviar muestra tickets parecidos para no repetir; "a mí también" (apoyos).
 - Lista `/soporte` con filtros y resumen por estado; detalle del ticket con comentarios e historial.
 - Estados: Nuevo → En revisión / Necesita información → Aprobado → En desarrollo → Publicado / Rechazado.
-- Todos ven todos los tickets; solo quien gestiona cambia estado, prioridad y respuesta (trigger `tickets_antes`).
+- Todos los que usan soporte ven todos los tickets; solo quien gestiona cambia estado, prioridad y respuesta (trigger `tickets_antes`).
 - Avisos en la campana a gestores, autor, quienes apoyan y quienes comentan.
 - Edge Function `soporte-github`: al aprobar crea el issue `[Soporte #N] …` (label `soporte`) en GitHub; al publicar o rechazar lo cierra.
 
@@ -31,8 +31,8 @@ En `original/` están los archivos **tal cual** están en Noss (sirven de refere
 ## Diferencias con AM Holding (adaptar)
 
 1. **Permisos.** Noss usa `tiene_permiso('soporte.ver' | 'soporte.crear' | 'soporte.gestionar')` y en React `puede()`. AM Holding usa roles fijos (`current_rol()` en SQL; `canApprove`, `isReadOnly`… en React). Reemplazar:
-   - ver / crear / comentar / apoyar → cualquier usuario activo: `public.current_usuario_id() is not null`.
-   - gestionar → `public.current_rol() in ('Administrador', 'Gerente')` (confirmar con el usuario quiénes gestionan). Crear una función `public.gestiona_soporte()` y usarla en RLS, en `tickets_antes`, en `gestores_soporte()` y en la Edge Function (en lugar de `mis_permisos`, llamar `rpc('gestiona_soporte')`).
+   - ver / crear / comentar / apoyar → solo los roles **Administrador, Coordinadora Administrativa y Gerente**: crear `public.usa_soporte()` = `public.current_rol() in ('Administrador', 'Coordinadora Administrativa', 'Gerente')` y usarla en lugar de `tiene_permiso('soporte.ver')` / `('soporte.crear')` (RLS de tablas y del bucket). El botón de soporte y el menú solo se muestran a esos roles.
+   - gestionar (cambiar estado, prioridad, respuesta, crear el issue en GitHub) → `public.current_rol() in ('Administrador', 'Gerente')`: crear `public.gestiona_soporte()` y usarla en RLS, en `tickets_antes`, en `gestores_soporte()` (usuarios activos con esos roles) y en la Edge Function (en lugar de `mis_permisos`, llamar `rpc('gestiona_soporte')`).
    - Quitar el `insert into public.permisos …` del SQL (AM no tiene esa tabla).
 2. **Notificaciones.** Noss tiene `public.notificaciones` + `notificar()` + campana con Realtime. Si AM Holding no tiene campana, crear lo mínimo: tabla `notificaciones (id, usuario_id, tipo, titulo, mensaje, enlace, ref_key, leida, created_at)` con unique `(usuario_id, ref_key)`, la función `notificar()` (security definer, revoke a public/anon/authenticated), RLS "cada quien ve y marca las suyas" y un componente campana con Supabase Realtime. Si no se quiere campana, borrar las llamadas a `notificar()`.
 3. **Navegación.** Noss usa `react-router-dom` (`Link`, `useNavigate`, `useParams`, rutas `/soporte` y `/soporte/:id`). AM Holding es CRA con casi todo en `src/App.js` y navegación por estado: agregar una vista "Soporte" en el menú y manejar el ticket abierto con estado (`ticketId`). Los `enlace` de las notificaciones (`/soporte/ID`) deben llevar a esa vista.
@@ -63,7 +63,7 @@ Quiero implementar en AM Holding el sistema de soporte (tickets) que hicimos en 
 Está todo en la rama claude/vigilant-wright-15c3r0 del repo am-holding, carpeta docs/kit-soporte/
 (lee primero docs/kit-soporte/LEEME.md; en original/ están los archivos de Noss como referencia).
 Adáptalo a AM Holding siguiendo la sección "Diferencias con AM Holding": permisos por rol
-(gestionan Administrador y Gerente), campana de notificaciones mínima si no existe, navegación por
+(crean y ven tickets: Administrador, Coordinadora Administrativa y Gerente; gestionan: Administrador y Gerente), campana de notificaciones mínima si no existe, navegación por
 estado en App.js, componentes shadcn/ui, bucket tickets-adjuntos (no confundir con los soportes de pagos),
 módulos de AM Holding y migración con el formato de fecha del proyecto.
 Hazlo en una rama + PR, valida el SQL y corre npm run lint, npm test y npm run build antes de subir.
