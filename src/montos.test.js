@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parsearMonto, montoONumero0 } from './montos';
+import { parsearMonto, montoONumero0, mensajeConfirmacionMontos } from './montos';
 
 describe('parsearMonto', () => {
   it.each([
@@ -35,5 +35,17 @@ describe('parsearMonto', () => {
   it('montoONumero0 cae en 0', () => {
     expect(montoONumero0('')).toBe(0);
     expect(montoONumero0('50.000')).toBe(50000);
+  });
+});
+
+describe('mensajeConfirmacionMontos', () => {
+  it('sin punto ni coma no pide confirmación', () => {
+    expect(mensajeConfirmacionMontos([{ etiqueta: 'Valor', texto: '50000' }, { etiqueta: 'X', texto: 1250.5 }])).toBeNull();
+  });
+  it('lista solo los valores con separador', () => {
+    const m = mensajeConfirmacionMontos([{ etiqueta: 'Valor', texto: '50.000' }, { etiqueta: 'Otro', texto: '300' }]);
+    expect(m).toContain('Valor: escribiste "50.000"');
+    expect(m).toContain('50.000');
+    expect(m).not.toContain('Otro');
   });
 });

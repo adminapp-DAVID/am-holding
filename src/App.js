@@ -32,7 +32,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Badge, badgeVariants, estadoBadge } from '@/components/ui/badge';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { CODIGO_BANCO_EXTERIOR, inferirCodigoBanco, limpiarNumeroCuenta, limpiarDocumento } from './datosBancarios';
-import { parsearMonto, montoONumero0 } from './montos';
+import { parsearMonto, montoONumero0, confirmarMontos } from './montos';
 
 // Logo por empresa. Para sumar ARKO, sube el archivo a src/assets/logos/,
 // agrega su import arriba y una línea aquí con el nombre exacto de la empresa.
@@ -2227,6 +2227,7 @@ const App = () => {
       alert('Escribe "Por concepto de" (es obligatorio)');
       return;
     }
+    if (!confirmarMontos([{ etiqueta: 'Valor', texto: nuevoSoportePendiente.valor }])) return;
     setSubiendoSoportePendiente(true);
     try {
       const archivo = nuevoSoportePendiente.archivo;
@@ -2307,6 +2308,7 @@ const App = () => {
       alert('El Concepto es obligatorio');
       return;
     }
+    if (!confirmarMontos([{ etiqueta: 'Valor', texto: pendienteEditData.valor }])) return;
     setGuardandoEdicionPendiente(true);
     try {
       const { error } = await supabase
@@ -2554,6 +2556,7 @@ const App = () => {
     // siempre la propia, sin excepción.
     const empresaNombre = (newSolicitud.tipo !== 'Pago a Tercero' && user.rol === 'Responsable') ? user.empresa : newSolicitud.empresa;
 
+    if (!confirmarMontos([{ etiqueta: 'Valor', texto: newSolicitud.valor }, { etiqueta: 'Valor anticipo original', texto: newSolicitud.valorAnticipoOriginal }, ...newSolicitud.documentos.map((d, i) => ({ etiqueta: `Gasto ${i + 1}${d.descripcion ? ` (${d.descripcion})` : ''}`, texto: d.valor }))])) return;
     setGuardandoSolicitud(true);
     try {
       let empresaId = null;
@@ -4058,6 +4061,7 @@ const App = () => {
       return;
     }
 
+    if (!confirmarMontos([{ etiqueta: 'Valor', texto: newCuentaCobro.monto }])) return;
     setGuardandoCuentaCobro(true);
     try {
       // Consecutivo por colaborador: cuenta cuántas cuentas de cobro ya tiene esta persona (en
@@ -4522,6 +4526,7 @@ const App = () => {
       return;
     }
 
+    if (!confirmarMontos([{ etiqueta: 'Valor', texto: newGasto.valor }, { etiqueta: 'Valor destino', texto: newGasto.valorDestino }])) return;
     setGuardandoGasto(true);
     try {
       // Pago a Tercero registrado directo en Finanzas (Opción B) — sea porque el Tipo es
@@ -4762,6 +4767,7 @@ const App = () => {
       return;
     }
 
+    if (!confirmarMontos([{ etiqueta: 'Valor', texto: newIngreso.valor }])) return;
     setGuardandoIngreso(true);
     try {
       const [empresaId, cecoId] = await Promise.all([resolverEmpresaId(newIngreso.empresa), resolverCecoId(newIngreso.ceco)]);
@@ -4941,6 +4947,7 @@ const App = () => {
     if (!detalle) { alert('El concepto no puede quedar vacío'); return; }
     if (!fecha) { alert('La fecha no puede quedar vacía'); return; }
     if (!ceco) { alert('Elige un CECO'); return; }
+    if (!confirmarMontos([{ etiqueta: 'Valor', texto: valorTexto }, { etiqueta: 'Valor destino', texto: tieneValorDestino ? valorDestinoTexto : null }])) return;
     setGuardandoConceptoFinanzas(true);
     try {
       const cecoId = await resolverCecoId(ceco);
@@ -5028,6 +5035,7 @@ const App = () => {
       alert('Para pagarlo por PAB elige el Beneficiario (tercero) — a él se le transfiere.');
       return;
     }
+    if (!confirmarMontos([{ etiqueta: 'Valor mensual', texto: newPresupuestoItem.valorMensual }])) return;
     const [empresaId, cecoId] = await Promise.all([resolverEmpresaId(newPresupuestoItem.empresa), resolverCecoId(newPresupuestoItem.ceco)]);
     const payload = {
       empresa_id: empresaId,
@@ -5549,6 +5557,7 @@ const App = () => {
     const retencionInvalida = lineas.find(l => { const m = montosLineaFacturaTercero(l); return m.retencion < 0 || m.neto <= 0; });
     if (retencionInvalida) { alert(`La retención de ${retencionInvalida.responsable} no puede ser negativa ni mayor o igual al valor de la factura`); return; }
 
+    if (!confirmarMontos(lineas.flatMap(l => [{ etiqueta: `Valor ${l.responsable}`, texto: l.valor }, { etiqueta: `Retención ${l.responsable}`, texto: l.retencion }]))) return;
     setGuardandoFacturasTercero(true);
     try {
       const [empresaId, cecoId] = await Promise.all([resolverEmpresaId(empresa), resolverCecoId(ceco)]);
@@ -5659,6 +5668,7 @@ const App = () => {
       [totalNetoLote, totalBrutoLote].some(t => Math.abs((parseFloat(g.valor) || 0) - t) <= 1));
     if (posibleTotal && !window.confirm(`⚠️ Ya existe en Finanzas un gasto del ${posibleTotal.fecha} por ${formatMoney(posibleTotal.valor, empresa)} ("${posibleTotal.detalle}"), igual al total de este lote.\n\nSi es este mismo pago registrado por el total, elimínalo: el lote ya registra cada factura por separado.\n\n¿Registrar el lote de todas formas?`)) return;
 
+    if (!confirmarMontos(lineas.flatMap(l => [{ etiqueta: `Valor ${l.responsable}`, texto: l.valor }, { etiqueta: `Retención ${l.responsable}`, texto: l.retencion }]))) return;
     setGuardandoFacturasTercero(true);
     try {
       const fecha = new Date().toISOString().split('T')[0];
@@ -5749,6 +5759,7 @@ const App = () => {
       alert('El valor anual es obligatorio y debe ser mayor a cero');
       return;
     }
+    if (!confirmarMontos([{ etiqueta: 'Valor anual', texto: newPresupuestoAnual.valorAnual }])) return;
     const [empresaId, cecoId] = await Promise.all([resolverEmpresaId(newPresupuestoAnual.empresa), resolverCecoId(newPresupuestoAnual.ceco)]);
     const existente = presupuestoAnual.find(p => p.empresa === newPresupuestoAnual.empresa && p.ceco === newPresupuestoAnual.ceco && String(p.anio) === String(newPresupuestoAnual.anio));
     let error;
@@ -5856,6 +5867,7 @@ const App = () => {
       alert('Valor inválido');
       return;
     }
+    if (!confirmarMontos([{ etiqueta: 'Valor esperado', texto: input }])) return;
     if (overrideExistente) {
       const { error } = await supabase.from('presupuesto_overrides').update({ valor }).eq('id', overrideExistente.id);
       if (error) { console.error('Error actualizando ajuste:', error); alert('❌ No se pudo guardar: ' + error.message); return; }
@@ -5883,6 +5895,7 @@ const App = () => {
       return;
     }
 
+    if (!confirmarMontos([{ etiqueta: 'Cuota', texto: newDeduccion.valorCuota }, { etiqueta: 'Saldo total', texto: newDeduccion.saldoTotal }])) return;
     const payload = {
       presupuesto_item_id: newDeduccion.presupuestoItemId,
       tipo: newDeduccion.tipo,

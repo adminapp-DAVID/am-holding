@@ -46,3 +46,20 @@ export const parsearMonto = (entrada) => {
 
 // Igual que parsearMonto pero devuelve 0 cuando no hay número (para sumas y para guardar).
 export const montoONumero0 = (entrada) => parsearMonto(entrada) || 0;
+
+// Mensaje para confirmar, antes de guardar, cómo quedó interpretado cada valor que el usuario
+// escribió con punto o coma (los únicos que pueden prestarse a confusión). null = no hay nada
+// que confirmar. items: [{ etiqueta, texto }].
+export const mensajeConfirmacionMontos = (items) => {
+  const dudosos = (items || []).filter(({ texto }) => typeof texto === 'string' && /[.,]/.test(texto) && !Number.isNaN(parsearMonto(texto)));
+  if (dudosos.length === 0) return null;
+  const formato = (n) => n.toLocaleString('es-CO', { maximumFractionDigits: 2 });
+  const lineas = dudosos.map(({ etiqueta, texto }) => `• ${etiqueta}: escribiste "${texto.trim()}" → se guardará ${formato(parsearMonto(texto))}`);
+  return `Revisa los valores antes de guardar:\n\n${lineas.join('\n')}\n\n¿Es correcto?`;
+};
+
+// true si se puede guardar: no hay valores con punto/coma, o el usuario confirmó.
+export const confirmarMontos = (items) => {
+  const mensaje = mensajeConfirmacionMontos(items);
+  return !mensaje || window.confirm(mensaje);
+};

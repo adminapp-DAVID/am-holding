@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { montoONumero0 } from './montos';
+import { montoONumero0, confirmarMontos } from './montos';
 
 // Pantalla "💸 Pagos PAB" (Administrador / Coordinadora Administrativa).
 // 1) Arma, para una empresa y su cuenta origen, todo lo APROBADO que se puede pagar:
@@ -205,6 +205,7 @@ const ExportadorPABView = ({
     if (rechazados.some(i => !(ajustes[i.entidad_clave].motivo || '').trim())) { alert('Indica el motivo de cada pago rechazado'); return; }
     if (pagados.some(i => i.entidad_tipo === 'solicitud' && !ajustes[i.entidad_clave].ceco)) { alert('Elige el CECO de cada solicitud pagada'); return; }
     if (hayCostos && !costos.ceco) { alert('Elige el CECO de la comisión / 4x1000'); return; }
+    if (!confirmarMontos([{ etiqueta: 'Comisión bancaria', texto: costos.comision }, { etiqueta: '4x1000 (GMF)', texto: costos.gmf }])) return;
     if (!pagados.length && !window.confirm(`Vas a marcar los ${rechazados.length} pago(s) como rechazados por el banco: el lote queda "Rechazado" y todo vuelve a quedar libre para exportarse. ¿Continuar?`)) return;
     const mesesPresupuesto = [...new Set(pagados.filter(i => i.entidad_tipo === 'presupuesto').map(i => `${i.anio}-${String(i.mes).padStart(2, '0')}`))];
     const otroMes = mesesPresupuesto.filter(m => m !== fechaPago.substring(0, 7));
