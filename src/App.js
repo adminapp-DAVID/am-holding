@@ -20,6 +20,9 @@ import DatosBancariosView from './DatosBancariosView';
 import ExportadorPABView from './ExportadorPABView';
 import NotificacionesCampana from './NotificacionesCampana';
 import AuditoriaView from './AuditoriaView';
+import SoporteView from './SoporteView';
+import TicketForm from './components/TicketForm';
+import { usaSoporte, ticketDeEnlace } from './soporte';
 import TopNav from './components/TopNav';
 import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, FileDown, Eye, Plus, Check, X, Pencil, Search, Loader2, FileSpreadsheet, Upload, FilePlus2, Pause, Play, LayoutDashboard, FileText, Banknote, DollarSign, Clock, Undo2, CheckCircle2, Building2, Users, ClipboardList, Archive, TrendingUp, TrendingDown, Scale, BarChart3, Trophy, FolderOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -477,6 +480,30 @@ const App = () => {
   const [confirmarPasswordRecuperacion, setConfirmarPasswordRecuperacion] = useState('');
   const [guardandoPasswordRecuperacion, setGuardandoPasswordRecuperacion] = useState(false);
   const [currentView, setCurrentView] = useState('dashboard');
+  // Soporte técnico (tickets): ticket abierto en la vista "soporte" (null = lista), formulario
+  // de nuevo ticket (con la vista desde donde se abrió) y contador para recargar la lista.
+  const [ticketSoporteId, setTicketSoporteId] = useState(null);
+  const [nuevoTicketSoporte, setNuevoTicketSoporte] = useState(null);
+  const [versionSoporte, setVersionSoporte] = useState(0);
+  // Navegación del menú y de la campana: "soporte/<id>" abre ese ticket.
+  const navegar = (destino) => {
+    const id = ticketDeEnlace(destino);
+    if (id) { setTicketSoporteId(id); setCurrentView('soporte'); return; }
+    if (destino === 'soporte') setTicketSoporteId(null);
+    setCurrentView(destino);
+  };
+  // Enlace directo a un ticket (el issue de GitHub trae "?soporte=<id>"): se abre al entrar.
+  const rolUsuario = user?.rol;
+  useEffect(() => {
+    if (!rolUsuario) return;
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('soporte');
+    if (!id) return;
+    params.delete('soporte');
+    const resto = params.toString();
+    window.history.replaceState(null, '', window.location.pathname + (resto ? `?${resto}` : '') + window.location.hash);
+    if (usaSoporte(rolUsuario) && ticketDeEnlace(`soporte/${id}`)) { setTicketSoporteId(id); setCurrentView('soporte'); }
+  }, [rolUsuario]);
   // Solicitudes (Anticipo/Legalización/Reembolso) — conectado a Supabase (tabla public.solicitudes).
   // Los soportes de Legalización/Reembolso se siguen uniendo en un solo PDF consolidado
   // (mergeSoportesToPDF), pero ese PDF ya no se guarda embebido en la solicitud: se sube al
@@ -7421,11 +7448,12 @@ const App = () => {
           página; qué módulos ve cada rol se decide ahí con los mismos permisos de siempre. */}
       <TopNav
         active={currentView}
-        onNavigate={setCurrentView}
+        onNavigate={navegar}
+        onSoporte={usaSoporte(user.rol) ? () => setNuevoTicketSoporte({ pantalla: currentView === 'soporte' ? null : currentView }) : null}
         role={user.rol}
         userName={user.nombre}
         logoSrc={logoAmHolding}
-        bell={<NotificacionesCampana user={user} onNavegar={setCurrentView} />}
+        bell={<NotificacionesCampana user={user} onNavegar={navegar} />}
         onLogout={handleLogout}
       />
 
@@ -7439,6 +7467,25 @@ const App = () => {
             nitEmpresas={NIT_EMPRESAS}
             onUsuariosCambiaron={cargarUsuarios}
             onActualizarTercero={handleUpdateTercero}
+          />
+        )}
+
+        {currentView === 'soporte' && usaSoporte(user.rol) && (
+          <SoporteView
+            user={user}
+            ticketId={ticketSoporteId}
+            version={versionSoporte}
+            onAbrirTicket={setTicketSoporteId}
+            onNuevoTicket={() => setNuevoTicketSoporte({ pantalla: null })}
+            onNavegar={navegar}
+          />
+        )}
+        {nuevoTicketSoporte && (
+          <TicketForm
+            pantalla={nuevoTicketSoporte.pantalla}
+            onCerrar={() => setNuevoTicketSoporte(null)}
+            onAbrirTicket={(id) => navegar(`soporte/${id}`)}
+            onGuardado={(id) => { setNuevoTicketSoporte(null); setVersionSoporte(v => v + 1); navegar(`soporte/${id}`); }}
           />
         )}
 

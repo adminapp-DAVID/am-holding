@@ -21,5 +21,6 @@ App React (Vite + Tailwind CSS v4 + base de shadcn/ui) de gestión financiera de
 - Supabase: un `.update()`/`.delete()` sin `.select()` devuelve `error: null` aunque RLS bloquee el cambio (0 filas). Usar `.select('id')` y verificar `data.length`.
 - En SQL/RLS usar `current_usuario_id()` / `current_rol()`. **Nunca** comparar `auth.uid()` contra `usuarios.id` (el vínculo es `usuarios.auth_user_id`).
 - Soportes: bucket `soportes` + tabla `public.soportes` (sin columna mime; se infiere con `inferirMimePorExtension`). Un mismo `bucket_path` puede estar compartido entre entidades: borrar/fusionar con `eliminarSoportesDeEntidad` y `fusionarSoportesEdicion`.
+- Soporte técnico (tickets, `src/SoporteView.js`, `src/soporte.js`): archivos en el bucket `tickets-adjuntos` (NO en `soportes`, que son comprobantes de pagos). Crean/ven: Administrador, Coordinadora, Gerente y Colaborador (`usa_soporte()`); gestionan: Administrador y Gerente (`gestiona_soporte()`). Edge Function `supabase/functions/soporte-github` crea/cierra el issue en GitHub.
 - Traslados a empresa externa usan el sentinel `CUENTA_DESTINO_EXTERNA = 'Empresa Externa'` (sin ":" para no activar la lógica de doble moneda).
 - Seguridad: nunca automatizar login a portales bancarios con credenciales guardadas.
