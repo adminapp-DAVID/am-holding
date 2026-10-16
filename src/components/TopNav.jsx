@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   LayoutDashboard, ClipboardList, FileText, LineChart, Wallet, CalendarRange,
-  Banknote, Users, Landmark, ShieldCheck, Bell, ChevronDown, User, LogOut, Menu, X,
+  Banknote, Users, Landmark, ShieldCheck, Bell, ChevronDown, User, LogOut, Menu, X, LifeBuoy,
 } from "lucide-react";
 import "./TopNav.css";
 
@@ -13,6 +13,8 @@ import "./TopNav.css";
 const ADMIN = ["Administrador", "Coordinadora Administrativa"];
 const TODOS = [...ADMIN, "Contadora", "Gerente", "Responsable", "Colaborador"];
 const ROLES_FINANZAS = [...ADMIN, "Gerente"];
+// Soporte técnico (tickets): mismos roles que usa_soporte() en la base de datos (src/soporte.js).
+const ROLES_SOPORTE = [...ADMIN, "Gerente", "Colaborador"];
 
 // `id` = valor de currentView en App.js.
 const GRUPOS = [
@@ -36,11 +38,14 @@ const GRUPOS = [
   { label: "Control", items: [
     { id: "auditoria", label: "Auditoría", icon: ShieldCheck, roles: ADMIN },
   ]},
+  { label: "Ayuda", items: [
+    { id: "soporte", label: "Soporte técnico", icon: LifeBuoy, roles: ROLES_SOPORTE },
+  ]},
 ];
 
 export default function TopNav({
   active, onNavigate, role, userName, notifCount = 0,
-  badges = {}, onBellClick, bell, onLogout, logoSrc,
+  badges = {}, onBellClick, bell, onLogout, logoSrc, onSoporte,
 }) {
   const [open, setOpen] = useState(null);      // grupo desplegado
   const [userOpen, setUserOpen] = useState(false);
@@ -97,6 +102,12 @@ export default function TopNav({
         </nav>
 
         <div className="tn-right">
+          {/* Reportar un error o pedir una mejora desde la pantalla actual (TicketForm). */}
+          {onSoporte && (
+            <button className="tn-bell" onClick={onSoporte} title="Soporte técnico: reportar un error o pedir una mejora" aria-label="Soporte técnico">
+              <LifeBuoy size={19} />
+            </button>
+          )}
           {/* `bell` = campana completa con su propio panel (NotificacionesCampana); si no se
               pasa, queda el botón simple con contador. */}
           {bell || (
