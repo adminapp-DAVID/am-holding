@@ -25,6 +25,7 @@ import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, FileDown, Eye,
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { InputMoneda } from '@/components/ui/input-moneda';
 import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
@@ -7886,7 +7887,7 @@ const App = () => {
                     <CampoUI label="Pagado a" htmlFor="bs-proveedor"><Input id="bs-proveedor" type="text" placeholder="Pagado a" value={nuevoSoportePendiente.proveedor} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, proveedor: e.target.value})} /></CampoUI>
                     <CampoUI label="NIT" htmlFor="bs-nit"><Input id="bs-nit" type="text" placeholder="NIT" value={nuevoSoportePendiente.nit} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, nit: e.target.value})} /></CampoUI>
                     <CampoUI label="Por concepto de *" htmlFor="bs-desc"><Input id="bs-desc" type="text" placeholder="Por concepto de *" required value={nuevoSoportePendiente.descripcion} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, descripcion: e.target.value})} /></CampoUI>
-                    <CampoUI label="Valor pagado" htmlFor="bs-valor"><Input id="bs-valor" type="text" inputMode="decimal" placeholder="Valor pagado" value={nuevoSoportePendiente.valor} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, valor: e.target.value})} /></CampoUI>
+                    <CampoUI label="Valor pagado" htmlFor="bs-valor"><InputMoneda id="bs-valor" placeholder="Valor pagado" value={nuevoSoportePendiente.valor} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, valor: e.target.value})} /></CampoUI>
                     <CampoUI label="Tipo de Soporte" htmlFor="bs-tipo">
                       <Select id="bs-tipo" value={nuevoSoportePendiente.tipoSoporte} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, tipoSoporte: e.target.value})}>
                         <option value="">Tipo de Soporte</option>
@@ -7950,7 +7951,7 @@ const App = () => {
                                         </Select>
                                       </div>
                                     </TableCell>
-                                    <TableCell className="px-1.5"><Input type="text" inputMode="decimal" aria-label="Valor" value={pendienteEditData.valor} onChange={(e) => setPendienteEditData({...pendienteEditData, valor: e.target.value})} className="h-8 text-right text-xs" /></TableCell>
+                                    <TableCell className="px-1.5"><InputMoneda aria-label="Valor" value={pendienteEditData.valor} onChange={(e) => setPendienteEditData({...pendienteEditData, valor: e.target.value})} className="h-8 text-right text-xs" /></TableCell>
                                     <TableCell className="text-muted-foreground">{item.nombre}</TableCell>
                                     <TableCell className="whitespace-nowrap text-center">
                                       <Button variant="ghost" size="icon" onClick={() => handleGuardarEdicionPendiente(item.id)} disabled={guardandoEdicionPendiente} title="Guardar" aria-label="Guardar" className="text-success"><Check size={16} /></Button>
@@ -8060,18 +8061,18 @@ const App = () => {
                   )}
                   {esTipoValorUnico(newSolicitud.tipo) && (
                     <CampoUI label={`${newSolicitud.tipo === 'Comisión' ? 'Valor de la Comisión' : 'Valor Solicitado'} (${newSolicitud.moneda})`} htmlFor="sol-valor">
-                      <Input id="sol-valor" type="text" inputMode="decimal" placeholder={`${newSolicitud.tipo === 'Comisión' ? 'Valor de la Comisión' : 'Valor Solicitado'} (${newSolicitud.moneda})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} />
+                      <InputMoneda id="sol-valor" placeholder={`${newSolicitud.tipo === 'Comisión' ? 'Valor de la Comisión' : 'Valor Solicitado'} (${newSolicitud.moneda})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} />
                     </CampoUI>
                   )}
                   {newSolicitud.tipo === 'Legalización' && (
                     <CampoUI label={`Valor Anticipo Original (${newSolicitud.moneda})`} htmlFor="sol-anticipo">
-                      <Input id="sol-anticipo" type="text" inputMode="decimal" placeholder={`Valor Anticipo Original (${newSolicitud.moneda})`} disabled={newSolicitud.anticipoIds.length > 0} value={newSolicitud.valorAnticipoOriginal} onChange={(e) => setNewSolicitud({...newSolicitud, valorAnticipoOriginal: e.target.value})} />
+                      <InputMoneda id="sol-anticipo" placeholder={`Valor Anticipo Original (${newSolicitud.moneda})`} disabled={newSolicitud.anticipoIds.length > 0} value={newSolicitud.valorAnticipoOriginal} onChange={(e) => setNewSolicitud({...newSolicitud, valorAnticipoOriginal: e.target.value})} />
                     </CampoUI>
                   )}
                   {newSolicitud.tipo === 'Pago a Tercero' && (
                     <>
                       <CampoUI label={`Valor a Pagar (${newSolicitud.moneda})`} htmlFor="sol-valor-tercero">
-                        <Input id="sol-valor-tercero" type="text" inputMode="decimal" placeholder={`Valor a Pagar (${newSolicitud.moneda})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} />
+                        <InputMoneda id="sol-valor-tercero" placeholder={`Valor a Pagar (${newSolicitud.moneda})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} />
                       </CampoUI>
                     </>
                   )}
@@ -8224,7 +8225,7 @@ const App = () => {
                             <Input type="text" aria-label="Por concepto de" placeholder="Por concepto de *" required value={doc.descripcion} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].descripcion = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} aria-invalid={(doc.descripcion || '').trim() ? undefined : true} />
                           </div>
                           <div className="grid grid-cols-[1fr_auto] gap-3 sm:grid-cols-[1fr_1.4fr_auto]">
-                            <Input type="text" inputMode="decimal" aria-label="Valor pagado" placeholder="Valor pagado" value={doc.valor} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].valor = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} />
+                            <InputMoneda aria-label="Valor pagado" placeholder="Valor pagado" value={doc.valor} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].valor = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} />
                             <div className="col-span-2 row-start-2 sm:col-span-1 sm:row-start-auto">
                               <Select aria-label="Tipo de Soporte" value={doc.tipoSoporte || ''} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].tipoSoporte = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }}>
                                 <option value="">Tipo de Soporte</option>
@@ -9152,7 +9153,7 @@ const App = () => {
                 )}
 
                 <CampoUI label={newGasto.tipo === 'Traslado' ? `Valor (Salida — ${getMoneda(newGasto.empresa)})` : (esPagoTerceroFinanzas ? `Valor a Pagar (${newGasto.moneda})` : 'Valor')} htmlFor="fin-valor">
-                  <Input id="fin-valor" type="text" inputMode="decimal" placeholder={esPagoTerceroFinanzas ? `Valor a Pagar (${newGasto.moneda})` : 'Valor'} value={newGasto.valor} onChange={(e) => {setNewGasto({...newGasto, valor: e.target.value}); setNewIngreso({...newIngreso, valor: e.target.value});}} />
+                  <InputMoneda id="fin-valor" placeholder={esPagoTerceroFinanzas ? `Valor a Pagar (${newGasto.moneda})` : 'Valor'} value={newGasto.valor} onChange={(e) => {setNewGasto({...newGasto, valor: e.target.value}); setNewIngreso({...newIngreso, valor: e.target.value});}} />
                 </CampoUI>
 
                 {/* Traslado entre monedas distintas (ej. ARKO en USD hacia/desde el resto de la
@@ -9161,7 +9162,7 @@ const App = () => {
                     campo solo aparece cuando origen y destino tienen monedas diferentes. */}
                 {newGasto.tipo === 'Traslado' && newGasto.cuentaDestino && getMoneda(newGasto.empresa) !== getMoneda(getEmpresaDestinoTraslado(newGasto.cuentaDestino, newGasto.empresa)) && (
                   <CampoUI label={`Valor en Cuenta Destino (${getMoneda(getEmpresaDestinoTraslado(newGasto.cuentaDestino, newGasto.empresa))})`} htmlFor="fin-valor-destino">
-                    <Input id="fin-valor-destino" type="text" inputMode="decimal" placeholder={`Valor en ${getMoneda(getEmpresaDestinoTraslado(newGasto.cuentaDestino, newGasto.empresa))}`} value={newGasto.valorDestino} onChange={(e) => setNewGasto({...newGasto, valorDestino: e.target.value})} />
+                    <InputMoneda id="fin-valor-destino" placeholder={`Valor en ${getMoneda(getEmpresaDestinoTraslado(newGasto.cuentaDestino, newGasto.empresa))}`} value={newGasto.valorDestino} onChange={(e) => setNewGasto({...newGasto, valorDestino: e.target.value})} />
                   </CampoUI>
                 )}
               </div>
@@ -9375,10 +9376,10 @@ const App = () => {
                   <Input id="ff-hasta" type="date" value={filtroFinanzasFechaFin} onChange={(e) => setFiltroFinanzasFechaFin(e.target.value)} />
                 </CampoUI>
                 <CampoUI label="Valor desde" htmlFor="ff-valor-min" className="w-[calc(50%-0.375rem)] sm:w-36">
-                  <Input id="ff-valor-min" type="text" inputMode="decimal" placeholder="Ej: 1.000.000" value={filtroFinanzasValorMin} onChange={(e) => setFiltroFinanzasValorMin(e.target.value)} />
+                  <InputMoneda id="ff-valor-min" placeholder="Ej: 1.000.000" value={filtroFinanzasValorMin} onChange={(e) => setFiltroFinanzasValorMin(e.target.value)} />
                 </CampoUI>
                 <CampoUI label="Valor hasta" htmlFor="ff-valor-max" className="w-[calc(50%-0.375rem)] sm:w-36">
-                  <Input id="ff-valor-max" type="text" inputMode="decimal" placeholder="Ej: 5.000.000" value={filtroFinanzasValorMax} onChange={(e) => setFiltroFinanzasValorMax(e.target.value)} />
+                  <InputMoneda id="ff-valor-max" placeholder="Ej: 5.000.000" value={filtroFinanzasValorMax} onChange={(e) => setFiltroFinanzasValorMax(e.target.value)} />
                 </CampoUI>
                 <Button variant="outline" onClick={() => { setBusquedaFinanzas(''); setFiltroFinanzasEmpresa('Todas'); setFiltroFinanzasCeco('Todos'); setFiltroFinanzasFechaInicio(''); setFiltroFinanzasFechaFin(''); setFiltroFinanzasValorMin(''); setFiltroFinanzasValorMax(''); }}><RotateCcw size={14} /> Reiniciar</Button>
               </div>
@@ -9454,9 +9455,9 @@ const App = () => {
                                     </Select>
                                   </div>
                                 )}
-                                <Input type="text" inputMode="decimal" value={editandoConceptoFinanzas.valor} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, valor: e.target.value })} title="Valor" aria-label="Valor" placeholder="Valor" className="h-8 w-[110px] border-primary text-xs" />
+                                <InputMoneda value={editandoConceptoFinanzas.valor} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, valor: e.target.value })} title="Valor" aria-label="Valor" placeholder="Valor" className="h-8 w-[110px] border-primary text-xs" />
                                 {editandoConceptoFinanzas.tieneValorDestino && (
-                                  <Input type="text" inputMode="decimal" value={editandoConceptoFinanzas.valorDestino} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, valorDestino: e.target.value })} title="Valor destino (otra moneda)" aria-label="Valor destino" placeholder="Valor destino" className="h-8 w-[110px] border-primary text-xs" />
+                                  <InputMoneda value={editandoConceptoFinanzas.valorDestino} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, valorDestino: e.target.value })} title="Valor destino (otra moneda)" aria-label="Valor destino" placeholder="Valor destino" className="h-8 w-[110px] border-primary text-xs" />
                                 )}
                                 {editandoConceptoFinanzas.permiteNeutro && (
                                   <label title="Gasto Neutro: se registra en COP y no suma en los gastos de la empresa" className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
@@ -9491,7 +9492,7 @@ const App = () => {
                               <div className="flex items-start gap-1">
                                 <div><TextoResumido texto={r.detalle} /></div>
                                 {puedeEditarConceptoFinanzas && (
-                                  <Button variant="ghost" size="icon" onClick={() => setEditandoConceptoFinanzas({ tabla: esIngreso ? 'ingresos' : 'gastos', id: r.id, texto: r.detalle || '', fecha: r.fecha || '', ceco: r.ceco || '', valor: String((esIngreso ? r : (gastos.find(g => g.id === r.id) || r)).valor ?? '').replace('.', ','), tieneValorDestino: esTraslado && r.valorDestino != null, permiteNeutro: !esIngreso && !esTraslado, neutro: !!r.neutro, permiteVinculo: esGasto && (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa'), empresa: r.empresa, presupuestoItemId: r.presupuestoItemId || '', presupuestoItemIdOriginal: r.presupuestoItemId || '', moneda: r.moneda || getMoneda(r.empresa), monedaOriginal: r.moneda || getMoneda(r.empresa), valorDestino: String(r.valorDestino ?? '').replace('.', ','), opcionesCeco: esIngreso ? cecosIngreso : (esTraslado ? cecosTraslado : cecosGasto) })} title="Editar fecha, CECO, valor y concepto (solo en Finanzas)" aria-label="Editar" className="size-7 shrink-0 text-[#6C63D1]"><Pencil size={14} /></Button>
+                                  <Button variant="ghost" size="icon" onClick={() => setEditandoConceptoFinanzas({ tabla: esIngreso ? 'ingresos' : 'gastos', id: r.id, texto: r.detalle || '', fecha: r.fecha || '', ceco: r.ceco || '', valor: String((esIngreso ? r : (gastos.find(g => g.id === r.id) || r)).valor ?? ''), tieneValorDestino: esTraslado && r.valorDestino != null, permiteNeutro: !esIngreso && !esTraslado, neutro: !!r.neutro, permiteVinculo: esGasto && (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa'), empresa: r.empresa, presupuestoItemId: r.presupuestoItemId || '', presupuestoItemIdOriginal: r.presupuestoItemId || '', moneda: r.moneda || getMoneda(r.empresa), monedaOriginal: r.moneda || getMoneda(r.empresa), valorDestino: String(r.valorDestino ?? ''), opcionesCeco: esIngreso ? cecosIngreso : (esTraslado ? cecosTraslado : cecosGasto) })} title="Editar fecha, CECO, valor y concepto (solo en Finanzas)" aria-label="Editar" className="size-7 shrink-0 text-[#6C63D1]"><Pencil size={14} /></Button>
                                 )}
                               </div>
                             )}
@@ -10137,11 +10138,11 @@ const App = () => {
                             <Input id="ded-inicio" type="date" value={newDeduccion.fechaInicio} onChange={(e) => setNewDeduccion({...newDeduccion, fechaInicio: e.target.value})} />
                           </CampoUI>
                           <CampoUI label="Cuota mensual" htmlFor="ded-cuota">
-                            <Input id="ded-cuota" type="text" inputMode="decimal" placeholder="Valor de la cuota mensual" value={newDeduccion.valorCuota} onChange={(e) => setNewDeduccion({...newDeduccion, valorCuota: e.target.value})} />
+                            <InputMoneda id="ded-cuota" placeholder="Valor de la cuota mensual" value={newDeduccion.valorCuota} onChange={(e) => setNewDeduccion({...newDeduccion, valorCuota: e.target.value})} />
                           </CampoUI>
                           {newDeduccion.tipo === 'Préstamo' && (
                             <CampoUI label="Saldo total del préstamo" htmlFor="ded-saldo">
-                              <Input id="ded-saldo" type="text" inputMode="decimal" placeholder="Saldo total del préstamo" value={newDeduccion.saldoTotal} onChange={(e) => setNewDeduccion({...newDeduccion, saldoTotal: e.target.value})} />
+                              <InputMoneda id="ded-saldo" placeholder="Saldo total del préstamo" value={newDeduccion.saldoTotal} onChange={(e) => setNewDeduccion({...newDeduccion, saldoTotal: e.target.value})} />
                             </CampoUI>
                           )}
                         </div>
@@ -10325,7 +10326,7 @@ const App = () => {
                             <Input id="pc-nombre" type="text" placeholder="Nombre / Responsable / Concepto" value={newPresupuestoItem.nombre} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, nombre: e.target.value})} />
                           </CampoUI>
                           <CampoUI label="Valor mensual" htmlFor="pc-valor">
-                            <Input id="pc-valor" type="text" inputMode="decimal" placeholder="Valor mensual" value={newPresupuestoItem.valorMensual} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, valorMensual: e.target.value})} />
+                            <InputMoneda id="pc-valor" placeholder="Valor mensual" value={newPresupuestoItem.valorMensual} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, valorMensual: e.target.value})} />
                           </CampoUI>
                           <Button onClick={handleAddPresupuestoItem}>{editingPresupuestoItemId ? 'Guardar Cambios' : <><Plus size={16} /> Agregar</>}</Button>
                         </div>
@@ -10411,7 +10412,7 @@ const App = () => {
                             <Input id="pa-anio" type="number" placeholder="Año" value={newPresupuestoAnual.anio} onChange={(e) => setNewPresupuestoAnual({...newPresupuestoAnual, anio: parseInt(e.target.value) || newPresupuestoAnual.anio})} />
                           </CampoUI>
                           <CampoUI label="Valor anual" htmlFor="pa-valor">
-                            <Input id="pa-valor" type="text" inputMode="decimal" placeholder="Valor anual" value={newPresupuestoAnual.valorAnual} onChange={(e) => setNewPresupuestoAnual({...newPresupuestoAnual, valorAnual: e.target.value})} />
+                            <InputMoneda id="pa-valor" placeholder="Valor anual" value={newPresupuestoAnual.valorAnual} onChange={(e) => setNewPresupuestoAnual({...newPresupuestoAnual, valorAnual: e.target.value})} />
                           </CampoUI>
                           <Button onClick={handleAddPresupuestoAnual}><Plus size={16} /> Guardar</Button>
                         </div>
@@ -10506,7 +10507,7 @@ const App = () => {
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="cc-valor">Valor</Label>
-                  <Input id="cc-valor" type="text" inputMode="decimal" placeholder="Valor" value={newCuentaCobro.monto} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, monto: e.target.value})} />
+                  <InputMoneda id="cc-valor" placeholder="Valor" value={newCuentaCobro.monto} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, monto: e.target.value})} />
                 </div>
               </div>
 
@@ -10714,7 +10715,7 @@ const App = () => {
                   <Input id="cps-neutro-concepto" value={confirmarPagoSolicitud.detalleNeutro ?? (solicitud.detalle || '')} onChange={(e) => setConfirmarPagoSolicitud({ ...confirmarPagoSolicitud, detalleNeutro: e.target.value })} />
                 </CampoUI>
                 <CampoUI label={`Valor pagado en COP * (solicitud original: ${formatMoneyByMoneda(monto, 'USD')})`} htmlFor="cps-neutro-valor">
-                  <Input id="cps-neutro-valor" inputMode="decimal" placeholder="Ej: 4.250.000" value={confirmarPagoSolicitud.valorCOP || ''} onChange={(e) => setConfirmarPagoSolicitud({ ...confirmarPagoSolicitud, valorCOP: e.target.value })} />
+                  <InputMoneda id="cps-neutro-valor" placeholder="Ej: 4.250.000" value={confirmarPagoSolicitud.valorCOP || ''} onChange={(e) => setConfirmarPagoSolicitud({ ...confirmarPagoSolicitud, valorCOP: e.target.value })} />
                 </CampoUI>
               </div>
             )}
@@ -10973,10 +10974,10 @@ const App = () => {
                           <Input type="text" aria-label="Número de factura" placeholder="FE 2820" value={linea.numeroFactura} onChange={(e) => handleCambiarLineaFacturaTercero(linea.id, 'numeroFactura', e.target.value)} className="text-xs" />
                         </CampoUI>
                         <CampoUI label={idx === 0 ? 'Valor factura *' : null}>
-                          <Input type="text" inputMode="decimal" aria-label="Valor de la factura" placeholder="Valor *" value={linea.valor} onChange={(e) => handleCambiarLineaFacturaTercero(linea.id, 'valor', e.target.value)} className="text-xs" />
+                          <InputMoneda aria-label="Valor de la factura" placeholder="Valor *" value={linea.valor} onChange={(e) => handleCambiarLineaFacturaTercero(linea.id, 'valor', e.target.value)} className="text-xs" />
                         </CampoUI>
                         <CampoUI label={idx === 0 ? 'Retención' : null}>
-                          <Input type="text" inputMode="decimal" aria-label="Retención" placeholder="0" value={linea.retencion} onChange={(e) => handleCambiarLineaFacturaTercero(linea.id, 'retencion', e.target.value)} aria-invalid={m.retencion < 0 || (m.bruto > 0 && m.neto <= 0) ? true : undefined} className="text-xs" />
+                          <InputMoneda aria-label="Retención" placeholder="0" value={linea.retencion} onChange={(e) => handleCambiarLineaFacturaTercero(linea.id, 'retencion', e.target.value)} aria-invalid={m.retencion < 0 || (m.bruto > 0 && m.neto <= 0) ? true : undefined} className="text-xs" />
                         </CampoUI>
                         <CampoUI label={idx === 0 ? 'Neto pagado' : null}>
                           <div className="flex h-9 items-center justify-end rounded-md bg-muted px-3 text-xs font-bold tabular-nums">{formatMoney(m.neto, lt.empresa)}</div>
