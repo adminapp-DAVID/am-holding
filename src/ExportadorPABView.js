@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
+import { montoONumero0, confirmarMontos } from './montos';
 
 // Pantalla "💸 Pagos PAB" (Administrador / Coordinadora Administrativa).
 // 1) Arma, para una empresa y su cuenta origen, todo lo APROBADO que se puede pagar:
@@ -196,7 +197,7 @@ const ExportadorPABView = ({
     const items = itemsActivos(lote);
     const pagados = items.filter(i => ajustes[i.entidad_clave]?.resultado !== 'Rechazado');
     const rechazados = items.filter(i => ajustes[i.entidad_clave]?.resultado === 'Rechazado');
-    const hayCostos = (parseFloat(costos.comision) || 0) > 0 || (parseFloat(costos.gmf) || 0) > 0;
+    const hayCostos = montoONumero0(costos.comision) > 0 || montoONumero0(costos.gmf) > 0;
     if (!fechaPago) { alert('Elige la fecha del pago'); return; }
     // Bancolombia da un soporte por cada pago: cada pagado necesita el suyo o, si no, el general del lote.
     const sinSoporte = pagados.filter(i => !ajustes[i.entidad_clave].comprobante);
@@ -204,6 +205,7 @@ const ExportadorPABView = ({
     if (rechazados.some(i => !(ajustes[i.entidad_clave].motivo || '').trim())) { alert('Indica el motivo de cada pago rechazado'); return; }
     if (pagados.some(i => i.entidad_tipo === 'solicitud' && !ajustes[i.entidad_clave].ceco)) { alert('Elige el CECO de cada solicitud pagada'); return; }
     if (hayCostos && !costos.ceco) { alert('Elige el CECO de la comisión / 4x1000'); return; }
+    if (!confirmarMontos([{ etiqueta: 'Comisión bancaria', texto: costos.comision }, { etiqueta: '4x1000 (GMF)', texto: costos.gmf }])) return;
     if (!pagados.length && !window.confirm(`Vas a marcar los ${rechazados.length} pago(s) como rechazados por el banco: el lote queda "Rechazado" y todo vuelve a quedar libre para exportarse. ¿Continuar?`)) return;
     const mesesPresupuesto = [...new Set(pagados.filter(i => i.entidad_tipo === 'presupuesto').map(i => `${i.anio}-${String(i.mes).padStart(2, '0')}`))];
     const otroMes = mesesPresupuesto.filter(m => m !== fechaPago.substring(0, 7));
@@ -469,11 +471,11 @@ const ExportadorPABView = ({
                     <div className="text-sm font-semibold">🏦 Costos bancarios del lote <span className="font-normal text-muted-foreground">(opcional — se registran como Gasto aparte)</span></div>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <Campo label="Comisión bancaria (con IVA)" htmlFor="pab-comision">
-                        <Input id="pab-comision" type="number" min="0" placeholder="0" value={pagoLote.costos.comision} onChange={(e) => cambiarCostos({ comision: e.target.value })} className="h-8 text-xs" />
+                        <Input id="pab-comision" type="text" inputMode="decimal" placeholder="0" value={pagoLote.costos.comision} onChange={(e) => cambiarCostos({ comision: e.target.value })} className="h-8 text-xs" />
                       </Campo>
                       <Campo label="GMF 4x1000" htmlFor="pab-gmf">
                         <div className="flex gap-2">
-                          <Input id="pab-gmf" type="number" min="0" placeholder="0" value={pagoLote.costos.gmf} onChange={(e) => cambiarCostos({ gmf: e.target.value })} className="h-8 text-xs" />
+                          <Input id="pab-gmf" type="text" inputMode="decimal" placeholder="0" value={pagoLote.costos.gmf} onChange={(e) => cambiarCostos({ gmf: e.target.value })} className="h-8 text-xs" />
                           <Button type="button" size="sm" variant="outline" onClick={() => cambiarCostos({ gmf: String(Math.round(totalPagado * 0.004)) })} title="0,4% del total pagado">Calcular</Button>
                         </div>
                       </Campo>
