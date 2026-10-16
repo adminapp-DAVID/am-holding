@@ -81,13 +81,15 @@ describe('candidatos', () => {
     { id: 's3', empresa: base.empresa, estado: 'Aprobado', tipo: 'Pago a Tercero', terceroId: 't1', valor: 700000, moneda: 'COP' },
     { id: 's4', empresa: base.empresa, estado: 'Aprobado', tipo: 'Pago a Tercero', terceroId: 't1', valor: 100, moneda: 'USD' },
     { id: 's5', empresa: base.empresa, estado: 'Pendiente', tipo: 'Reembolso', responsableId: 'u1', totalCalculado: 1 },
-    { id: 's6', empresa: 'OTRA', estado: 'Aprobado', tipo: 'Reembolso', responsableId: 'u1', totalCalculado: 1 }
+    { id: 's6', empresa: 'OTRA', estado: 'Aprobado', tipo: 'Reembolso', responsableId: 'u1', totalCalculado: 1 },
+    { id: 's7', empresa: '', estado: 'Aprobado', tipo: 'Reembolso', responsableId: 'u1', totalCalculado: 200000, moneda: 'COP' },
+    { id: 's8', empresa: '', estado: 'Aprobado', tipo: 'Anticipo', responsableId: 'u1', valor: 50, moneda: 'USD' }
   ];
   const lista = construirCandidatosPAB({ ...base, presupuestoDetalle, solicitudes, lotePorClave: { 'solicitud:s1': 7 } });
   const por = (clave) => lista.find(c => c.clave === clave);
 
   test('solo Nómina/Honorarios no pagados y solicitudes Aprobadas de la empresa', () => {
-    expect(lista.map(c => c.clave).sort()).toEqual(['presupuesto:p1:2026-10', 'presupuesto:p2:2026-10', 'presupuesto:p3:2026-10', 'presupuesto:p5:2026-10', 'presupuesto:p6:2026-10', 'presupuesto:p7:2026-10', 'solicitud:s1', 'solicitud:s2', 'solicitud:s3', 'solicitud:s4'].sort());
+    expect(lista.map(c => c.clave).sort()).toEqual(['presupuesto:p1:2026-10', 'presupuesto:p2:2026-10', 'presupuesto:p3:2026-10', 'presupuesto:p5:2026-10', 'presupuesto:p6:2026-10', 'presupuesto:p7:2026-10', 'solicitud:s1', 'solicitud:s2', 'solicitud:s3', 'solicitud:s4', 'solicitud:s7', 'solicitud:s8'].sort());
   });
   test('tipo de pago por origen', () => {
     expect(por('presupuesto:p1:2026-10').tipoPago).toBe(225);
@@ -102,6 +104,12 @@ describe('candidatos', () => {
     expect(por('solicitud:s2').bloqueos).toEqual(expect.arrayContaining(['sin tipo de documento', 'sin banco']));
     expect(por('solicitud:s3').bloqueos).toEqual([]);
     expect(por('solicitud:s4').bloqueos[0]).toMatch(/USD/);
+  });
+  test('solicitudes General (sin empresa): entran al lote de cualquier empresa, en pesos', () => {
+    expect(por('solicitud:s7').bloqueos).toEqual([]);
+    expect(por('solicitud:s7').meta.general).toBe(true);
+    expect(por('solicitud:s1').meta.general).toBe(false);
+    expect(por('solicitud:s8').bloqueos[0]).toMatch(/USD/);
   });
   test('Presupuesto que no va por PAB: sale bloqueado con el motivo y cómo se paga', () => {
     expect(por('presupuesto:p3:2026-10').bloqueos[0]).toMatch(/sin tipo ni forma de pago/);

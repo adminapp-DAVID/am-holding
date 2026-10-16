@@ -60,7 +60,7 @@ const cargarPlantilla = async () => {
 
 const ExportadorPABView = ({
   user, empresas, solicitudes, presupuestoDetalle, filtroPresupuesto, setFiltroPresupuesto,
-  usuarios, terceros, lotes, lotePorClave, onRecargarLotes, onRecargarDatos, onRegistrarPagoLote, cecosGasto, getMoneda, formatCOP
+  usuarios, terceros, lotes, lotePorClave, onRecargarLotes, onRecargarDatos, onRecargarSolicitudes, onRegistrarPagoLote, cecosGasto, getMoneda, formatCOP
 }) => {
   const esAdmin = user?.rol === 'Administrador';
   const [configs, setConfigs] = useState([]);
@@ -81,7 +81,7 @@ const ExportadorPABView = ({
     (async () => {
       const { data, error } = await supabase
         .from('config_bancaria_empresa')
-        .select('id, nombre_cuenta, nit_pagador, numero_cuenta, tipo_cuenta, tipo_pago_nomina, tipo_pago_proveedores, tipo_pago_terceros, activo, empresas ( nombre )')
+        .select('id, nombre_cuenta, nit_pagador, numero_cuenta, tipo_cuenta, tipo_pago_nomina, tipo_pago_proveedores, tipo_pago_terceros, activo, empresa_id, empresas ( nombre )')
         .eq('activo', true);
       if (error) { setErrorConfigs(error.message); return; }
       setConfigs((data || []).map(c => ({ ...c, empresa: c.empresas?.nombre || '' })));
@@ -120,6 +120,7 @@ const ExportadorPABView = ({
     )) return;
     setGenerando(true);
     const generados = [];
+    let asignoSolicitudes = false;
     try {
       const plantilla = await cargarPlantilla();
       for (const g of grupos) {
@@ -133,6 +134,14 @@ const ExportadorPABView = ({
         });
         if (error || !data || !data[0]) throw new Error(error?.message || 'La base de datos no devolvió el lote creado');
         const { numero, secuencia } = data[0];
+        // Solicitudes "General": quedan asignadas a la empresa de este lote.
+        const generales = g.items.filter(c => c.entidadTipo === 'solicitud' && c.meta?.general).map(c => c.entidadId);
+        if (generales.length && config.empresa_id) {
+          const { error: errorAsignar } = await supabase.from('solicitudes').update({ empresa_id: config.empresa_id })
+            .in('id', generales).is('empresa_id', null).select('id');
+          if (errorAsignar) console.error('No se pudo asignar la empresa del lote a las solicitudes generales:', errorAsignar);
+          asignoSolicitudes = true;
+        }
         const bytes = await generarArchivoPAB(JSZip, plantilla, { ...encabezadoBase, secuencia }, g.items.map((c, i) => ({ ...c.fila, referencia: referenciaLotePAB(numero, i + 1) })));
         descargarBytes(bytes, nombreArchivoPAB({ empresa, tipoPago: g.tipoPago, fechaAplicacion, numeroLote: numero }));
         generados.push(`#${numero} (${secuencia})`);
@@ -145,6 +154,7 @@ const ExportadorPABView = ({
       setGenerando(false);
       setDeseleccionados([]);
       await onRecargarLotes();
+      if (asignoSolicitudes) await onRecargarSolicitudes?.();
     }
   };
 

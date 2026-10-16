@@ -356,6 +356,12 @@ const App = () => {
   // MONEDA POR EMPRESA — ARKO opera en dólares, el resto de la holding en pesos colombianos
   // DEBE ir primero: se usa en cálculos que aparecen más abajo en el componente.
   const getMoneda = (empresa) => empresa === 'ARKO' ? 'USD' : 'COP';
+  // Solicitudes "General": se crean sin empresa; Administrador/Coordinadora definen la empresa
+  // (y la cuenta) que paga al marcarlas Pagado (modal Confirmar Pago, pago en lote o PAB). La
+  // moneda la elige quien solicita (moneda_pago); las viejas sin moneda usan la de su empresa.
+  const EMPRESA_GENERAL = 'General';
+  const monedaDeSolicitud = (s) => s?.moneda || getMoneda(s?.empresa);
+  const empresaSolicitudTexto = (s) => s?.empresa || EMPRESA_GENERAL;
 
   const formatMoneyByMoneda = (valor, moneda) => {
     // Espacio irrompible ( ) entre el signo y el número: evita que las tablas angostas
@@ -551,7 +557,7 @@ const App = () => {
   // exponer cédula, banco ni documentos de nadie (eso solo lo ve Admin/Coordinadora o el dueño).
   const [colaboradoresPublico, setColaboradoresPublico] = useState([]);
   const [editingResponsableOrigen, setEditingResponsableOrigen] = useState('responsables'); // 'responsables' | 'admin' — de qué lista viene el registro que se está editando
-  const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', valorAnticipoOriginal: '', anticipoIds: [], detalle: '', empresa: 'AM SPORTS GROUP SAS', documentos: [], moneda: 'COP', terceroId: '', terceroNombre: '', terceroDni: '', terceroTipoDocumento: '', terceroPaisOrigen: '', terceroBanco: '', terceroCodigoBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false });
+  const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', valorAnticipoOriginal: '', anticipoIds: [], detalle: '', empresa: '', documentos: [], moneda: 'COP', terceroId: '', terceroNombre: '', terceroDni: '', terceroTipoDocumento: '', terceroPaisOrigen: '', terceroBanco: '', terceroCodigoBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false });
   // Edición de una Solicitud ya guardada — solo se permite mientras está en estado Pendiente
   // (quien la creó, o Administrador/Coordinadora Administrativa). Reutiliza el mismo formulario
   // "Nueva Solicitud" de arriba: al editar, se precarga newSolicitud con los datos existentes y
@@ -2417,9 +2423,9 @@ const App = () => {
       valorAnticipoOriginal: s.valorAnticipoOriginal || '',
       anticipoIds: s.anticipoIds || [],
       detalle: s.detalle || '',
-      empresa: s.empresa || 'AM SPORTS GROUP SAS',
+      empresa: s.empresa || '',
       documentos: s.documentos || [],
-      moneda: s.moneda || 'COP',
+      moneda: monedaDeSolicitud(s),
       terceroId: s.terceroId || '',
       terceroNombre: s.terceroInfo?.nombre || '',
       terceroDni: s.terceroInfo?.dni || '',
@@ -2550,25 +2556,10 @@ const App = () => {
     }
 
     const totalCalculado = newSolicitud.documentos.reduce((sum, doc) => sum + (parsearMonto(doc.valor) || 0), 0);
-    // Pago a Tercero es la excepción: ahí SÍ se respeta la Empresa elegida en el formulario aunque
-    // quien crea sea Responsable/Gerente (puede pagarse desde una empresa distinta a la suya, ej.
-    // ARKO en USD) — para los demás tipos, la Empresa de un Responsable/Gerente sigue siendo
-    // siempre la propia, sin excepción.
-    const empresaNombre = (newSolicitud.tipo !== 'Pago a Tercero' && user.rol === 'Responsable') ? user.empresa : newSolicitud.empresa;
 
     if (!confirmarMontos([{ etiqueta: 'Valor', texto: newSolicitud.valor }, { etiqueta: 'Valor anticipo original', texto: newSolicitud.valorAnticipoOriginal }, ...newSolicitud.documentos.map((d, i) => ({ etiqueta: `Gasto ${i + 1}${d.descripcion ? ` (${d.descripcion})` : ''}`, texto: d.valor }))])) return;
     setGuardandoSolicitud(true);
     try {
-      let empresaId = null;
-      if (empresaNombre) {
-        const { data: empresaRow, error: empresaError } = await supabase
-          .from('empresas')
-          .select('id')
-          .eq('nombre', empresaNombre)
-          .single();
-        if (empresaError) console.error('Error buscando empresa:', empresaError);
-        empresaId = empresaRow?.id || null;
-      }
 
       // Legalización ligada de verdad a las Solicitudes de Anticipo que le dieron origen (si se
       // eligió al menos una — ahora se pueden elegir varias): valor_anticipo_original queda
@@ -2659,6 +2650,9 @@ const App = () => {
       // Gasto en Finanzas ya se generó y reabrirla como si nada se hubiera aprobado sería
       // confuso.
       const solicitudOriginalEnEdicion = editingSolicitudId ? solicitudes.find(s => s.id === editingSolicitudId) : null;
+      // Empresa solo para portadas/fichas PDF: las solicitudes nuevas son "General" (la empresa
+      // que paga se define al pagar); en edición se conserva la que ya tuviera.
+      const empresaNombre = solicitudOriginalEnEdicion?.empresa || EMPRESA_GENERAL;
       const estadoAlGuardar = (solicitudOriginalEnEdicion && solicitudOriginalEnEdicion.tipo === 'Legalización T. Pro' && solicitudOriginalEnEdicion.estado === 'Legalizado')
         ? 'Legalizado'
         : 'Pendiente';
@@ -2667,14 +2661,13 @@ const App = () => {
         valor: (esTipoValorUnico(newSolicitud.tipo) || newSolicitud.tipo === 'Pago a Tercero') ? (parsearMonto(newSolicitud.valor) || 0) : 0,
         total_calculado: totalCalculado,
         detalle: newSolicitud.detalle.trim(),
-        empresa_id: empresaId,
         documentos: newSolicitud.documentos.map(d => ({ ...d, valor: montoONumero0(d.valor) })),
         // anticipo_id (singular, columna vieja) se sigue llenando con el primero elegido, solo
         // por compatibilidad con cualquier reporte/consulta externa que todavía la use.
         anticipo_id: anticiposVinculados.length > 0 ? anticiposVinculados[0].id : null,
         anticipo_ids: anticiposVinculados.map(a => a.id),
         valor_anticipo_original: newSolicitud.tipo === 'Legalización' ? (parsearMonto(newSolicitud.valorAnticipoOriginal) || null) : null,
-        moneda_pago: newSolicitud.tipo === 'Pago a Tercero' ? newSolicitud.moneda : null,
+        moneda_pago: newSolicitud.moneda || 'COP',
         tercero_info: terceroInfoFinal,
         tercero_id: terceroIdFinal,
         estado: estadoAlGuardar,
@@ -2706,7 +2699,7 @@ const App = () => {
       } else {
         const { data: inserted, error } = await supabase
           .from('solicitudes')
-          .insert({ ...camposSolicitud, tipo: newSolicitud.tipo, responsable_id: user.id, estado: 'Pendiente' })
+          .insert({ ...camposSolicitud, tipo: newSolicitud.tipo, responsable_id: user.id, estado: 'Pendiente', empresa_id: null })
           .select('id')
           .single();
         if (error) {
@@ -2852,6 +2845,10 @@ const App = () => {
     if (nuevoEstado === 'Pagado' && opciones.loteId) {
       patch.lote_pago_id = opciones.loteId;
     }
+    // Empresa que paga (la definen Administrador/Coordinadora al pagar): la solicitud queda
+    // asignada a esa empresa y el Gasto/Ingreso de Finanzas sale de ella.
+    const empresaPago = (nuevoEstado === 'Pagado' || nuevoEstado === 'Legalizado') && opciones.empresaPago?.id ? opciones.empresaPago : null;
+    if (empresaPago) patch.empresa_id = empresaPago.id;
 
     setSolicitudes(solicitudes.map(s => s.id === id ? {
       ...s,
@@ -2859,6 +2856,7 @@ const App = () => {
       ...(patch.revisado_por_id ? { revisadoPorId: patch.revisado_por_id, revisadoAt: ahora } : {}),
       ...(patch.aprobado_por_id ? { aprobadoPorId: patch.aprobado_por_id, aprobadoAt: ahora } : {}),
       ...(patch.lote_pago_id ? { lotePagoId: patch.lote_pago_id } : {}),
+      ...(empresaPago ? { empresa: empresaPago.nombre, empresaId: empresaPago.id } : {}),
       ...(nuevoEstado === 'Devuelto' ? { motivoDevolucion: patch.motivo_devolucion || '' } : {})
     } : s));
 
@@ -2882,7 +2880,8 @@ const App = () => {
     // "Legalización T. Pro" no pasa por "Pagado" (su flujo salta directo de Pendiente/Devuelto a
     // Legalizado) — para ese tipo, "Legalizado" es el estado que dispara el registro automático
     // en Finanzas, igual que "Pagado" en los demás tipos.
-    const solicitudQueCambia = anteriores.find(s => s.id === id);
+    const solicitudAntes = anteriores.find(s => s.id === id);
+    const solicitudQueCambia = solicitudAntes && empresaPago ? { ...solicitudAntes, empresa: empresaPago.nombre, empresaId: empresaPago.id } : solicitudAntes;
     const disparaFinanzas = nuevoEstado === 'Pagado' || (nuevoEstado === 'Legalizado' && solicitudQueCambia?.tipo === 'Legalización T. Pro');
     if (disparaFinanzas) {
       const solicitud = solicitudQueCambia;
@@ -3002,6 +3001,10 @@ const App = () => {
         payload.moneda_pago = solicitud.moneda || null;
         payload.tercero_id = solicitud.terceroId || null;
         payload.tercero_info = solicitud.terceroInfo || null;
+      } else if (solicitud.moneda && solicitud.moneda !== getMoneda(solicitud.empresa)) {
+        // Solicitud en otra moneda que la de la empresa que paga (ej. USD pagado desde una
+        // empresa en COP): el movimiento guarda la moneda real del pago.
+        payload.moneda_pago = solicitud.moneda;
       }
       // Gasto Neutro: queda en COP con el valor realmente pagado y el concepto ajustado en el modal.
       if (neutro) {
@@ -3112,9 +3115,35 @@ const App = () => {
     }
   };
 
+  // Empresa con la que se abre el modal de pago: la que ya tenga la solicitud (las viejas) o,
+  // en una Legalización, la del anticipo que legaliza. Las "General" quedan por elegir.
+  const empresaSugeridaPago = (s) => s.empresa
+    || (s.tipo === 'Legalización' ? solicitudes.find(a => (s.anticipoIds || []).includes(a.id) && a.empresa)?.empresa : '')
+    || '';
+
   const handleConfirmarPagoSolicitud = async () => {
     if (!confirmarPagoSolicitud) return;
-    const { solicitud, cuenta, ceco, comprobantes, fechaPago } = confirmarPagoSolicitud;
+    const { solicitud, empresa, cuenta, ceco, comprobantes, fechaPago, soloEmpresa } = confirmarPagoSolicitud;
+    if (!empresa) {
+      alert('Elige la empresa que hizo el pago');
+      return;
+    }
+    const empresaPagoId = await resolverEmpresaId(empresa);
+    if (!empresaPagoId) {
+      alert('❌ No se encontró la empresa ' + empresa);
+      return;
+    }
+    const empresaPago = { id: empresaPagoId, nombre: empresa };
+    if (soloEmpresa) {
+      setGuardandoConfirmarPago(true);
+      try {
+        await handleChangeEstado(solicitud.id, 'Legalizado', { empresaPago, fechaPago });
+        setConfirmarPagoSolicitud(null);
+      } finally {
+        setGuardandoConfirmarPago(false);
+      }
+      return;
+    }
     if (!fechaPago) {
       alert('Indica la fecha en que se hizo el pago');
       return;
@@ -3133,7 +3162,7 @@ const App = () => {
     }
     // Política Gasto Neutro: concepto y valor en COP obligatorios, y al menos 2 soportes.
     let neutro = null;
-    if (esPagoTerceroNeutro(solicitud, ceco)) {
+    if (esPagoTerceroNeutro({ ...solicitud, empresa }, ceco)) {
       const detalleNeutro = String(confirmarPagoSolicitud.detalleNeutro ?? solicitud.detalle ?? '').trim();
       const valorCOP = parsearMonto(confirmarPagoSolicitud.valorCOP);
       if (!detalleNeutro) { alert('Escribe el concepto del Gasto Neutro'); return; }
@@ -3147,7 +3176,7 @@ const App = () => {
         await subirSoporteEntidad(comprobante, 'solicitud', solicitud.id);
       }
       const nuevoEstadoFinal = solicitud.tipo === 'Legalización T. Pro' ? 'Legalizado' : 'Pagado';
-      await handleChangeEstado(solicitud.id, nuevoEstadoFinal, { cuentaPago: cuenta, cecoCodigo: ceco || null, fechaPago, neutro });
+      await handleChangeEstado(solicitud.id, nuevoEstadoFinal, { cuentaPago: cuenta, cecoCodigo: ceco || null, fechaPago, neutro, empresaPago });
       setConfirmarPagoSolicitud(null);
     } finally {
       setGuardandoConfirmarPago(false);
@@ -3166,7 +3195,7 @@ const App = () => {
   const handleAbrirPagoLoteReembolsos = () => {
     const items = solicitudesUsuario.filter(s => seleccionReembolsosPago.includes(s.id));
     if (items.length === 0) return;
-    setConfirmarPagoLoteReembolsos({ items, cuenta: '', ceco: '', comprobantes: [], fechaPago: fechaHoyLocal() });
+    setConfirmarPagoLoteReembolsos({ items, empresa: items.find(it => it.empresa)?.empresa || '', cuenta: '', ceco: '', comprobantes: [], fechaPago: fechaHoyLocal() });
   };
 
   const handleSeleccionarComprobantePagoLoteReembolsos = (e) => {
@@ -3193,7 +3222,17 @@ const App = () => {
   // cada Gasto generado queda con el comprobante sin ningún paso extra.
   const handleConfirmarPagoLoteReembolsos = async () => {
     if (!confirmarPagoLoteReembolsos) return;
-    const { items, cuenta, ceco, comprobantes, fechaPago } = confirmarPagoLoteReembolsos;
+    const { items, empresa, cuenta, ceco, comprobantes, fechaPago } = confirmarPagoLoteReembolsos;
+    if (!empresa) {
+      alert('Elige la empresa que hizo el pago');
+      return;
+    }
+    const empresaPagoId = await resolverEmpresaId(empresa);
+    if (!empresaPagoId) {
+      alert('❌ No se encontró la empresa ' + empresa);
+      return;
+    }
+    const empresaPago = { id: empresaPagoId, nombre: empresa };
     if (!fechaPago) {
       alert('Indica la fecha en que se hizo el pago');
       return;
@@ -3212,7 +3251,7 @@ const App = () => {
       return;
     }
     // Los Gastos Neutros llevan su propio valor en COP y concepto: se pagan uno por uno.
-    const neutrosEnLote = items.filter(it => esPagoTerceroNeutro(it, ceco));
+    const neutrosEnLote = items.filter(it => esPagoTerceroNeutro({ ...it, empresa }, ceco));
     if (neutrosEnLote.length > 0) {
       alert(`Con ${CECO_GASTO_NEUTRO} estos pagos de FOR SEVEN en USD son Gasto Neutro y se registran uno por uno (con su valor en COP). Págalos individualmente con "Pagado".`);
       return;
@@ -3254,7 +3293,7 @@ const App = () => {
             fallidos.push(`${solicitud.responsableNombre || solicitud.detalle || solicitud.id} (ya no estaba en Aprobado)`);
             continue;
           }
-          await handleChangeEstado(solicitud.id, 'Pagado', { cuentaPago: cuenta, cecoCodigo: ceco, loteId, fechaPago });
+          await handleChangeEstado(solicitud.id, 'Pagado', { cuentaPago: cuenta, cecoCodigo: ceco, loteId, fechaPago, empresaPago });
           pagados++;
         } catch (errorItem) {
           console.error('Error pagando un reembolso del lote:', solicitud.id, errorItem);
@@ -3279,7 +3318,7 @@ const App = () => {
   const handleVerLotePagoSolicitudes = (lotePagoId) => {
     const items = solicitudesUsuario
       .filter(s => s.lotePagoId === lotePagoId)
-      .map(s => ({ fecha: s.fecha, nombre: colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—', valor: formatMoney(s.totalCalculado || 0, s.empresa), empresa: s.empresa }));
+      .map(s => ({ fecha: s.fecha, nombre: colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—', valor: formatMoneyByMoneda(s.totalCalculado || 0, monedaDeSolicitud(s)), empresa: empresaSolicitudTexto(s) }));
     setVerLotePago({ titulo: `🔗 Reembolsos pagados en este lote (${items.length})`, items });
   };
 
@@ -3308,7 +3347,7 @@ const App = () => {
   const solicitudesFiltradas = solicitudesUsuario.filter(s => {
     if (filtroSolicitudesTipo !== 'Todos' && s.tipo !== filtroSolicitudesTipo) return false;
     if (filtroSolicitudesEstado !== 'Todos' && s.estado !== filtroSolicitudesEstado) return false;
-    if (filtroSolicitudesEmpresa !== 'Todas' && s.empresa !== filtroSolicitudesEmpresa) return false;
+    if (filtroSolicitudesEmpresa !== 'Todas' && empresaSolicitudTexto(s) !== filtroSolicitudesEmpresa) return false;
     if (filtroSolicitudesFechaInicio && s.fecha < filtroSolicitudesFechaInicio) return false;
     if (filtroSolicitudesFechaFin && s.fecha > filtroSolicitudesFechaFin) return false;
     if (busquedaSolicitudes.trim()) {
@@ -3317,7 +3356,7 @@ const App = () => {
       // que no son suyas (RLS de public.usuarios), así que también se busca por
       // colaboradores_publico, que sí es legible por cualquier rol.
       const nombreColaborador = colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre;
-      const campos = [s.detalle, nombreColaborador, s.empresa, s.tipo, s.estado, s.terceroInfo?.nombre, s.terceroInfo?.dni].filter(Boolean).join(' ').toLowerCase();
+      const campos = [s.detalle, nombreColaborador, empresaSolicitudTexto(s), s.tipo, s.estado, s.terceroInfo?.nombre, s.terceroInfo?.dni].filter(Boolean).join(' ').toLowerCase();
       if (!campos.includes(q)) return false;
     }
     return true;
@@ -3337,14 +3376,14 @@ const App = () => {
   // Montos separados por moneda: sumar pesos y dólares directamente daría un número sin sentido.
   // "Pago a Tercero" tiene su propia moneda (independiente de la empresa que paga), así que se
   // agrupa por esa moneda en vez de la de la empresa.
-  const monedaSolicitud = (s) => s.tipo === 'Pago a Tercero' ? (s.moneda || getMoneda(s.empresa)) : getMoneda(s.empresa);
+  const monedaSolicitud = monedaDeSolicitud;
   const totalMontoCOP = solicitudesUsuario.filter(s => monedaSolicitud(s) === 'COP').reduce((sum, s) => sum + montoSolicitud(s), 0);
   const totalMontoUSD = solicitudesUsuario.filter(s => monedaSolicitud(s) === 'USD').reduce((sum, s) => sum + montoSolicitud(s), 0);
 
-  const statsPorEmpresa = empresas.map(emp => ({
+  const statsPorEmpresa = [...empresas, EMPRESA_GENERAL].map(emp => ({
     empresa: emp,
-    cantidad: solicitudesUsuario.filter(s => s.empresa === emp).length,
-    monto: solicitudesUsuario.filter(s => s.empresa === emp).reduce((sum, s) => sum + montoSolicitud(s), 0)
+    cantidad: solicitudesUsuario.filter(s => empresaSolicitudTexto(s) === emp).length,
+    monto: solicitudesUsuario.filter(s => empresaSolicitudTexto(s) === emp).reduce((sum, s) => sum + montoSolicitud(s), 0)
   })).filter(s => s.cantidad > 0);
 
   // Antes se armaba iterando `responsables` (= usuariosDB filtrado a rol Responsable), pero
@@ -3390,7 +3429,7 @@ const App = () => {
       doc.text(`Fecha: ${s.fecha}`, 20, yPos);
       doc.text(`Colaborador: ${s.responsableNombre}`, pageWidth / 2, yPos);
       yPos += 8;
-      doc.text(`Empresa: ${s.empresa}`, 20, yPos);
+      doc.text(`Empresa: ${empresaSolicitudTexto(s)}`, 20, yPos);
       doc.text(`Concepto: ${s.detalle}`, pageWidth / 2, yPos);
       yPos += 12;
 
@@ -3401,7 +3440,7 @@ const App = () => {
           yPos += 8;
           doc.setFontSize(9);
 
-          const tableData = s.documentos.map(d => [d.fecha || '-', d.proveedor, d.nit, d.descripcion, formatMoneyByMoneda(d.valor, getMoneda(s.empresa)), d.tipoSoporte || '-']);
+          const tableData = s.documentos.map(d => [d.fecha || '-', d.proveedor, d.nit, d.descripcion, formatMoneyByMoneda(d.valor, monedaDeSolicitud(s)), d.tipoSoporte || '-']);
           doc.autoTable({
             startY: yPos,
             head: [['Fecha', 'Pagado a', 'NIT', 'Concepto', 'Valor', 'Tipo Soporte']],
@@ -3414,7 +3453,7 @@ const App = () => {
 
         if (s.tipo === 'Legalización' && s.valorAnticipoOriginal) {
           doc.setFontSize(10);
-          doc.text(`Anticipo Original: ${formatMoneyByMoneda(s.valorAnticipoOriginal, getMoneda(s.empresa))}`, 20, yPos);
+          doc.text(`Anticipo Original: ${formatMoneyByMoneda(s.valorAnticipoOriginal, monedaDeSolicitud(s))}`, 20, yPos);
           yPos += 10;
         }
       }
@@ -3422,7 +3461,7 @@ const App = () => {
       yPos += 5;
       doc.setFontSize(11);
       const totalLabel = esTipoValorUnico(s.tipo) ? 'TOTAL SOLICITADO' : 'TOTAL';
-      const totalValue = esTipoValorUnico(s.tipo) ? formatMoneyByMoneda(s.valor, getMoneda(s.empresa)) : formatMoneyByMoneda(s.totalCalculado, getMoneda(s.empresa));
+      const totalValue = esTipoValorUnico(s.tipo) ? formatMoneyByMoneda(s.valor, monedaDeSolicitud(s)) : formatMoneyByMoneda(s.totalCalculado, monedaDeSolicitud(s));
       doc.text(`${totalLabel}: ${totalValue}`, 20, yPos);
 
       doc.save(`${s.tipo}-${s.id}.pdf`);
@@ -3521,7 +3560,7 @@ const App = () => {
       responsableNombre: s.responsableNombre,
       detalle: s.detalle,
       valor: parseFloat(s.valor) || 0,
-      moneda: s.moneda || getMoneda(s.empresa),
+      moneda: monedaDeSolicitud(s),
       tercero: s.terceroInfo || {},
       estado: s.estado
     });
@@ -3565,7 +3604,7 @@ const App = () => {
   // colaborador, resumen de anticipo/reembolso, y Revisado/Aprobado tomados de quien realmente
   // movió el estado en el sistema, nunca escritos a mano).
   const construirExcelSolicitud = (s) => {
-    const moneda = getMoneda(s.empresa);
+    const moneda = monedaDeSolicitud(s);
     const responsable = usuariosDB.find(u => u.id === s.responsableId);
     // Puede haber varios Anticipos vinculados a una misma Legalización — se suman los valores y
     // se listan todas las fechas separadas por coma.
@@ -3592,7 +3631,7 @@ const App = () => {
     rows.push([tituloFormato]);
     rows.push([parrafo]);
     rows.push([]);
-    rows.push(['Empresa: ', s.empresa]);
+    rows.push(['Empresa: ', empresaSolicitudTexto(s)]);
     rows.push(['NIT: ', NIT_EMPRESAS[s.empresa] || '']);
     rows.push([(esLegalizacion || esLegalizacionTPro) ? 'Fecha legalización' : 'Fecha reembolso', new Date().toISOString().split('T')[0]]);
     rows.push([]);
@@ -5337,6 +5376,8 @@ const App = () => {
     };
 
     // 3) Solicitudes: los comprobantes se enlazan ANTES de pagar para que el Gasto generado los copie.
+    // Todas quedan (y su Gasto sale) en la empresa del lote, incluidas las que eran "General".
+    const empresaPagoLote = solPendientes.length ? { id: await resolverEmpresaId(lote.empresas?.nombre), nombre: lote.empresas?.nombre } : null;
     for (const it of solPendientes) {
       const solicitud = solicitudes.find(s => String(s.id) === String(it.entidad_id));
       const nombre = it.datos?.nombre || solicitud?.detalle || it.entidad_id;
@@ -5347,7 +5388,7 @@ const App = () => {
         if (!ajuste.ceco) throw new Error('falta el CECO');
         await enlazarComprobante('solicitud', solicitud.id);
         await subirComprobanteIndividual(it, 'solicitud', solicitud.id);
-        await handleChangeEstado(solicitud.id, 'Pagado', { cuentaPago: cuenta, cecoCodigo: ajuste.ceco, loteId: lote.id, fechaPago, detalle: ajuste.detalle });
+        await handleChangeEstado(solicitud.id, 'Pagado', { cuentaPago: cuenta, cecoCodigo: ajuste.ceco, loteId: lote.id, fechaPago, detalle: ajuste.detalle, empresaPago: empresaPagoLote?.id ? empresaPagoLote : null });
         registrados++;
       } catch (e) {
         console.error('Error pagando solicitud del lote PAB:', it.entidad_id, e);
@@ -7227,7 +7268,7 @@ const App = () => {
     const filas = solicitudesUsuario
       .filter(s => enRangoReportes(s.fecha))
       .map(s => [
-        s.fecha, s.tipo, s.empresa, nombreColaboradorReporte(s.responsableId, s.responsableNombre), s.detalle || '',
+        s.fecha, s.tipo, empresaSolicitudTexto(s), nombreColaboradorReporte(s.responsableId, s.responsableNombre), s.detalle || '',
         montoSolicitud(s), monedaSolicitud(s), s.estado,
         s.terceroInfo?.nombre || '', s.terceroInfo?.dni || '', s.motivoDevolucion || '', s.lotePagoId || ''
       ])
@@ -7459,6 +7500,7 @@ const App = () => {
             lotes={lotesPago}
             lotePorClave={lotePorClave}
             onRecargarLotes={cargarLotesPago}
+            onRecargarSolicitudes={cargarSolicitudes}
             onRegistrarPagoLote={registrarPagoLotePAB}
             cecosGasto={cecosGasto}
             onRecargarDatos={() => { cargarUsuarios(); cargarTodosTerceros(); cargarSolicitudes(); cargarCuentasCobro(); cargarPresupuestoItems(); cargarPresupuestoOverrides(); cargarPresupuestoAprobaciones(); cargarDeducciones(); cargarGastos(); cargarLotesPago(); }}
@@ -7575,7 +7617,7 @@ const App = () => {
                           <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{s.fecha}</TableCell>
                           {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <TableCell className="text-xs"><div className="flex items-center gap-2"><ColaboradorAvatar foto={colaboradoresPublico.find(c => c.id === s.responsableId)?.foto_url} nombre={colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre} size={22} />{colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—'}</div></TableCell>}
                           <TableCell className="whitespace-nowrap font-bold text-primary">{s.tipo}</TableCell>
-                          <TableCell className="whitespace-nowrap text-right font-bold text-success">{s.tipo === 'Pago a Tercero' ? formatMoneyByMoneda(parseFloat(s.valor) || 0, s.moneda || getMoneda(s.empresa)) : formatMoney(esTipoValorUnico(s.tipo) ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</TableCell>
+                          <TableCell className="whitespace-nowrap text-right font-bold text-success">{formatMoneyByMoneda((s.tipo === 'Pago a Tercero' || esTipoValorUnico(s.tipo)) ? (parseFloat(s.valor) || 0) : (s.totalCalculado || 0), monedaDeSolicitud(s))}</TableCell>
                           <TableCell className="text-center"><Badge variant={estadoBadge(s.estado)}>{s.estado}</Badge></TableCell>
                         </TableRow>
                       ))}
@@ -7923,7 +7965,7 @@ const App = () => {
                                 <TableCell className="whitespace-nowrap text-muted-foreground">{item.fecha}</TableCell>
                                 <TableCell className="text-muted-foreground">{item.proveedor}</TableCell>
                                 <TableCell className="text-muted-foreground">{item.descripcion}</TableCell>
-                                <TableCell className="whitespace-nowrap text-right font-bold text-success">{formatMoney(item.valor, user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)}</TableCell>
+                                <TableCell className="whitespace-nowrap text-right font-bold text-success">{formatMoneyByMoneda(item.valor, newSolicitud.moneda)}</TableCell>
                                 <TableCell className="text-muted-foreground">{item.nombre}</TableCell>
                                 <TableCell className="whitespace-nowrap text-center">
                                   <Button variant="ghost" size="icon" onClick={() => handlePreviewSoporte(item)} disabled={cargandoPreviewSoporte} title="Ver archivo" aria-label="Ver archivo"><Eye size={16} /></Button>
@@ -7988,11 +8030,6 @@ const App = () => {
                       ...newSolicitud,
                       tipo: nuevoTipo,
                       documentos: [],
-                      // Pago a Tercero es el único tipo donde la Empresa que paga puede NO ser la
-                      // propia del Responsable/Gerente (ej. un pago en USD que sale de ARKO en vez
-                      // de su empresa de siempre) — se precarga con la suya como punto de partida,
-                      // pero el selector de Empresa (abajo) queda editable para ese tipo.
-                      empresa: ((nuevoTipo === 'Pago a Tercero' && user.rol === 'Responsable') || (user.rol === 'Gerente' && !newSolicitud.tipo && !editingSolicitudId && user.empresa)) ? user.empresa : newSolicitud.empresa
                     });
                   }}>
                     <option value="">Seleccionar Tipo</option>
@@ -8010,42 +8047,29 @@ const App = () => {
                     )}
                   </Select>
                   </CampoUI>
-                  {/* Empresa a la que se le hace la solicitud: lista elegible para Administrador,
-                      Coordinadora, Gerente y Colaborador (como en Cuentas de Cobro). Solo el
-                      Responsable la tiene fija en su empresa (ese gasto sale de su propio
-                      presupuesto), por eso el selector queda oculto para él. Pago a Tercero es la excepción: el pago puede necesitar
-                      salir de OTRA empresa de la holding (ej. ARKO para pagar en USD) — sin esto,
-                      quedaba fijo en su empresa de siempre y, al momento de pagar, el modal de
-                      Confirmar Pago solo ofrecía las cuentas de esa empresa, sin forma de elegir la
-                      cuenta correcta. */}
-                  {(user.rol !== 'Responsable' || newSolicitud.tipo === 'Pago a Tercero') && (
-                    <CampoUI label="Empresa" htmlFor="sol-empresa">
-                      <Select id="sol-empresa" value={newSolicitud.empresa} onChange={(e) => setNewSolicitud({...newSolicitud, empresa: e.target.value})}>
-                        {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                  {/* Las solicitudes se hacen a la holding en general: la empresa (y la cuenta) que
+                      paga la definen Administrador/Coordinadora al marcarla Pagado. Aquí solo se
+                      elige la moneda en que se pide el dinero. */}
+                  {newSolicitud.tipo && (
+                    <CampoUI label="Moneda" htmlFor="sol-moneda">
+                      <Select id="sol-moneda" value={newSolicitud.moneda} onChange={(e) => setNewSolicitud({...newSolicitud, moneda: e.target.value})}>
+                        <option value="COP">Pesos Colombianos (COP)</option>
+                        <option value="USD">Dólares (USD)</option>
                       </Select>
                     </CampoUI>
                   )}
                   {esTipoValorUnico(newSolicitud.tipo) && (
-                    <CampoUI label={`${newSolicitud.tipo === 'Comisión' ? 'Valor de la Comisión' : 'Valor Solicitado'} (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} htmlFor="sol-valor">
-                      <Input id="sol-valor" type="text" inputMode="decimal" placeholder={`${newSolicitud.tipo === 'Comisión' ? 'Valor de la Comisión' : 'Valor Solicitado'} (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} />
+                    <CampoUI label={`${newSolicitud.tipo === 'Comisión' ? 'Valor de la Comisión' : 'Valor Solicitado'} (${newSolicitud.moneda})`} htmlFor="sol-valor">
+                      <Input id="sol-valor" type="text" inputMode="decimal" placeholder={`${newSolicitud.tipo === 'Comisión' ? 'Valor de la Comisión' : 'Valor Solicitado'} (${newSolicitud.moneda})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} />
                     </CampoUI>
                   )}
                   {newSolicitud.tipo === 'Legalización' && (
-                    <CampoUI label={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} htmlFor="sol-anticipo">
-                      <Input id="sol-anticipo" type="text" inputMode="decimal" placeholder={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} disabled={newSolicitud.anticipoIds.length > 0} value={newSolicitud.valorAnticipoOriginal} onChange={(e) => setNewSolicitud({...newSolicitud, valorAnticipoOriginal: e.target.value})} />
+                    <CampoUI label={`Valor Anticipo Original (${newSolicitud.moneda})`} htmlFor="sol-anticipo">
+                      <Input id="sol-anticipo" type="text" inputMode="decimal" placeholder={`Valor Anticipo Original (${newSolicitud.moneda})`} disabled={newSolicitud.anticipoIds.length > 0} value={newSolicitud.valorAnticipoOriginal} onChange={(e) => setNewSolicitud({...newSolicitud, valorAnticipoOriginal: e.target.value})} />
                     </CampoUI>
                   )}
-                  {/* Pago a Tercero: la moneda del pago se elige aparte — no depende de la empresa
-                      que paga, a diferencia de los demás tipos (puede ser una empresa en COP
-                      pagando a un tercero en USD, o al revés). */}
                   {newSolicitud.tipo === 'Pago a Tercero' && (
                     <>
-                      <CampoUI label="Moneda" htmlFor="sol-moneda">
-                        <Select id="sol-moneda" value={newSolicitud.moneda} onChange={(e) => setNewSolicitud({...newSolicitud, moneda: e.target.value})}>
-                          <option value="COP">Pesos Colombianos (COP)</option>
-                          <option value="USD">Dólares (USD)</option>
-                        </Select>
-                      </CampoUI>
                       <CampoUI label={`Valor a Pagar (${newSolicitud.moneda})`} htmlFor="sol-valor-tercero">
                         <Input id="sol-valor-tercero" type="text" inputMode="decimal" placeholder={`Valor a Pagar (${newSolicitud.moneda})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} />
                       </CampoUI>
@@ -8098,7 +8122,7 @@ const App = () => {
                       </div>
                       {newSolicitud.anticipoIds.length > 1 && (
                         <div className="text-xs text-[#6C63D1]">
-                          {newSolicitud.anticipoIds.length} anticipos seleccionados — suma: {formatMoney(parsearMonto(newSolicitud.valorAnticipoOriginal) || 0, newSolicitud.empresa)}
+                          {newSolicitud.anticipoIds.length} anticipos seleccionados — suma: {formatMoneyByMoneda(parsearMonto(newSolicitud.valorAnticipoOriginal) || 0, newSolicitud.moneda)}
                         </div>
                       )}
                     </div>
@@ -8214,7 +8238,7 @@ const App = () => {
 
                       {newSolicitud.documentos.length > 0 && (
                         <p className="m-0 text-right text-sm font-bold">
-                          Total: {formatMoney(newSolicitud.documentos.reduce((sum, d) => sum + (parsearMonto(d.valor) || 0), 0), user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)}
+                          Total: {formatMoney(newSolicitud.documentos.reduce((sum, d) => sum + (parsearMonto(d.valor) || 0), 0), newSolicitud.moneda)}
                         </p>
                       )}
                     </div>
@@ -8314,6 +8338,7 @@ const App = () => {
                     <Select id="fs-empresa" value={filtroSolicitudesEmpresa} onChange={(e) => setFiltroSolicitudesEmpresa(e.target.value)}>
                       <option value="Todas">Todas</option>
                       {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                      <option value={EMPRESA_GENERAL}>General (sin empresa asignada)</option>
                     </Select>
                   </CampoUI>
                 )}
@@ -8387,17 +8412,19 @@ const App = () => {
                       // bancaria — y, si es Pago a Tercero, también la MISMA moneda (COP/USD), porque
                       // el pago sale de una sola cuenta en una sola divisa.
                       const primeraSeleccionada = seleccionReembolsosPago.length > 0 ? solicitudesUsuario.find(x => x.id === seleccionReembolsosPago[0]) : null;
-                      const empresaLoteActual = primeraSeleccionada?.empresa || null;
+                      // Las solicitudes "General" (sin empresa) se pueden juntar con cualquiera; la
+                      // empresa que paga se elige en el modal del lote.
+                      const empresaLoteActual = solicitudesUsuario.find(x => seleccionReembolsosPago.includes(x.id) && x.empresa)?.empresa || null;
                       const tipoLoteActual = primeraSeleccionada?.tipo || null;
-                      const monedaLoteActual = primeraSeleccionada?.tipo === 'Pago a Tercero' ? (primeraSeleccionada?.moneda || getMoneda(primeraSeleccionada?.empresa)) : null;
+                      const monedaLoteActual = primeraSeleccionada ? monedaDeSolicitud(primeraSeleccionada) : null;
                       const elegibleParaLote = TIPOS_PAGO_LOTE_SOLICITUD.includes(s.tipo) && s.estado === 'Aprobado';
-                      const monedaSolicitud = s.tipo === 'Pago a Tercero' ? (s.moneda || getMoneda(s.empresa)) : null;
+                      const monedaSolicitud = monedaDeSolicitud(s);
                       const deshabilitadoPorEmpresa = elegibleParaLote && !!tipoLoteActual && (
                         grupoPagoLote(s.tipo) !== grupoPagoLote(tipoLoteActual) ||
                         // Reembolsos/Anticipos: un lote = UN colaborador (una sola cuenta destino).
                         (grupoPagoLote(tipoLoteActual) === 'colaboradores' && s.responsableId !== primeraSeleccionada?.responsableId) ||
-                        s.empresa !== empresaLoteActual ||
-                        (tipoLoteActual === 'Pago a Tercero' && monedaSolicitud !== monedaLoteActual)
+                        (!!s.empresa && !!empresaLoteActual && s.empresa !== empresaLoteActual) ||
+                        monedaSolicitud !== monedaLoteActual
                       );
                       return (
                       <TableRow key={s.id}>
@@ -8410,14 +8437,14 @@ const App = () => {
                                 checked={seleccionReembolsosPago.includes(s.id)}
                                 disabled={deshabilitadoPorEmpresa}
                                 onChange={() => handleToggleSeleccionReembolso(s.id)}
-                                title={deshabilitadoPorEmpresa ? (grupoPagoLote(tipoLoteActual) === 'colaboradores' && grupoPagoLote(s.tipo) === 'colaboradores' && s.responsableId !== primeraSeleccionada?.responsableId && s.empresa === empresaLoteActual ? `Ya elegiste reembolsos/anticipos de ${colaboradoresPublico.find(c => c.id === primeraSeleccionada?.responsableId)?.nombre || primeraSeleccionada?.responsableNombre || 'otro colaborador'} — un lote es de un solo colaborador (una sola cuenta destino)` : `Ya elegiste ${grupoPagoLote(tipoLoteActual) === 'terceros' ? 'pagos a tercero' : 'reembolsos/anticipos'} de ${empresaLoteActual}${monedaLoteActual ? ` en ${monedaLoteActual}` : ''} — un lote es de una sola empresa${tipoLoteActual === 'Pago a Tercero' ? ', moneda y solo pagos a tercero' : ', un solo colaborador y sin mezclar con pagos a tercero'}`) : 'Elegir para pago en lote'}
+                                title={deshabilitadoPorEmpresa ? (grupoPagoLote(tipoLoteActual) === 'colaboradores' && grupoPagoLote(s.tipo) === 'colaboradores' && s.responsableId !== primeraSeleccionada?.responsableId ? `Ya elegiste reembolsos/anticipos de ${colaboradoresPublico.find(c => c.id === primeraSeleccionada?.responsableId)?.nombre || primeraSeleccionada?.responsableNombre || 'otro colaborador'} — un lote es de un solo colaborador (una sola cuenta destino)` : `Ya elegiste ${grupoPagoLote(tipoLoteActual) === 'terceros' ? 'pagos a tercero' : 'reembolsos/anticipos'} de ${empresaLoteActual || EMPRESA_GENERAL} en ${monedaLoteActual} — un lote es de una sola empresa y moneda${tipoLoteActual === 'Pago a Tercero' ? ' y solo pagos a tercero' : ', un solo colaborador y sin mezclar con pagos a tercero'}`) : 'Elegir para pago en lote'}
                               />
                             )}
                           </TableCell>
                         )}
                         <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{s.fecha}</TableCell>
                         {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <TableCell className="text-xs"><div className="flex items-center gap-2"><ColaboradorAvatar foto={colaboradoresPublico.find(c => c.id === s.responsableId)?.foto_url} nombre={colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre} size={22} />{colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—'}</div></TableCell>}
-                        <TableCell className="whitespace-nowrap font-bold text-primary">{s.tipo}</TableCell>
+                        <TableCell className="whitespace-nowrap font-bold text-primary">{s.tipo}<div className={cn('text-[0.65rem] font-semibold', s.empresa ? 'text-muted-foreground' : 'text-[#C4622D]')} title={s.empresa ? 'Empresa que pagó' : 'La empresa que paga se define al marcarla Pagado'}>{empresaSolicitudTexto(s)}</div></TableCell>
                         <TableCell className="min-w-[200px] max-w-[280px] text-muted-foreground">
                           <TextoResumido texto={s.detalle} />
                           {s.tipo === 'Pago a Tercero' && s.terceroInfo?.nombre && (
@@ -8429,12 +8456,12 @@ const App = () => {
                             </div>
                           )}
                         </TableCell>
-                        <TableCell className="whitespace-nowrap text-right font-bold text-success">{s.tipo === 'Pago a Tercero' ? formatMoneyByMoneda(parseFloat(s.valor) || 0, s.moneda || getMoneda(s.empresa)) : formatMoney(esTipoValorUnico(s.tipo) ? parseFloat(s.valor) : s.totalCalculado || 0, s.empresa)}</TableCell>
-                        <TableCell className="whitespace-nowrap text-right text-muted-foreground">{esLegalizacionConAnticipo ? formatMoney(parseFloat(s.valorAnticipoOriginal), s.empresa) : '—'}</TableCell>
+                        <TableCell className="whitespace-nowrap text-right font-bold text-success">{formatMoneyByMoneda((s.tipo === 'Pago a Tercero' || esTipoValorUnico(s.tipo)) ? (parseFloat(s.valor) || 0) : (s.totalCalculado || 0), monedaDeSolicitud(s))}</TableCell>
+                        <TableCell className="whitespace-nowrap text-right text-muted-foreground">{esLegalizacionConAnticipo ? formatMoneyByMoneda(parseFloat(s.valorAnticipoOriginal), monedaDeSolicitud(s)) : '—'}</TableCell>
                         <TableCell className="whitespace-nowrap text-right font-bold">
                           {esLegalizacionConAnticipo ? (
                             <span className={diferenciaReembolso > 0 ? 'text-success' : diferenciaReembolso < 0 ? 'text-destructive' : 'text-muted-foreground'}>
-                              {diferenciaReembolso > 0 ? '+' : diferenciaReembolso < 0 ? '−' : ''}{formatMoney(Math.abs(diferenciaReembolso), s.empresa)}
+                              {diferenciaReembolso > 0 ? '+' : diferenciaReembolso < 0 ? '−' : ''}{formatMoneyByMoneda(Math.abs(diferenciaReembolso), monedaDeSolicitud(s))}
                             </span>
                           ) : '—'}
                         </TableCell>
@@ -8459,7 +8486,10 @@ const App = () => {
                               // CECO ni Comprobante) — el Gasto en Finanzas se genera solo, directo,
                               // igual que cualquier otra transición (ver handleChangeEstado).
                               if (nuevoEstado === 'Pagado' && !s.gastoGeneradoId && !s.ingresoGeneradoId && calcularAccionFinanzasSolicitud(s).accion !== 'ninguno') {
-                                setConfirmarPagoSolicitud({ solicitud: s, cuenta: '', ceco: '', comprobantes: [], fechaPago: fechaHoyLocal(), ...calcularAccionFinanzasSolicitud(s) });
+                                setConfirmarPagoSolicitud({ solicitud: s, empresa: empresaSugeridaPago(s), cuenta: '', ceco: '', comprobantes: [], fechaPago: fechaHoyLocal(), ...calcularAccionFinanzasSolicitud(s) });
+                              } else if (nuevoEstado === 'Legalizado' && s.tipo === 'Legalización T. Pro' && !s.empresa && !s.gastoGeneradoId) {
+                                // Legalización T. Pro "General": solo falta decir qué empresa asume el gasto.
+                                setConfirmarPagoSolicitud({ solicitud: s, soloEmpresa: true, empresa: empresaSugeridaPago(s), cuenta: '', ceco: '', comprobantes: [], fechaPago: fechaHoyLocal(), ...calcularAccionFinanzasSolicitud(s) });
                               } else if (nuevoEstado === 'Devuelto') {
                                 // Pide el motivo antes de guardar nada — sin él, el colaborador no
                                 // sabría qué corregir (ver modal "Devolver Solicitud").
@@ -10635,10 +10665,13 @@ const App = () => {
             el comprobante del banco ANTES de guardar el estado y generar el Gasto/Ingreso
             automático en Finanzas (Opción C). Cancelar no cambia nada. */}
         {confirmarPagoSolicitud && (() => {
-          const { solicitud, accion, monto } = confirmarPagoSolicitud;
+          const { solicitud, accion, monto, soloEmpresa } = confirmarPagoSolicitud;
+          const empresaPago = confirmarPagoSolicitud.empresa || '';
+          const solicitudConEmpresa = { ...solicitud, empresa: empresaPago };
           const esTercero = solicitud.tipo === 'Pago a Tercero';
           const esLegalizacionTPro = solicitud.tipo === 'Legalización T. Pro';
-          const moneda = esTercero ? (solicitud.moneda || getMoneda(solicitud.empresa)) : getMoneda(solicitud.empresa);
+          const moneda = monedaDeSolicitud(solicitud);
+          const monedaEmpresa = empresaPago ? getMoneda(empresaPago) : null;
           const subtitulo = esTercero
             ? `${solicitud.terceroInfo?.nombre || 'Tercero'} — ${formatMoneyByMoneda(monto, moneda)}`
             : `${solicitud.tipo} de ${solicitud.responsableNombre || 'colaborador'} — ${accion === 'ingreso' ? 'a devolver por el colaborador' : (esLegalizacionTPro ? 'a legalizar' : 'a pagar')}: ${formatMoneyByMoneda(monto, moneda)}`;
@@ -10646,10 +10679,21 @@ const App = () => {
           const tituloAccion = esLegalizacionTPro ? 'Legalización' : (accion === 'ingreso' ? 'Reintegro' : 'Pago');
           return (
           <ModalUI titulo={`💳 Confirmar ${tituloAccion}`} descripcion={subtitulo}>
+            <CampoUI label={`Empresa ${accion === 'ingreso' ? 'que recibió el dinero' : (esLegalizacionTPro ? 'que asume el gasto' : 'que pagó')} *`} htmlFor="cps-empresa">
+              <Select id="cps-empresa" value={empresaPago} onChange={(e) => setConfirmarPagoSolicitud({ ...confirmarPagoSolicitud, empresa: e.target.value, cuenta: '' })}>
+                <option value="">Seleccionar</option>
+                {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+              </Select>
+              {!solicitud.empresa && <p className="m-0 text-xs text-muted-foreground">Solicitud general: queda asignada a la empresa que elijas.</p>}
+              {monedaEmpresa && monedaEmpresa !== moneda && (
+                <p className="m-0 text-xs font-semibold text-[#C4622D]">⚠️ La solicitud está en {moneda} y {empresaPago} maneja {monedaEmpresa}: en Finanzas queda registrada en {moneda}.</p>
+              )}
+            </CampoUI>
+            {!soloEmpresa && <>
             <CampoUI label={`Cuenta de la empresa ${accion === 'ingreso' ? 'que recibió el dinero' : (esLegalizacionTPro ? 'con la que se le reembolsa' : 'con la que se pagó')} *`} htmlFor="cps-cuenta">
               <Select id="cps-cuenta" value={confirmarPagoSolicitud.cuenta} onChange={(e) => setConfirmarPagoSolicitud({...confirmarPagoSolicitud, cuenta: e.target.value})}>
                 <option value="">Seleccionar</option>
-                {(cuentasPorEmpresa[solicitud.empresa] || []).map(cuenta => <option key={cuenta} value={cuenta}>{cuenta}</option>)}
+                {(cuentasPorEmpresa[empresaPago] || []).map(cuenta => <option key={cuenta} value={cuenta}>{cuenta}</option>)}
               </Select>
             </CampoUI>
             <CampoUI label={`Fecha ${accion === 'ingreso' ? 'en que se recibió el dinero' : 'del pago'} *`} htmlFor="cps-fecha">
@@ -10663,7 +10707,7 @@ const App = () => {
               </Select>
             </CampoUI>
 
-            {esPagoTerceroNeutro(solicitud, confirmarPagoSolicitud.ceco) && (
+            {esPagoTerceroNeutro(solicitudConEmpresa, confirmarPagoSolicitud.ceco) && (
               <div className="flex flex-col gap-3 rounded-lg border border-solid border-[#CFCBC0] bg-[#F1F0EC] p-4">
                 <p className="m-0 text-sm">⚪ <strong>Gasto Neutro</strong>: se registra en Finanzas en <strong>COP</strong> con el valor realmente pagado, pero <strong>no suma</strong> en los gastos de la empresa. Requiere al menos 2 soportes.</p>
                 <CampoUI label="Concepto *" htmlFor="cps-neutro-concepto">
@@ -10680,6 +10724,7 @@ const App = () => {
               <p className="m-0 text-xs text-muted-foreground">Puedes adjuntar varios, ej. factura + soporte de pago.</p>
               <ArchivosElegidosUI archivos={confirmarPagoSolicitud.comprobantes || []} onQuitar={handleQuitarComprobantePago} />
             </CampoUI>
+            </>}
 
             <div className="flex gap-3">
               <Button size="lg" disabled={guardandoConfirmarPago} onClick={handleConfirmarPagoSolicitud} className={cn('flex-1', guardandoConfirmarPago && 'cursor-wait')}>
@@ -10783,21 +10828,28 @@ const App = () => {
             lote_pago_id para poder verlas agrupadas después. */}
         {confirmarPagoLoteReembolsos && (() => {
           const { items, cuenta, ceco } = confirmarPagoLoteReembolsos;
-          const empresaLote = items[0]?.empresa;
+          const empresaLote = confirmarPagoLoteReembolsos.empresa || '';
           const esLoteTerceroModal = items[0]?.tipo === 'Pago a Tercero';
-          const monedaLoteModal = esLoteTerceroModal ? (items[0]?.moneda || getMoneda(empresaLote)) : null;
+          const monedaLoteModal = monedaDeSolicitud(items[0]);
           const totalLote = items.reduce((sum, it) => sum + calcularAccionFinanzasSolicitud(it).monto, 0);
-          const totalLoteFormateado = esLoteTerceroModal ? formatMoneyByMoneda(totalLote, monedaLoteModal) : formatMoney(totalLote, empresaLote);
+          const totalLoteFormateado = formatMoneyByMoneda(totalLote, monedaLoteModal);
           return (
-          <ModalUI titulo={`💳 Confirmar Pago en Lote — ${items.length} ${etiquetaTipoLote(items.map(x => x.tipo), items.length !== 1)}`} descripcion={`${empresaLote} — Total: ${totalLoteFormateado}`} className="max-w-lg">
+          <ModalUI titulo={`💳 Confirmar Pago en Lote — ${items.length} ${etiquetaTipoLote(items.map(x => x.tipo), items.length !== 1)}`} descripcion={`${empresaLote || 'Empresa por elegir'} — Total: ${totalLoteFormateado}`} className="max-w-lg">
             <div className="max-h-40 overflow-y-auto rounded-lg border border-solid border-border px-3 py-1">
               {items.map(it => (
                 <div key={it.id} className="flex justify-between gap-3 py-1.5 text-xs">
                   <span>{esLoteTerceroModal ? (it.terceroInfo?.nombre || 'Tercero') : (colaboradoresPublico.find(c => c.id === it.responsableId)?.nombre || it.responsableNombre || '—')} — {it.detalle || it.tipo}</span>
-                  <span className="whitespace-nowrap font-bold text-success">{esLoteTerceroModal ? formatMoneyByMoneda(calcularAccionFinanzasSolicitud(it).monto, it.moneda || getMoneda(it.empresa)) : formatMoney(calcularAccionFinanzasSolicitud(it).monto, it.empresa)}</span>
+                  <span className="whitespace-nowrap font-bold text-success">{formatMoneyByMoneda(calcularAccionFinanzasSolicitud(it).monto, monedaDeSolicitud(it))}</span>
                 </div>
               ))}
             </div>
+            <CampoUI label="Empresa que pagó *" htmlFor="cpl-empresa">
+              <Select id="cpl-empresa" value={empresaLote} disabled={items.some(it => it.empresa)} onChange={(e) => setConfirmarPagoLoteReembolsos({ ...confirmarPagoLoteReembolsos, empresa: e.target.value, cuenta: '' })}>
+                <option value="">Seleccionar</option>
+                {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+              </Select>
+              {items.some(it => it.empresa) && <p className="m-0 text-xs text-muted-foreground">El lote incluye solicitudes ya asignadas a {empresaLote}.</p>}
+            </CampoUI>
             <CampoUI label="Cuenta de la empresa con la que se pagó *" htmlFor="cpl-cuenta">
               <Select id="cpl-cuenta" value={cuenta} onChange={(e) => setConfirmarPagoLoteReembolsos({...confirmarPagoLoteReembolsos, cuenta: e.target.value})}>
                 <option value="">Seleccionar</option>

@@ -203,11 +203,13 @@ export const construirCandidatosPAB = ({
     });
 
   solicitudes
-    .filter(s => s.empresa === empresa && s.estado === 'Aprobado' && TIPOS_SOLICITUD_PAB[s.tipo])
+    // Las solicitudes "General" (sin empresa) entran al lote de cualquier empresa: al generarlo
+    // quedan asignadas a la empresa del lote.
+    .filter(s => (s.empresa === empresa || !s.empresa) && s.estado === 'Aprobado' && TIPOS_SOLICITUD_PAB[s.tipo])
     .forEach(s => {
       const esTercero = s.tipo === 'Pago a Tercero';
       const bloqueos = [];
-      const moneda = esTercero ? (s.moneda || (getMoneda ? getMoneda(s.empresa) : 'COP')) : (getMoneda ? getMoneda(s.empresa) : 'COP');
+      const moneda = s.moneda || (getMoneda ? getMoneda(s.empresa || empresa) : 'COP');
       if (moneda !== 'COP') bloqueos.push(`moneda ${moneda}: el PAB solo paga en pesos`);
       agregar({
         clave: `solicitud:${s.id}`, origen: 'Solicitudes', entidadTipo: 'solicitud', entidadId: String(s.id), anio: null, mes: null,
@@ -218,7 +220,7 @@ export const construirCandidatosPAB = ({
         valor: s.tipo === 'Reembolso' ? s.totalCalculado : s.valor,
         referencia: referenciaPAB({ Reembolso: 'REE', Anticipo: 'ANT', Comisión: 'COM', 'Pago a Tercero': 'TER' }[s.tipo], s.id),
         bloqueos,
-        meta: { tipo: s.tipo, detalle: s.detalle || '' }
+        meta: { tipo: s.tipo, detalle: s.detalle || '', general: !s.empresa }
       });
     });
 
