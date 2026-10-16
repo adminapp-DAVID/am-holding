@@ -32,6 +32,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Badge, badgeVariants, estadoBadge } from '@/components/ui/badge';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { CODIGO_BANCO_EXTERIOR, inferirCodigoBanco, limpiarNumeroCuenta, limpiarDocumento } from './datosBancarios';
+import { parsearMonto, montoONumero0 } from './montos';
 
 // Logo por empresa. Para sumar ARKO, sube el archivo a src/assets/logos/,
 // agrega su import arriba y una línea aquí con el nombre exacto de la empresa.
@@ -359,7 +360,7 @@ const App = () => {
   const formatMoneyByMoneda = (valor, moneda) => {
     // Espacio irrompible ( ) entre el signo y el número: evita que las tablas angostas
     // partan la línea dejando el signo de moneda arriba y el número abajo.
-    const num = parseFloat(valor) || 0;
+    const num = parsearMonto(valor) || 0;
     if (moneda === 'USD') {
       return `US$ ${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
@@ -2249,7 +2250,7 @@ const App = () => {
         proveedor: nuevoSoportePendiente.proveedor || null,
         nit: nuevoSoportePendiente.nit || null,
         descripcion: nuevoSoportePendiente.descripcion.trim(),
-        valor: parseFloat(nuevoSoportePendiente.valor) || 0,
+        valor: parsearMonto(nuevoSoportePendiente.valor) || 0,
         tipo_soporte: nuevoSoportePendiente.tipoSoporte || null,
         bucket_path: rutaArchivo,
         nombre_original: archivo.nombre,
@@ -2315,7 +2316,7 @@ const App = () => {
           proveedor: pendienteEditData.proveedor || null,
           nit: pendienteEditData.nit || null,
           descripcion: pendienteEditData.descripcion.trim(),
-          valor: parseFloat(pendienteEditData.valor) || 0,
+          valor: parsearMonto(pendienteEditData.valor) || 0,
           tipo_soporte: pendienteEditData.tipoSoporte || null
         })
         .eq('id', id);
@@ -2508,7 +2509,7 @@ const App = () => {
       return;
     }
 
-    if (esTipoValorUnico(newSolicitud.tipo) && parseFloat(newSolicitud.valor) <= 0) {
+    if (esTipoValorUnico(newSolicitud.tipo) && parsearMonto(newSolicitud.valor) <= 0) {
       alert(newSolicitud.tipo === 'Comisión' ? 'El valor de la comisión debe ser mayor a cero' : 'El valor solicitado debe ser mayor a cero');
       return;
     }
@@ -2536,7 +2537,7 @@ const App = () => {
         alert('Nombre y DNI/Documento del tercero son obligatorios');
         return;
       }
-      if (!newSolicitud.valor || parseFloat(newSolicitud.valor) <= 0) {
+      if (!newSolicitud.valor || parsearMonto(newSolicitud.valor) <= 0) {
         alert('El valor a pagar debe ser mayor a cero');
         return;
       }
@@ -2546,7 +2547,7 @@ const App = () => {
       }
     }
 
-    const totalCalculado = newSolicitud.documentos.reduce((sum, doc) => sum + (parseFloat(doc.valor) || 0), 0);
+    const totalCalculado = newSolicitud.documentos.reduce((sum, doc) => sum + (parsearMonto(doc.valor) || 0), 0);
     // Pago a Tercero es la excepción: ahí SÍ se respeta la Empresa elegida en el formulario aunque
     // quien crea sea Responsable/Gerente (puede pagarse desde una empresa distinta a la suya, ej.
     // ARKO en USD) — para los demás tipos, la Empresa de un Responsable/Gerente sigue siendo
@@ -2660,16 +2661,16 @@ const App = () => {
         : 'Pendiente';
       const camposSolicitud = {
         fecha: newSolicitud.fecha,
-        valor: (esTipoValorUnico(newSolicitud.tipo) || newSolicitud.tipo === 'Pago a Tercero') ? (parseFloat(newSolicitud.valor) || 0) : 0,
+        valor: (esTipoValorUnico(newSolicitud.tipo) || newSolicitud.tipo === 'Pago a Tercero') ? (parsearMonto(newSolicitud.valor) || 0) : 0,
         total_calculado: totalCalculado,
         detalle: newSolicitud.detalle.trim(),
         empresa_id: empresaId,
-        documentos: newSolicitud.documentos,
+        documentos: newSolicitud.documentos.map(d => ({ ...d, valor: montoONumero0(d.valor) })),
         // anticipo_id (singular, columna vieja) se sigue llenando con el primero elegido, solo
         // por compatibilidad con cualquier reporte/consulta externa que todavía la use.
         anticipo_id: anticiposVinculados.length > 0 ? anticiposVinculados[0].id : null,
         anticipo_ids: anticiposVinculados.map(a => a.id),
-        valor_anticipo_original: newSolicitud.tipo === 'Legalización' ? (parseFloat(newSolicitud.valorAnticipoOriginal) || null) : null,
+        valor_anticipo_original: newSolicitud.tipo === 'Legalización' ? (parsearMonto(newSolicitud.valorAnticipoOriginal) || null) : null,
         moneda_pago: newSolicitud.tipo === 'Pago a Tercero' ? newSolicitud.moneda : null,
         tercero_info: terceroInfoFinal,
         tercero_id: terceroIdFinal,
@@ -2782,7 +2783,7 @@ const App = () => {
             fecha: newSolicitud.fecha,
             responsableNombre: user.nombre,
             detalle: newSolicitud.detalle,
-            valor: parseFloat(newSolicitud.valor) || 0,
+            valor: parsearMonto(newSolicitud.valor) || 0,
             moneda: newSolicitud.moneda,
             tercero: terceroInfoFinal || {},
             estado: 'Pendiente'
@@ -3131,7 +3132,7 @@ const App = () => {
     let neutro = null;
     if (esPagoTerceroNeutro(solicitud, ceco)) {
       const detalleNeutro = String(confirmarPagoSolicitud.detalleNeutro ?? solicitud.detalle ?? '').trim();
-      const valorCOP = parseFloat(String(confirmarPagoSolicitud.valorCOP || '').replace(/[^\d,]/g, '').replace(',', '.'));
+      const valorCOP = parsearMonto(confirmarPagoSolicitud.valorCOP);
       if (!detalleNeutro) { alert('Escribe el concepto del Gasto Neutro'); return; }
       if (!valorCOP || valorCOP <= 0) { alert('Escribe el valor pagado en COP'); return; }
       if (comprobantes.length < 2) { alert('Para un Gasto Neutro adjunta al menos 2 soportes (ej. factura y comprobante de pago)'); return; }
@@ -3607,7 +3608,7 @@ const App = () => {
     rows.push([]);
     rows.push(['Fecha del Gasto', 'Pagado a', 'NIT/CC', `Valor pagado (${moneda})`, 'Tipo de soporte', 'Por concepto de']);
     (s.documentos || []).forEach(d => {
-      rows.push([d.fecha || '', d.proveedor || '', d.nit || '', parseFloat(d.valor) || 0, d.tipoSoporte || '', d.descripcion || '']);
+      rows.push([d.fecha || '', d.proveedor || '', d.nit || '', parsearMonto(d.valor) || 0, d.tipoSoporte || '', d.descripcion || '']);
     });
     rows.push([]);
     rows.push(['Elaborado por', 'Revisado:', 'Aprobado:', s.totalCalculado || 0]);
@@ -4034,7 +4035,7 @@ const App = () => {
 
   // CUENTAS DE COBRO CRUD (conectado a Supabase — tabla public.cuentas_cobro)
   const handleAddCuentaCobro = async () => {
-    if (!newCuentaCobro.monto || parseFloat(newCuentaCobro.monto) <= 0) {
+    if (!newCuentaCobro.monto || parsearMonto(newCuentaCobro.monto) <= 0) {
       alert('Ingresa un valor mayor a cero');
       return;
     }
@@ -4066,7 +4067,7 @@ const App = () => {
       const hoy = new Date();
       const fechaISO = hoy.toISOString().split('T')[0];
       const vencimiento = new Date(hoy.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      const monto = parseFloat(newCuentaCobro.monto) || 0;
+      const monto = parsearMonto(newCuentaCobro.monto) || 0;
       const numero = String(numeroConsecutivo).padStart(2, '0');
 
       let empresaId = null;
@@ -4482,7 +4483,7 @@ const App = () => {
       return;
     }
 
-    if (parseFloat(newGasto.valor) <= 0) {
+    if (parsearMonto(newGasto.valor) <= 0) {
       alert('El valor debe ser mayor a cero');
       return;
     }
@@ -4506,7 +4507,7 @@ const App = () => {
       // no la misma cifra convertida sola. Se piden los dos por separado.
       const empresaDestinoTraslado = getEmpresaDestinoTraslado(newGasto.cuentaDestino, newGasto.empresa);
       if (getMoneda(newGasto.empresa) !== getMoneda(empresaDestinoTraslado)) {
-        if (!newGasto.valorDestino || parseFloat(newGasto.valorDestino) <= 0) {
+        if (!newGasto.valorDestino || parsearMonto(newGasto.valorDestino) <= 0) {
           alert(`El valor en la cuenta destino (${getMoneda(empresaDestinoTraslado)}) es obligatorio para traslados entre monedas distintas`);
           return;
         }
@@ -4600,7 +4601,7 @@ const App = () => {
       // Si el gasto queda vinculado a un concepto de Presupuesto con deducciones activas ese mes
       // (préstamo u otro descuento), el valor bruto ingresado se convierte en Neto a Pagar: el
       // "Valor" que queda guardado (y que alimenta Ejecutado/Dashboard/Presupuesto) es el neto real.
-      let valorFinal = newGasto.valor;
+      let valorFinal = montoONumero0(newGasto.valor);
       let valorBrutoFinal = null;
       let deduccionAplicadaFinal = null;
 
@@ -4610,7 +4611,7 @@ const App = () => {
       // mismo valor de siempre, ver registrosFinanzasTodos).
       const empresaDestinoTraslado = newGasto.tipo === 'Traslado' ? getEmpresaDestinoTraslado(newGasto.cuentaDestino, newGasto.empresa) : null;
       const valorDestinoFinal = (newGasto.tipo === 'Traslado' && getMoneda(newGasto.empresa) !== getMoneda(empresaDestinoTraslado))
-        ? newGasto.valorDestino
+        ? montoONumero0(newGasto.valorDestino)
         : null;
       if (newGasto.tipo === 'Gasto' && presupuestoItemIdFinal && newGasto.aplicarDeduccion !== false) {
         const [anioGasto, mesGasto] = (newGasto.fecha || '').split('-').map(n => parseInt(n));
@@ -4619,7 +4620,7 @@ const App = () => {
             .filter(d => d.presupuestoItemId === presupuestoItemIdFinal)
             .reduce((sum, d) => sum + getCuotaAplicada(d, anioGasto, mesGasto), 0);
           if (totalDeduccion > 0) {
-            const bruto = parseFloat(newGasto.valor) || 0;
+            const bruto = parsearMonto(newGasto.valor) || 0;
             valorBrutoFinal = bruto;
             deduccionAplicadaFinal = totalDeduccion;
             valorFinal = Math.max(0, bruto - totalDeduccion);
@@ -4682,7 +4683,7 @@ const App = () => {
             fecha: newGasto.fecha,
             responsableNombre: user.nombre,
             detalle: newGasto.detalle,
-            valor: parseFloat(newGasto.valor) || 0,
+            valor: parsearMonto(newGasto.valor) || 0,
             moneda: newGasto.moneda,
             tercero: terceroInfoFinal || {},
             estado: newGasto.estado
@@ -4751,7 +4752,7 @@ const App = () => {
       return;
     }
 
-    if (parseFloat(newIngreso.valor) <= 0) {
+    if (parsearMonto(newIngreso.valor) <= 0) {
       alert('El valor debe ser mayor a cero');
       return;
     }
@@ -4774,7 +4775,7 @@ const App = () => {
         ceco_id: cecoId,
         cuenta: newIngreso.cuenta || null,
         detalle: newIngreso.detalle,
-        valor: newIngreso.valor,
+        valor: montoONumero0(newIngreso.valor),
         categoria: newIngreso.categoria || null,
         estado: newIngreso.estado,
         observaciones: newIngreso.observaciones || null
@@ -5019,7 +5020,7 @@ const App = () => {
       alert('Nombre/Concepto y valor mensual son obligatorios');
       return;
     }
-    if (parseFloat(newPresupuestoItem.valorMensual) <= 0) {
+    if (parsearMonto(newPresupuestoItem.valorMensual) <= 0) {
       alert('El valor mensual debe ser mayor a cero');
       return;
     }
@@ -5032,7 +5033,7 @@ const App = () => {
       empresa_id: empresaId,
       ceco_id: cecoId,
       nombre: newPresupuestoItem.nombre,
-      valor_mensual: newPresupuestoItem.valorMensual,
+      valor_mensual: montoONumero0(newPresupuestoItem.valorMensual),
       dia_limite_pago: newPresupuestoItem.diaLimitePago ? parseInt(newPresupuestoItem.diaLimitePago) : null,
       responsable_id: newPresupuestoItem.responsableId || null,
       tipo: newPresupuestoItem.tipo || null,
@@ -5386,7 +5387,7 @@ const App = () => {
     const costosLote = [
       ['comision', `Comisión bancaria — lote PAB #${lote.numero}`],
       ['gmf', `GMF 4x1000 — lote PAB #${lote.numero}`]
-    ].filter(([k]) => (parseFloat(costos[k]) || 0) > 0);
+    ].filter(([k]) => (parsearMonto(costos[k]) || 0) > 0);
     if (costosLote.length) {
       const { data: yaRegistrados, error } = await supabase.from('gastos').select('detalle').eq('lote_pago_id', lote.id);
       if (error) throw error;
@@ -5396,7 +5397,7 @@ const App = () => {
         try {
           const { data: gastoCosto, error: errorCosto } = await supabase.from('gastos').insert({
             fecha: fechaPago, tipo: 'Gasto', empresa_id: empresaId, responsable_id: null, ceco_id: cecoCostosId,
-            cuenta, detalle, valor: parseFloat(costos[k]), estado: 'Pagado',
+            cuenta, detalle, valor: parsearMonto(costos[k]), estado: 'Pagado',
             observaciones: `Costo bancario del lote PAB #${lote.numero}.`, lote_pago_id: lote.id
           }).select('id').single();
           if (errorCosto) throw errorCosto;
@@ -5437,8 +5438,8 @@ const App = () => {
   const nuevaLineaFacturaTercero = () => ({ id: Date.now() + Math.random(), responsable: '', numeroFactura: '', valor: '', retencion: '', factura: null });
   // Valor de la factura (bruto), retención en la fuente y neto realmente pagado de una línea del lote.
   const montosLineaFacturaTercero = (l) => {
-    const bruto = parseFloat(l.valor) || 0;
-    const retencion = parseFloat(l.retencion) || 0;
+    const bruto = parsearMonto(l.valor) || 0;
+    const retencion = parsearMonto(l.retencion) || 0;
     return { bruto, retencion, neto: bruto - retencion };
   };
 
@@ -5543,7 +5544,7 @@ const App = () => {
     if (!cuenta) { alert('Elige la Cuenta con la que se pagó'); return; }
     if (!terceroNombre.trim()) { alert('Escribe o elige el Tercero'); return; }
     if (!ceco) { alert('Elige el CECO para estas facturas'); return; }
-    const invalidas = lineas.filter(l => !l.responsable || !l.valor || parseFloat(l.valor) <= 0 || (!l.facturaExistente && !l.factura));
+    const invalidas = lineas.filter(l => !l.responsable || !l.valor || parsearMonto(l.valor) <= 0 || (!l.facturaExistente && !l.factura));
     if (invalidas.length > 0) { alert('Cada línea necesita Colaborador, Valor mayor a cero y (si es nueva) su Soporte de Factura'); return; }
     const retencionInvalida = lineas.find(l => { const m = montosLineaFacturaTercero(l); return m.retencion < 0 || m.neto <= 0; });
     if (retencionInvalida) { alert(`La retención de ${retencionInvalida.responsable} no puede ser negativa ni mayor o igual al valor de la factura`); return; }
@@ -5642,7 +5643,7 @@ const App = () => {
     if (!cuenta) { alert('Elige la Cuenta con la que se pagó'); return; }
     if (!terceroNombre.trim()) { alert('Escribe o elige el Tercero que envía las facturas (ej. Caelum)'); return; }
     if (!ceco) { alert('Elige el CECO para estas facturas'); return; }
-    const invalidas = lineas.filter(l => !l.responsable || !l.valor || parseFloat(l.valor) <= 0 || !l.factura);
+    const invalidas = lineas.filter(l => !l.responsable || !l.valor || parsearMonto(l.valor) <= 0 || !l.factura);
     if (invalidas.length > 0) { alert('Cada línea necesita Colaborador, Valor mayor a cero y su Soporte de Factura'); return; }
     const retencionInvalida = lineas.find(l => { const m = montosLineaFacturaTercero(l); return m.retencion < 0 || m.neto <= 0; });
     if (retencionInvalida) { alert(`La retención de ${retencionInvalida.responsable} no puede ser negativa ni mayor o igual al valor de la factura`); return; }
@@ -5744,7 +5745,7 @@ const App = () => {
   };
 
   const handleAddPresupuestoAnual = async () => {
-    if (!newPresupuestoAnual.valorAnual || parseFloat(newPresupuestoAnual.valorAnual) <= 0) {
+    if (!newPresupuestoAnual.valorAnual || parsearMonto(newPresupuestoAnual.valorAnual) <= 0) {
       alert('El valor anual es obligatorio y debe ser mayor a cero');
       return;
     }
@@ -5752,9 +5753,9 @@ const App = () => {
     const existente = presupuestoAnual.find(p => p.empresa === newPresupuestoAnual.empresa && p.ceco === newPresupuestoAnual.ceco && String(p.anio) === String(newPresupuestoAnual.anio));
     let error;
     if (existente) {
-      ({ error } = await supabase.from('presupuesto_anual').update({ valor_anual: newPresupuestoAnual.valorAnual }).eq('id', existente.id));
+      ({ error } = await supabase.from('presupuesto_anual').update({ valor_anual: montoONumero0(newPresupuestoAnual.valorAnual) }).eq('id', existente.id));
     } else {
-      ({ error } = await supabase.from('presupuesto_anual').insert({ empresa_id: empresaId, ceco_id: cecoId, anio: newPresupuestoAnual.anio, valor_anual: newPresupuestoAnual.valorAnual }));
+      ({ error } = await supabase.from('presupuesto_anual').insert({ empresa_id: empresaId, ceco_id: cecoId, anio: newPresupuestoAnual.anio, valor_anual: montoONumero0(newPresupuestoAnual.valorAnual) }));
     }
     if (error) {
       console.error('Error guardando techo anual:', error);
@@ -5850,7 +5851,7 @@ const App = () => {
       setPresupuestoOverrides(presupuestoOverrides.filter(o => o.id !== overrideExistente.id));
       return;
     }
-    const valor = parseFloat(input);
+    const valor = parsearMonto(input);
     if (isNaN(valor) || valor <= 0) {
       alert('Valor inválido');
       return;
@@ -5873,11 +5874,11 @@ const App = () => {
       alert('Selecciona a qué concepto (persona) aplica la deducción');
       return;
     }
-    if (!newDeduccion.valorCuota || parseFloat(newDeduccion.valorCuota) <= 0) {
+    if (!newDeduccion.valorCuota || parsearMonto(newDeduccion.valorCuota) <= 0) {
       alert('La cuota debe ser mayor a cero');
       return;
     }
-    if (newDeduccion.tipo === 'Préstamo' && (!newDeduccion.saldoTotal || parseFloat(newDeduccion.saldoTotal) <= 0)) {
+    if (newDeduccion.tipo === 'Préstamo' && (!newDeduccion.saldoTotal || parsearMonto(newDeduccion.saldoTotal) <= 0)) {
       alert('Ingresa el saldo total del préstamo');
       return;
     }
@@ -5885,8 +5886,8 @@ const App = () => {
     const payload = {
       presupuesto_item_id: newDeduccion.presupuestoItemId,
       tipo: newDeduccion.tipo,
-      valor_cuota: newDeduccion.valorCuota,
-      saldo_total: newDeduccion.tipo === 'Préstamo' ? newDeduccion.saldoTotal : null,
+      valor_cuota: montoONumero0(newDeduccion.valorCuota),
+      saldo_total: newDeduccion.tipo === 'Préstamo' ? montoONumero0(newDeduccion.saldoTotal) : null,
       fecha_inicio: newDeduccion.fechaInicio,
       observaciones: newDeduccion.observaciones || null
     };
@@ -6234,7 +6235,7 @@ const App = () => {
           const movimientoNorm = movimiento.charAt(0).toUpperCase() + movimiento.slice(1).toLowerCase();
           const fecha = formatearFecha(fila['Fecha']);
           const empresa = String(fila['Empresa'] || '').trim();
-          const valor = parseFloat(fila['Valor']);
+          const valor = parsearMonto(fila['Valor']);
 
           if (!['Gasto', 'Ingreso', 'Traslado'].includes(movimientoNorm)) {
             errores.push(`Fila ${numFila}: "Movimiento" debe ser Gasto, Ingreso o Traslado (llegó "${movimiento}")`);
@@ -6279,7 +6280,7 @@ const App = () => {
             cuentaDestino: String(fila['Cuenta Destino'] || '').trim() || null,
             detalle: String(fila['Detalle'] || '').trim(),
             valor,
-            valorDestino: fila['Valor Destino'] ? parseFloat(fila['Valor Destino']) : null,
+            valorDestino: fila['Valor Destino'] ? parsearMonto(fila['Valor Destino']) : null,
             categoria: String(fila['Categoria'] || '').trim() || null,
             estado: String(fila['Estado'] || '').trim() || 'Pendiente',
             observaciones: String(fila['Observaciones'] || '').trim() || null,
@@ -6461,9 +6462,7 @@ const App = () => {
   // "1.500.000" / "1500000" / "70,88" → número (formato colombiano: punto de miles, coma
   // decimal). Vacío o inválido → null (= sin límite).
   const parseValorFiltro = (texto) => {
-    const limpio = String(texto || '').replace(/[^\d,]/g, '').replace(',', '.');
-    if (!limpio) return null;
-    const n = parseFloat(limpio);
+    const n = parsearMonto(texto);
     return isNaN(n) ? null : n;
   };
   const valorMinFinanzas = parseValorFiltro(filtroFinanzasValorMin);
@@ -7832,7 +7831,7 @@ const App = () => {
                     <CampoUI label="Pagado a" htmlFor="bs-proveedor"><Input id="bs-proveedor" type="text" placeholder="Pagado a" value={nuevoSoportePendiente.proveedor} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, proveedor: e.target.value})} /></CampoUI>
                     <CampoUI label="NIT" htmlFor="bs-nit"><Input id="bs-nit" type="text" placeholder="NIT" value={nuevoSoportePendiente.nit} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, nit: e.target.value})} /></CampoUI>
                     <CampoUI label="Por concepto de *" htmlFor="bs-desc"><Input id="bs-desc" type="text" placeholder="Por concepto de *" required value={nuevoSoportePendiente.descripcion} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, descripcion: e.target.value})} /></CampoUI>
-                    <CampoUI label="Valor pagado" htmlFor="bs-valor"><Input id="bs-valor" type="number" placeholder="Valor pagado" value={nuevoSoportePendiente.valor} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, valor: e.target.value})} /></CampoUI>
+                    <CampoUI label="Valor pagado" htmlFor="bs-valor"><Input id="bs-valor" type="text" inputMode="decimal" placeholder="Valor pagado" value={nuevoSoportePendiente.valor} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, valor: e.target.value})} /></CampoUI>
                     <CampoUI label="Tipo de Soporte" htmlFor="bs-tipo">
                       <Select id="bs-tipo" value={nuevoSoportePendiente.tipoSoporte} onChange={(e) => setNuevoSoportePendiente({...nuevoSoportePendiente, tipoSoporte: e.target.value})}>
                         <option value="">Tipo de Soporte</option>
@@ -7896,7 +7895,7 @@ const App = () => {
                                         </Select>
                                       </div>
                                     </TableCell>
-                                    <TableCell className="px-1.5"><Input type="number" aria-label="Valor" value={pendienteEditData.valor} onChange={(e) => setPendienteEditData({...pendienteEditData, valor: e.target.value})} className="h-8 text-right text-xs" /></TableCell>
+                                    <TableCell className="px-1.5"><Input type="text" inputMode="decimal" aria-label="Valor" value={pendienteEditData.valor} onChange={(e) => setPendienteEditData({...pendienteEditData, valor: e.target.value})} className="h-8 text-right text-xs" /></TableCell>
                                     <TableCell className="text-muted-foreground">{item.nombre}</TableCell>
                                     <TableCell className="whitespace-nowrap text-center">
                                       <Button variant="ghost" size="icon" onClick={() => handleGuardarEdicionPendiente(item.id)} disabled={guardandoEdicionPendiente} title="Guardar" aria-label="Guardar" className="text-success"><Check size={16} /></Button>
@@ -8015,12 +8014,12 @@ const App = () => {
                   )}
                   {esTipoValorUnico(newSolicitud.tipo) && (
                     <CampoUI label={`${newSolicitud.tipo === 'Comisión' ? 'Valor de la Comisión' : 'Valor Solicitado'} (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} htmlFor="sol-valor">
-                      <Input id="sol-valor" type="number" placeholder={`${newSolicitud.tipo === 'Comisión' ? 'Valor de la Comisión' : 'Valor Solicitado'} (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} />
+                      <Input id="sol-valor" type="text" inputMode="decimal" placeholder={`${newSolicitud.tipo === 'Comisión' ? 'Valor de la Comisión' : 'Valor Solicitado'} (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} />
                     </CampoUI>
                   )}
                   {newSolicitud.tipo === 'Legalización' && (
                     <CampoUI label={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} htmlFor="sol-anticipo">
-                      <Input id="sol-anticipo" type="number" placeholder={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} disabled={newSolicitud.anticipoIds.length > 0} value={newSolicitud.valorAnticipoOriginal} onChange={(e) => setNewSolicitud({...newSolicitud, valorAnticipoOriginal: e.target.value})} />
+                      <Input id="sol-anticipo" type="text" inputMode="decimal" placeholder={`Valor Anticipo Original (${getMoneda(user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)})`} disabled={newSolicitud.anticipoIds.length > 0} value={newSolicitud.valorAnticipoOriginal} onChange={(e) => setNewSolicitud({...newSolicitud, valorAnticipoOriginal: e.target.value})} />
                     </CampoUI>
                   )}
                   {/* Pago a Tercero: la moneda del pago se elige aparte — no depende de la empresa
@@ -8035,7 +8034,7 @@ const App = () => {
                         </Select>
                       </CampoUI>
                       <CampoUI label={`Valor a Pagar (${newSolicitud.moneda})`} htmlFor="sol-valor-tercero">
-                        <Input id="sol-valor-tercero" type="number" placeholder={`Valor a Pagar (${newSolicitud.moneda})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} />
+                        <Input id="sol-valor-tercero" type="text" inputMode="decimal" placeholder={`Valor a Pagar (${newSolicitud.moneda})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} />
                       </CampoUI>
                     </>
                   )}
@@ -8086,7 +8085,7 @@ const App = () => {
                       </div>
                       {newSolicitud.anticipoIds.length > 1 && (
                         <div className="text-xs text-[#6C63D1]">
-                          {newSolicitud.anticipoIds.length} anticipos seleccionados — suma: {formatMoney(parseFloat(newSolicitud.valorAnticipoOriginal) || 0, newSolicitud.empresa)}
+                          {newSolicitud.anticipoIds.length} anticipos seleccionados — suma: {formatMoney(parsearMonto(newSolicitud.valorAnticipoOriginal) || 0, newSolicitud.empresa)}
                         </div>
                       )}
                     </div>
@@ -8188,7 +8187,7 @@ const App = () => {
                             <Input type="text" aria-label="Por concepto de" placeholder="Por concepto de *" required value={doc.descripcion} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].descripcion = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} aria-invalid={(doc.descripcion || '').trim() ? undefined : true} />
                           </div>
                           <div className="grid grid-cols-[1fr_auto] gap-3 sm:grid-cols-[1fr_1.4fr_auto]">
-                            <Input type="number" aria-label="Valor pagado" placeholder="Valor pagado" value={doc.valor} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].valor = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} />
+                            <Input type="text" inputMode="decimal" aria-label="Valor pagado" placeholder="Valor pagado" value={doc.valor} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].valor = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }} />
                             <div className="col-span-2 row-start-2 sm:col-span-1 sm:row-start-auto">
                               <Select aria-label="Tipo de Soporte" value={doc.tipoSoporte || ''} onChange={(e) => { const newDocs = [...newSolicitud.documentos]; newDocs[idx].tipoSoporte = e.target.value; setNewSolicitud({...newSolicitud, documentos: newDocs}); }}>
                                 <option value="">Tipo de Soporte</option>
@@ -8202,7 +8201,7 @@ const App = () => {
 
                       {newSolicitud.documentos.length > 0 && (
                         <p className="m-0 text-right text-sm font-bold">
-                          Total: {formatMoney(newSolicitud.documentos.reduce((sum, d) => sum + (parseFloat(d.valor) || 0), 0), user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)}
+                          Total: {formatMoney(newSolicitud.documentos.reduce((sum, d) => sum + (parsearMonto(d.valor) || 0), 0), user.rol === 'Responsable' ? user.empresa : newSolicitud.empresa)}
                         </p>
                       )}
                     </div>
@@ -9073,7 +9072,7 @@ const App = () => {
                   .filter(d => d.cuotaAplicada > 0);
                 if (!deduccionesItem.length) return null;
                 const totalDeduccion = deduccionesItem.reduce((sum, d) => sum + d.cuotaAplicada, 0);
-                const bruto = parseFloat(newGasto.valor) || 0;
+                const bruto = parsearMonto(newGasto.valor) || 0;
                 const neto = Math.max(0, bruto - totalDeduccion);
                 return (
                   <div className="rounded-lg border border-solid border-primary bg-[#FBF3E5] p-4">
@@ -9110,7 +9109,7 @@ const App = () => {
                 )}
 
                 <CampoUI label={newGasto.tipo === 'Traslado' ? `Valor (Salida — ${getMoneda(newGasto.empresa)})` : (esPagoTerceroFinanzas ? `Valor a Pagar (${newGasto.moneda})` : 'Valor')} htmlFor="fin-valor">
-                  <Input id="fin-valor" type="number" placeholder={esPagoTerceroFinanzas ? `Valor a Pagar (${newGasto.moneda})` : 'Valor'} value={newGasto.valor} onChange={(e) => {setNewGasto({...newGasto, valor: e.target.value}); setNewIngreso({...newIngreso, valor: e.target.value});}} />
+                  <Input id="fin-valor" type="text" inputMode="decimal" placeholder={esPagoTerceroFinanzas ? `Valor a Pagar (${newGasto.moneda})` : 'Valor'} value={newGasto.valor} onChange={(e) => {setNewGasto({...newGasto, valor: e.target.value}); setNewIngreso({...newIngreso, valor: e.target.value});}} />
                 </CampoUI>
 
                 {/* Traslado entre monedas distintas (ej. ARKO en USD hacia/desde el resto de la
@@ -9119,7 +9118,7 @@ const App = () => {
                     campo solo aparece cuando origen y destino tienen monedas diferentes. */}
                 {newGasto.tipo === 'Traslado' && newGasto.cuentaDestino && getMoneda(newGasto.empresa) !== getMoneda(getEmpresaDestinoTraslado(newGasto.cuentaDestino, newGasto.empresa)) && (
                   <CampoUI label={`Valor en Cuenta Destino (${getMoneda(getEmpresaDestinoTraslado(newGasto.cuentaDestino, newGasto.empresa))})`} htmlFor="fin-valor-destino">
-                    <Input id="fin-valor-destino" type="number" placeholder={`Valor en ${getMoneda(getEmpresaDestinoTraslado(newGasto.cuentaDestino, newGasto.empresa))}`} value={newGasto.valorDestino} onChange={(e) => setNewGasto({...newGasto, valorDestino: e.target.value})} />
+                    <Input id="fin-valor-destino" type="text" inputMode="decimal" placeholder={`Valor en ${getMoneda(getEmpresaDestinoTraslado(newGasto.cuentaDestino, newGasto.empresa))}`} value={newGasto.valorDestino} onChange={(e) => setNewGasto({...newGasto, valorDestino: e.target.value})} />
                   </CampoUI>
                 )}
               </div>
@@ -10095,11 +10094,11 @@ const App = () => {
                             <Input id="ded-inicio" type="date" value={newDeduccion.fechaInicio} onChange={(e) => setNewDeduccion({...newDeduccion, fechaInicio: e.target.value})} />
                           </CampoUI>
                           <CampoUI label="Cuota mensual" htmlFor="ded-cuota">
-                            <Input id="ded-cuota" type="number" placeholder="Valor de la cuota mensual" value={newDeduccion.valorCuota} onChange={(e) => setNewDeduccion({...newDeduccion, valorCuota: e.target.value})} />
+                            <Input id="ded-cuota" type="text" inputMode="decimal" placeholder="Valor de la cuota mensual" value={newDeduccion.valorCuota} onChange={(e) => setNewDeduccion({...newDeduccion, valorCuota: e.target.value})} />
                           </CampoUI>
                           {newDeduccion.tipo === 'Préstamo' && (
                             <CampoUI label="Saldo total del préstamo" htmlFor="ded-saldo">
-                              <Input id="ded-saldo" type="number" placeholder="Saldo total del préstamo" value={newDeduccion.saldoTotal} onChange={(e) => setNewDeduccion({...newDeduccion, saldoTotal: e.target.value})} />
+                              <Input id="ded-saldo" type="text" inputMode="decimal" placeholder="Saldo total del préstamo" value={newDeduccion.saldoTotal} onChange={(e) => setNewDeduccion({...newDeduccion, saldoTotal: e.target.value})} />
                             </CampoUI>
                           )}
                         </div>
@@ -10283,7 +10282,7 @@ const App = () => {
                             <Input id="pc-nombre" type="text" placeholder="Nombre / Responsable / Concepto" value={newPresupuestoItem.nombre} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, nombre: e.target.value})} />
                           </CampoUI>
                           <CampoUI label="Valor mensual" htmlFor="pc-valor">
-                            <Input id="pc-valor" type="number" placeholder="Valor mensual" value={newPresupuestoItem.valorMensual} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, valorMensual: e.target.value})} />
+                            <Input id="pc-valor" type="text" inputMode="decimal" placeholder="Valor mensual" value={newPresupuestoItem.valorMensual} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, valorMensual: e.target.value})} />
                           </CampoUI>
                           <Button onClick={handleAddPresupuestoItem}>{editingPresupuestoItemId ? 'Guardar Cambios' : <><Plus size={16} /> Agregar</>}</Button>
                         </div>
@@ -10369,7 +10368,7 @@ const App = () => {
                             <Input id="pa-anio" type="number" placeholder="Año" value={newPresupuestoAnual.anio} onChange={(e) => setNewPresupuestoAnual({...newPresupuestoAnual, anio: parseInt(e.target.value) || newPresupuestoAnual.anio})} />
                           </CampoUI>
                           <CampoUI label="Valor anual" htmlFor="pa-valor">
-                            <Input id="pa-valor" type="number" placeholder="Valor anual" value={newPresupuestoAnual.valorAnual} onChange={(e) => setNewPresupuestoAnual({...newPresupuestoAnual, valorAnual: e.target.value})} />
+                            <Input id="pa-valor" type="text" inputMode="decimal" placeholder="Valor anual" value={newPresupuestoAnual.valorAnual} onChange={(e) => setNewPresupuestoAnual({...newPresupuestoAnual, valorAnual: e.target.value})} />
                           </CampoUI>
                           <Button onClick={handleAddPresupuestoAnual}><Plus size={16} /> Guardar</Button>
                         </div>
@@ -10464,7 +10463,7 @@ const App = () => {
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="cc-valor">Valor</Label>
-                  <Input id="cc-valor" type="number" placeholder="Valor" value={newCuentaCobro.monto} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, monto: e.target.value})} />
+                  <Input id="cc-valor" type="text" inputMode="decimal" placeholder="Valor" value={newCuentaCobro.monto} onChange={(e) => setNewCuentaCobro({...newCuentaCobro, monto: e.target.value})} />
                 </div>
               </div>
 
@@ -10909,10 +10908,10 @@ const App = () => {
                           <Input type="text" aria-label="Número de factura" placeholder="FE 2820" value={linea.numeroFactura} onChange={(e) => handleCambiarLineaFacturaTercero(linea.id, 'numeroFactura', e.target.value)} className="text-xs" />
                         </CampoUI>
                         <CampoUI label={idx === 0 ? 'Valor factura *' : null}>
-                          <Input type="number" aria-label="Valor de la factura" placeholder="Valor *" value={linea.valor} onChange={(e) => handleCambiarLineaFacturaTercero(linea.id, 'valor', e.target.value)} className="text-xs" />
+                          <Input type="text" inputMode="decimal" aria-label="Valor de la factura" placeholder="Valor *" value={linea.valor} onChange={(e) => handleCambiarLineaFacturaTercero(linea.id, 'valor', e.target.value)} className="text-xs" />
                         </CampoUI>
                         <CampoUI label={idx === 0 ? 'Retención' : null}>
-                          <Input type="number" aria-label="Retención" placeholder="0" value={linea.retencion} onChange={(e) => handleCambiarLineaFacturaTercero(linea.id, 'retencion', e.target.value)} aria-invalid={m.retencion < 0 || (m.bruto > 0 && m.neto <= 0) ? true : undefined} className="text-xs" />
+                          <Input type="text" inputMode="decimal" aria-label="Retención" placeholder="0" value={linea.retencion} onChange={(e) => handleCambiarLineaFacturaTercero(linea.id, 'retencion', e.target.value)} aria-invalid={m.retencion < 0 || (m.bruto > 0 && m.neto <= 0) ? true : undefined} className="text-xs" />
                         </CampoUI>
                         <CampoUI label={idx === 0 ? 'Neto pagado' : null}>
                           <div className="flex h-9 items-center justify-end rounded-md bg-muted px-3 text-xs font-bold tabular-nums">{formatMoney(m.neto, lt.empresa)}</div>
