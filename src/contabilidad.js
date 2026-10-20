@@ -10,7 +10,9 @@ export const nombreMes = (aaaamm) => {
 
 // Registros de Finanzas (registrosFinanzasTodos de App.js) → filas del gestor. Un Traslado viene
 // en dos líneas (salida y entrada) con los mismos soportes: aquí queda una sola, la de salida.
-export const filasContabilidad = (registros) => (registros || [])
+// `tieneExcel(solicitudId)`: la solicitud de origen tiene Excel (Legalización / Reembolso), que
+// cuenta como un soporte más.
+export const filasContabilidad = (registros, tieneExcel = () => false) => (registros || [])
   .filter(r => r._ladoTraslado !== 'entrada')
   .map(r => ({
     clave: `${r._origen}:${r.id}`,
@@ -26,7 +28,8 @@ export const filasContabilidad = (registros) => (registros || [])
     valor: parseFloat(r.valor) || 0,
     moneda: r.moneda || '',
     ceco: r.ceco || '',
-    soportes: r.cantidadSoportes || 0,
+    conExcel: !!(r.solicitudOrigenId && tieneExcel(r.solicitudOrigenId)),
+    soportes: (r.cantidadSoportes || 0) + (r.solicitudOrigenId && tieneExcel(r.solicitudOrigenId) ? 1 : 0),
     soporteDriveLink: r.soporteDriveLink || '',
     solicitudOrigenId: r.solicitudOrigenId || null,
     registro: r,
