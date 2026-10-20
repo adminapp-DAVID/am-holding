@@ -20,6 +20,7 @@ import DatosBancariosView from './DatosBancariosView';
 import ExportadorPABView from './ExportadorPABView';
 import NotificacionesCampana from './NotificacionesCampana';
 import AuditoriaView from './AuditoriaView';
+import ContabilidadView from './ContabilidadView';
 import TopNav from './components/TopNav';
 import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, FileDown, Eye, Plus, Check, X, Pencil, Search, Loader2, FileSpreadsheet, Upload, FilePlus2, Pause, Play, LayoutDashboard, FileText, Banknote, DollarSign, Clock, Undo2, CheckCircle2, Building2, Users, ClipboardList, Archive, TrendingUp, TrendingDown, Scale, BarChart3, Trophy, FolderOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -2100,7 +2101,7 @@ const App = () => {
     if (!user) return;
     if (currentView === 'solicitudes') cargarSolicitudes();
     if (currentView === 'cuentasCobro') cargarCuentasCobro();
-    if (currentView === 'finanzas' || currentView === 'dashboardFinanciero') { cargarGastos(); cargarIngresos(); }
+    if (currentView === 'finanzas' || currentView === 'dashboardFinanciero' || currentView === 'contabilidad') { cargarGastos(); cargarIngresos(); }
     // Al entrar a Finanzas el formulario de registro siempre arranca plegado.
     if (currentView === 'finanzas') setMostrarNuevoMovimientoFinanzas(false);
     if (currentView === 'presupuesto') { cargarTodosTerceros(); cargarPresupuestoItems(); cargarPresupuestoAnual(); cargarPresupuestoOverrides(); cargarPresupuestoAprobaciones(); cargarCuentasCobro(); }
@@ -7510,6 +7511,20 @@ const App = () => {
           />
         )}
 
+        {currentView === 'contabilidad' && ['Administrador', 'Coordinadora Administrativa', 'Gerente', 'Contadora'].includes(user.rol) && (
+          <ContabilidadView
+            registros={registrosFinanzasTodos}
+            empresas={empresas}
+            getMoneda={getMoneda}
+            formatMoneyByMoneda={formatMoneyByMoneda}
+            EmpresaLogo={EmpresaLogo}
+            reportes={{
+              desde: filtroFechaInicio, hasta: filtroFechaFin, setDesde: setFiltroFechaInicio, setHasta: setFiltroFechaFin,
+              onFinanzas: downloadReporteFinanzas, onSolicitudes: downloadReporteSolicitudes, onZip: downloadSoportesZIP, progresoZip,
+            }}
+          />
+        )}
+
         {currentView === 'auditoria' && (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
           <AuditoriaView usuarios={usuariosDB} onNavegar={setCurrentView} />
         )}
@@ -7654,44 +7669,6 @@ const App = () => {
               </Card>
             )}
 
-            {/* REPORTES Y DESCARGAS */}
-            {(isReadOnly || user?.rol === 'Administrador' || user?.rol === 'Coordinadora Administrativa') && (
-              <Card className="gap-4 px-0 py-6">
-                <CardHeader className="sm:px-6">
-                  <CardTitle className="flex items-center gap-2"><FileDown size={18} className="text-primary" /> Reportes y Descargas</CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-4 sm:px-6">
-                  <div className="flex flex-wrap items-end gap-3">
-                    <CampoUI label="Desde" htmlFor="rep-desde" className="w-[calc(50%-0.375rem)] sm:w-40">
-                      <Input id="rep-desde" type="date" value={filtroFechaInicio} onChange={(e) => setFiltroFechaInicio(e.target.value)} />
-                    </CampoUI>
-                    <CampoUI label="Hasta" htmlFor="rep-hasta" className="w-[calc(50%-0.375rem)] sm:w-40">
-                      <Input id="rep-hasta" type="date" value={filtroFechaFin} onChange={(e) => setFiltroFechaFin(e.target.value)} />
-                    </CampoUI>
-                    <p className="m-0 flex-[1_1_220px] text-xs text-muted-foreground">Las 3 descargas usan este rango de fechas (es el mismo del Dashboard Financiero) y solo incluyen lo que tu rol puede ver.</p>
-                  </div>
-                  <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(250px,1fr))]">
-                    {[
-                      { onClick: downloadReporteFinanzas, icon: FileSpreadsheet, titulo: 'Descargar Reporte Finanzas (Excel)', detalle: 'Gastos, Pagos a Tercero, Traslados e Ingresos del período' },
-                      { onClick: downloadReporteSolicitudes, icon: ClipboardList, titulo: 'Descargar Reporte Solicitudes (Excel)', detalle: 'Solicitudes del período con su estado' },
-                      { onClick: downloadSoportesZIP, icon: progresoZip ? Loader2 : Archive, titulo: progresoZip ? `Descargando soportes… ${progresoZip.hechos}/${progresoZip.total || '?'}` : 'Descargar Soportes (ZIP)', detalle: 'Soportes del período de Solicitudes, Finanzas y Cuentas de cobro, por carpetas', disabled: !!progresoZip, cargando: !!progresoZip },
-                    ].map(r => {
-                      const Icono = r.icon;
-                      return (
-                        <button key={r.detalle} type="button" onClick={r.onClick} disabled={r.disabled}
-                          className={cn('flex cursor-pointer items-start gap-3 rounded-lg border border-solid border-border bg-background p-4 text-left font-[inherit] transition-colors hover:border-primary hover:bg-secondary/30 disabled:opacity-70', r.cargando && 'cursor-wait')}>
-                          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground"><Icono size={18} className={cn(r.cargando && 'animate-spin')} /></span>
-                          <span className="flex flex-col gap-1">
-                            <span className="text-sm font-bold text-foreground">{r.titulo}</span>
-                            <span className="text-xs text-muted-foreground">{r.detalle}</span>
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
           </div>
         )}
 

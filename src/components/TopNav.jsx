@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   LayoutDashboard, ClipboardList, FileText, LineChart, Wallet, CalendarRange,
-  Banknote, Users, Landmark, ShieldCheck, Bell, ChevronDown, User, LogOut, Menu, X,
+  Banknote, Users, Landmark, ShieldCheck, BookOpen, Bell, ChevronDown, User, LogOut, Menu, X,
 } from "lucide-react";
 import "./TopNav.css";
 
@@ -28,6 +28,8 @@ const GRUPOS = [
     { id: "finanzas", label: "Finanzas", icon: Wallet, roles: ROLES_FINANZAS },
     { id: "presupuesto", label: "Presupuesto", icon: CalendarRange, roles: ROLES_FINANZAS },
     { id: "pagosPAB", label: "Pagos PAB", icon: Banknote, roles: ADMIN },
+    // Reportes, descargas y gestor de soportes (antes "Reportes y Descargas" del Dashboard).
+    { id: "contabilidad", label: "Contabilidad", icon: BookOpen, roles: [...ROLES_FINANZAS, "Contadora"] },
   ]},
   { label: "Equipo", items: [
     { id: "responsables", label: "Colaboradores", icon: Users, roles: ADMIN },
