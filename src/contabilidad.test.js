@@ -42,6 +42,11 @@ describe('contabilidad', () => {
     expect(agruparFilas(filas, 'ninguno')[0].filas).toHaveLength(4);
   });
 
+  it('el Excel de la solicitud de origen cuenta como soporte', () => {
+    const conSol = filasContabilidad([{ _origen: 'gasto', id: 5, fecha: '2026-10-01', solicitudOrigenId: 's1', cantidadSoportes: 1 }], (id) => id === 's1');
+    expect(conSol[0]).toMatchObject({ soportes: 2, conExcel: true });
+  });
+
   it('utilidades', () => {
     expect(nombreMes('2026-03')).toBe('Marzo 2026');
     expect(totalesPorMoneda(filas, x => x.moneda || 'COP')).toEqual({ COP: 14700000, USD: 12000000 });

@@ -46,7 +46,42 @@ const IconoArchivo = ({ nombre, size = 16, className }) => {
 };
 
 // ---------- Visor de soportes ----------
-function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo }) {
+// Libro .xlsx del Excel de una solicitud (mismas columnas que el botón de Solicitudes).
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const blobExcel = ({ rows, tipo }) => {
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{ wch: 22 }, { wch: 26 }, { wch: 16 }, { wch: 20 }, { wch: 18 }, { wch: 32 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, String(tipo || 'Solicitud').substring(0, 30));
+  return new Blob([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], { type: XLSX_MIME });
+};
+
+// Vista previa del Excel de la solicitud (no es un archivo guardado: se arma con sus datos).
+const TablaExcel = ({ rows, moneda, formatMoneyByMoneda }) => {
+  const ancho = Math.max(...rows.map(r => r.length), 1);
+  const celda = (v) => (typeof v === 'number' ? formatMoneyByMoneda(v, moneda) : v);
+  return (
+    <div className="h-full w-full overflow-auto rounded-md border border-solid border-border bg-card">
+      <table className="w-full border-collapse text-xs">
+        <tbody>
+          {rows.map((r, i) => (
+            r.length === 0 ? <tr key={i}><td colSpan={ancho} className="h-3" /></tr> : (
+              <tr key={i} className={cn(i === 0 && 'bg-primary/15 font-bold', r.length === 1 && i > 0 && 'font-semibold')}>
+                {r.length === 1 ? (
+                  <td colSpan={ancho} className="border-0 border-b border-solid border-border px-2 py-1.5">{celda(r[0])}</td>
+                ) : r.map((v, j) => (
+                  <td key={j} className={cn('border-0 border-b border-r border-solid border-border px-2 py-1.5 align-top', typeof v === 'number' && 'whitespace-nowrap text-right tabular-nums')}>{celda(v)}</td>
+                ))}
+              </tr>
+            )
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excelSolicitud, formatMoneyByMoneda }) {
   const [archivos, setArchivos] = useState(null); // null = cargando
   const [error, setError] = useState('');
   const [indice, setIndice] = useState(0);
@@ -55,6 +90,9 @@ function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo }) {
   const [zoom, setZoom] = useState(1);
   const [zipeando, setZipeando] = useState(false);
   const blobs = useRef({});
+  // En un ref: la función llega nueva en cada render de App y no debe recargar el visor.
+  const excelRef = useRef(excelSolicitud);
+  excelRef.current = excelSolicitud;
 
   useEffect(() => {
     let vivo = true;
@@ -68,7 +106,14 @@ function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo }) {
       if (!vivo) return;
       if (e1 || e2) { setError((e1 || e2).message); setArchivos([]); return; }
       const propias = new Set((data || []).map(r => r.bucket_path));
+      // Legalización / Reembolso / Legalización T. Pro: su Excel también es un soporte.
+      let excel = null;
+      if (fila.solicitudOrigenId && excelRef.current) {
+        try { excel = await excelRef.current(fila.solicitudOrigenId); } catch (e) { console.error('Excel de la solicitud:', e); }
+      }
+      if (!vivo) return;
       setArchivos([
+        ...(excel ? [{ id: 'excel-solicitud', nombre_original: excel.nombreArchivo, tamano_kb: null, deSolicitud: true, excel }] : []),
         ...(data || []).map(r => ({ ...r, deSolicitud: false })),
         ...(deSol || []).filter(r => !propias.has(r.bucket_path)).map(r => ({ ...r, deSolicitud: true })),
       ]);
@@ -81,9 +126,13 @@ function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo }) {
 
   const cargarBlob = useCallback(async (a) => {
     if (blobs.current[a.id]) return blobs.current[a.id];
-    const { data, error: e } = await supabase.storage.from('soportes').download(a.bucket_path);
-    if (e || !data) throw new Error(e?.message || 'No se pudo descargar el archivo');
-    const blob = new Blob([data], { type: mimeDe(a.nombre_original) });
+    let blob;
+    if (a.excel) blob = blobExcel(a.excel);
+    else {
+      const { data, error: e } = await supabase.storage.from('soportes').download(a.bucket_path);
+      if (e || !data) throw new Error(e?.message || 'No se pudo descargar el archivo');
+      blob = new Blob([data], { type: mimeDe(a.nombre_original) });
+    }
     const entrada = { blob, url: URL.createObjectURL(blob) };
     blobs.current[a.id] = entrada;
     setUrls(prev => ({ ...prev, [a.id]: entrada.url }));
@@ -188,7 +237,7 @@ function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo }) {
                   <IconoArchivo nombre={a.nombre_original} size={18} className="shrink-0" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold">{a.nombre_original}</span>
-                    <span className="block text-xs text-muted-foreground">{tamano(a.tamano_kb)}{a.deSolicitud ? ' · de la solicitud' : ''}</span>
+                    <span className="block text-xs text-muted-foreground">{a.excel ? 'Excel de la solicitud' : `${tamano(a.tamano_kb)}${a.deSolicitud ? ' · de la solicitud' : ''}`}</span>
                   </span>
                 </button>
               ))}
@@ -211,7 +260,7 @@ function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo }) {
                     <Button size="icon" variant="outline" onClick={() => setZoom(z => Math.min(4, z + 0.5))} disabled={zoom >= 4} aria-label="Acercar"><ZoomIn size={16} /></Button>
                   </>
                 )}
-                <Button size="sm" variant="outline" onClick={() => abrirPestana(actual)} title="Abrir en una pestaña nueva"><ExternalLink size={14} /> Abrir</Button>
+                {!actual.excel && <Button size="sm" variant="outline" onClick={() => abrirPestana(actual)} title="Abrir en una pestaña nueva"><ExternalLink size={14} /> Abrir</Button>}
                 <Button size="sm" onClick={() => descargar(actual)}><Download size={14} /> Descargar</Button>
               </div>
             )}
@@ -219,6 +268,8 @@ function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo }) {
               {error && <p className="absolute left-4 top-3 m-0 rounded-md bg-destructive/10 px-3 py-1.5 text-sm text-destructive">❌ {error}</p>}
               {!actual ? (
                 <div className="flex flex-col items-center gap-2 text-muted-foreground"><FolderOpen size={40} /><span className="text-sm">{archivos === null ? 'Cargando soportes…' : 'Sin soportes para mostrar'}</span></div>
+              ) : actual.excel ? (
+                <TablaExcel rows={actual.excel.rows} moneda={actual.excel.moneda} formatMoneyByMoneda={formatMoneyByMoneda} />
               ) : cargandoArchivo && !urls[actual.id] ? (
                 <div className="flex items-center gap-2 text-muted-foreground"><Loader2 size={20} className="animate-spin" /> Cargando vista previa…</div>
               ) : tipoActual === 'pdf' && urls[actual.id] ? (
@@ -245,6 +296,8 @@ function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo }) {
 // ---------- Vista principal ----------
 const ContabilidadView = ({
   registros, empresas, getMoneda, formatMoneyByMoneda, EmpresaLogo,
+  excelSolicitud, // async (solicitudId) => { rows, moneda, nombreArchivo, tipo } | null
+  tieneExcelSolicitud, // (solicitudId) => boolean: la solicitud de origen tiene Excel (Legalización / Reembolso)
   reportes, // { desde, hasta, setDesde, setHasta, onFinanzas, onSolicitudes, onZip, progresoZip }
 }) => {
   const [filtro, setFiltro] = useState(FILTRO_CONTABILIDAD);
@@ -253,7 +306,7 @@ const ContabilidadView = ({
   const [cerrados, setCerrados] = useState(() => new Set());
   const [visor, setVisor] = useState(null);
 
-  const filas = useMemo(() => filasContabilidad(registros), [registros]);
+  const filas = useMemo(() => filasContabilidad(registros, tieneExcelSolicitud), [registros, tieneExcelSolicitud]);
   const monedaDe = useCallback((x) => x.moneda || getMoneda(x.empresa), [getMoneda]);
   const formatoValor = useCallback((x) => formatMoneyByMoneda(x.valor, monedaDe(x)), [formatMoneyByMoneda, monedaDe]);
 
@@ -446,7 +499,8 @@ const ContabilidadView = ({
                         </TableHeader>
                         <TableBody>
                           {g.filas.map(x => {
-                            const tiene = x.soportes > 0 || !!x.soporteDriveLink;
+                            const cantidad = x.soportes;
+                            const tiene = cantidad > 0 || !!x.soporteDriveLink;
                             return (
                               <TableRow key={x.clave}>
                                 <TableCell className="whitespace-nowrap text-xs">{x.fecha}</TableCell>
@@ -467,8 +521,8 @@ const ContabilidadView = ({
                                 <TableCell className={cn('whitespace-nowrap text-right font-bold', x.tipo === 'Ingreso' ? 'text-success' : 'text-destructive')}>{formatoValor(x)}</TableCell>
                                 <TableCell className="text-center">
                                   {tiene ? (
-                                    <Button variant="ghost" size="sm" onClick={() => abrir(x)} title={x.soportes ? 'Ver soportes' : 'Abrir el soporte en Drive'} className="text-success">
-                                      <Paperclip size={15} /> {x.soportes || 'Drive'}
+                                    <Button variant="ghost" size="sm" onClick={() => abrir(x)} title={cantidad ? `Ver soportes${x.conExcel ? ' (incluye el Excel de la solicitud)' : ''}` : 'Abrir el soporte en Drive'} className="text-success">
+                                      <Paperclip size={15} /> {cantidad || 'Drive'}
                                     </Button>
                                   ) : <span className="text-xs text-[#C4622D]" title="Este registro no tiene soportes">Sin soporte</span>}
                                 </TableCell>
@@ -486,7 +540,7 @@ const ContabilidadView = ({
         </CardContent>
       </Card>
 
-      {visor && <VisorSoportes fila={visor} onCerrar={() => setVisor(null)} formatoValor={formatoValor} EmpresaLogo={EmpresaLogo} />}
+      {visor && <VisorSoportes fila={visor} onCerrar={() => setVisor(null)} formatoValor={formatoValor} EmpresaLogo={EmpresaLogo} excelSolicitud={excelSolicitud} formatMoneyByMoneda={formatMoneyByMoneda} />}
     </div>
   );
 };
