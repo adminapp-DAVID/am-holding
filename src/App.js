@@ -3674,6 +3674,23 @@ const App = () => {
 
   const handleGenerarExcel = (s) => descargarExcelSolicitud(construirExcelSolicitud(s), s.tipo);
 
+  // Contabilidad: el Excel de la solicitud de origen de un movimiento (Legalización / Reembolso /
+  // Legalización T. Pro) se muestra como un soporte más. Si la solicitud no está cargada (rol que
+  // solo carga las suyas) se lee de la base.
+  const TIPOS_CON_EXCEL_SOLICITUD = ['Legalización', 'Reembolso', 'Legalización T. Pro'];
+  const excelDeSolicitudOrigen = async (solicitudId) => {
+    let s = solicitudes.find(x => x.id === solicitudId);
+    if (!s) {
+      const { data } = await supabase.from('solicitudes')
+        .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, anticipo_ids, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
+        .eq('id', solicitudId).maybeSingle();
+      if (!data) return null;
+      s = solicitudDBToLocal(data);
+    }
+    if (!TIPOS_CON_EXCEL_SOLICITUD.includes(s.tipo)) return null;
+    return { ...construirExcelSolicitud(s), tipo: s.tipo };
+  };
+
   // Vista previa del mismo Excel en un modal (sin descargar); la descarga queda opcional ahí.
   const handlePreviewExcelSolicitud = (s) => setPreviewExcelSolicitud({ solicitud: s, ...construirExcelSolicitud(s) });
 
@@ -7518,6 +7535,8 @@ const App = () => {
             getMoneda={getMoneda}
             formatMoneyByMoneda={formatMoneyByMoneda}
             EmpresaLogo={EmpresaLogo}
+            tieneExcelSolicitud={(id) => TIPOS_CON_EXCEL_SOLICITUD.includes(solicitudes.find(x => x.id === id)?.tipo)}
+            excelSolicitud={excelDeSolicitudOrigen}
             reportes={{
               desde: filtroFechaInicio, hasta: filtroFechaFin, setDesde: setFiltroFechaInicio, setHasta: setFiltroFechaFin,
               onFinanzas: downloadReporteFinanzas, onSolicitudes: downloadReporteSolicitudes, onZip: downloadSoportesZIP, progresoZip,
