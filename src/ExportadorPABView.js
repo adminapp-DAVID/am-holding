@@ -9,6 +9,7 @@ import { RotateCcw, Download, Loader2, ChevronDown, ChevronRight, CheckCircle2, 
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { InputMoneda } from '@/components/ui/input-moneda';
 import { Select } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -481,11 +482,11 @@ const ExportadorPABView = ({
                     <div className="text-sm font-semibold">🏦 Costos bancarios del lote <span className="font-normal text-muted-foreground">(opcional — se registran como Gasto aparte)</span></div>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <Campo label="Comisión bancaria (con IVA)" htmlFor="pab-comision">
-                        <Input id="pab-comision" type="text" inputMode="decimal" placeholder="0" value={pagoLote.costos.comision} onChange={(e) => cambiarCostos({ comision: e.target.value })} className="h-8 text-xs" />
+                        <InputMoneda id="pab-comision" placeholder="0" value={pagoLote.costos.comision} onChange={(e) => cambiarCostos({ comision: e.target.value })} className="h-8 text-xs" />
                       </Campo>
                       <Campo label="GMF 4x1000" htmlFor="pab-gmf">
                         <div className="flex gap-2">
-                          <Input id="pab-gmf" type="text" inputMode="decimal" placeholder="0" value={pagoLote.costos.gmf} onChange={(e) => cambiarCostos({ gmf: e.target.value })} className="h-8 text-xs" />
+                          <InputMoneda id="pab-gmf" placeholder="0" value={pagoLote.costos.gmf} onChange={(e) => cambiarCostos({ gmf: e.target.value })} className="h-8 text-xs" />
                           <Button type="button" size="sm" variant="outline" onClick={() => cambiarCostos({ gmf: String(Math.round(totalPagado * 0.004)) })} title="0,4% del total pagado">Calcular</Button>
                         </div>
                       </Campo>
