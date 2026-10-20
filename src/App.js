@@ -22,7 +22,7 @@ import NotificacionesCampana from './NotificacionesCampana';
 import AuditoriaView from './AuditoriaView';
 import ContabilidadView from './ContabilidadView';
 import TopNav from './components/TopNav';
-import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, FileDown, Eye, Plus, Check, X, Pencil, Search, Loader2, FileSpreadsheet, Upload, FilePlus2, Pause, Play, LayoutDashboard, FileText, Banknote, DollarSign, Clock, Undo2, CheckCircle2, Building2, Users, ClipboardList, Archive, TrendingUp, TrendingDown, Scale, BarChart3, Trophy, FolderOpen } from 'lucide-react';
+import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, FileDown, Eye, Plus, Check, X, Pencil, Search, Loader2, FileSpreadsheet, Upload, FilePlus2, Pause, Play, LayoutDashboard, FileText, Banknote, DollarSign, Clock, Undo2, CheckCircle2, Building2, Users, ClipboardList, Archive, TrendingUp, TrendingDown, Scale, BarChart3, Trophy, FolderOpen, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -79,6 +79,23 @@ const EncabezadoAbreviado = ({ corto, largo }) => {
 };
 
 // Etiqueta + campo.
+// Encabezado de tabla que ordena al pulsarlo (Historial de Finanzas): muestra la flecha de la
+// dirección activa y, en las demás columnas, una flecha tenue que indica que se puede ordenar.
+const CabeceraOrdenUI = ({ campo, orden, onOrdenar, className, alinear = 'start', children }) => {
+  const activa = orden?.campo === campo;
+  const Icono = !activa ? ArrowUpDown : orden.direccion === 'asc' ? ArrowUp : ArrowDown;
+  return (
+    <TableHead className={className} aria-sort={activa ? (orden.direccion === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button type="button" onClick={() => onOrdenar(campo)} title={activa ? (orden.direccion === 'asc' ? 'Ascendente (clic para cambiar)' : 'Descendente (clic para cambiar)') : 'Ordenar por esta columna'}
+        className={cn('inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-[inherit] text-[length:inherit] uppercase text-inherit hover:text-foreground',
+          alinear === 'end' && 'w-full justify-end', alinear === 'center' && 'w-full justify-center', activa && 'text-foreground')}>
+        {children}
+        <Icono size={12} className={cn('shrink-0', !activa && 'opacity-40')} />
+      </button>
+    </TableHead>
+  );
+};
+
 const CampoUI = ({ label, htmlFor, className, children }) => (
   <div className={cn('flex flex-col gap-1.5', className)}>
     {label && <Label htmlFor={htmlFor}>{label}</Label>}
@@ -639,6 +656,9 @@ const App = () => {
   // columna: un buscador de texto libre + selectores puntuales para Empresa/CECO + rango
   // de fechas propio de la tabla (distinto del que ya existía para el Dashboard de arriba).
   const [filtroTipoFinanzas, setFiltroTipoFinanzas] = useState('Todos');
+  // Orden del Historial de Finanzas al pulsar una columna: { campo, direccion } (null = el orden
+  // de siempre, del más reciente creado al más antiguo).
+  const [ordenFinanzas, setOrdenFinanzas] = useState(null);
   const [busquedaFinanzas, setBusquedaFinanzas] = useState('');
   const [filtroFinanzasEmpresa, setFiltroFinanzasEmpresa] = useState('Todas');
   const [filtroFinanzasCeco, setFiltroFinanzasCeco] = useState('Todos');
@@ -6567,6 +6587,39 @@ const App = () => {
   const valorMinFinanzas = parseValorFiltro(filtroFinanzasValorMin);
   const valorMaxFinanzas = parseValorFiltro(filtroFinanzasValorMax);
 
+  // Clic en una columna: primero en su dirección natural (fechas, valores y soportes de mayor a
+  // menor; textos de A a Z), luego la contraria y al tercer clic vuelve al orden de siempre.
+  const alternarOrdenFinanzas = (campo) => setOrdenFinanzas(o => {
+    const natural = ['fecha', 'valor', 'soportes'].includes(campo) ? 'desc' : 'asc';
+    if (!o || o.campo !== campo) return { campo, direccion: natural };
+    if (o.direccion === natural) return { campo, direccion: natural === 'asc' ? 'desc' : 'asc' };
+    return null;
+  });
+  const valorOrdenFinanzas = (r, campo) => {
+    const texto = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    if (campo === 'fecha') return r.fecha || '';
+    if (campo === 'valor') return parseFloat(r.valor) || 0;
+    if (campo === 'soportes') return r.cantidadSoportes || 0;
+    if (campo === 'colaborador') return texto(colaboradoresPublico.find(c => c.id === r.responsableId)?.nombre || r.responsableNombre || r.responsable);
+    if (campo === 'empresa') return texto(r.empresa);
+    if (campo === 'ceco') return texto(`${r.ceco || ''} ${r.cuenta || ''}`);
+    if (campo === 'detalle') return texto(r.detalle);
+    if (campo === 'tipo') return texto(r.tipo);
+    return '';
+  };
+  const ordenarRegistrosFinanzas = (lista) => {
+    if (!ordenFinanzas) return lista;
+    const { campo, direccion } = ordenFinanzas;
+    const signo = direccion === 'asc' ? 1 : -1;
+    return [...lista].sort((a, b) => {
+      const va = valorOrdenFinanzas(a, campo);
+      const vb = valorOrdenFinanzas(b, campo);
+      if (va < vb) return -signo;
+      if (va > vb) return signo;
+      return (b.fecha || '').localeCompare(a.fecha || '');
+    });
+  };
+
   const registrosFinanzas = registrosFinanzasTodos.filter(r => {
     // El filtro "🤝 Pago a Tercero" también debe traer los Gastos normales que quedaron con
     // datos de tercero adjuntos (Tipo "Gasto" + CECO "Pago a Terceros", ver esPagoTerceroFinanzas
@@ -9410,20 +9463,20 @@ const App = () => {
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-px">Fecha / Tipo</TableHead>
-                    {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <TableHead>Colaborador</TableHead>}
-                    <TableHead>Empresa</TableHead>
-                    <TableHead>CECO / Cuenta</TableHead>
-                    <TableHead>Detalle</TableHead>
-                    <TableHead className="w-px text-right">Valor</TableHead>
-                    <TableHead className="w-px text-center">Soportes</TableHead>
+                    <CabeceraOrdenUI orden={ordenFinanzas} onOrdenar={alternarOrdenFinanzas} campo="fecha" className="w-px">Fecha / Tipo</CabeceraOrdenUI>
+                    {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Contadora' || user.rol === 'Gerente') && <CabeceraOrdenUI orden={ordenFinanzas} onOrdenar={alternarOrdenFinanzas} campo="colaborador">Colaborador</CabeceraOrdenUI>}
+                    <CabeceraOrdenUI orden={ordenFinanzas} onOrdenar={alternarOrdenFinanzas} campo="empresa">Empresa</CabeceraOrdenUI>
+                    <CabeceraOrdenUI orden={ordenFinanzas} onOrdenar={alternarOrdenFinanzas} campo="ceco">CECO / Cuenta</CabeceraOrdenUI>
+                    <CabeceraOrdenUI orden={ordenFinanzas} onOrdenar={alternarOrdenFinanzas} campo="detalle">Detalle</CabeceraOrdenUI>
+                    <CabeceraOrdenUI orden={ordenFinanzas} onOrdenar={alternarOrdenFinanzas} campo="valor" className="w-px text-right" alinear="end">Valor</CabeceraOrdenUI>
+                    <CabeceraOrdenUI orden={ordenFinanzas} onOrdenar={alternarOrdenFinanzas} campo="soportes" className="w-px text-center" alinear="center">Soportes</CabeceraOrdenUI>
                     {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && <TableHead className="w-px text-center">Acción</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                     {registrosFinanzas.length === 0 ? (
                       <TableRow className="hover:bg-transparent"><TableCell colSpan={8} className="py-8 text-center text-muted-foreground">Sin registros para este filtro.</TableCell></TableRow>
-                    ) : registrosFinanzas.map(r => {
+                    ) : ordenarRegistrosFinanzas(registrosFinanzas).map(r => {
                       const esGasto = r.tipo === 'Gasto';
                       const esTraslado = r.tipo === 'Traslado';
                       const esIngreso = r.tipo === 'Ingreso';
