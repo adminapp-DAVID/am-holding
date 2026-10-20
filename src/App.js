@@ -4953,6 +4953,32 @@ const App = () => {
     }
   };
 
+  // "🔗 Generado desde Presupuesto" / "📅 Vinculado a Presupuesto" (Finanzas): mismo modal de origen,
+  // con el concepto de Presupuesto del que salió el Gasto. El concepto que se corrige aquí es el del
+  // registro de Finanzas (el nombre del concepto de Presupuesto aplica a todos los meses y no cambia).
+  const [verPresupuestoOrigen, setVerPresupuestoOrigen] = useState(null); // { item, mov, concepto, guardando }
+  const handleVerPresupuestoOrigen = (mov) => {
+    const item = presupuestoItems.find(p => p.id === mov.presupuestoItemId);
+    if (!item) { alert('El concepto de Presupuesto de origen ya no existe (o tu rol no puede verlo).'); return; }
+    setVerPresupuestoOrigen({ item, mov, concepto: mov.detalle || '', guardando: false });
+  };
+  const handleGuardarConceptoPresupuestoOrigen = async () => {
+    const actual = verPresupuestoOrigen;
+    if (!actual || !puedeGestionarSolicitudOrigen) return;
+    const detalle = (actual.concepto || '').trim();
+    if (!detalle) { alert('El concepto no puede quedar vacío'); return; }
+    if (detalle === (actual.mov.detalle || '').trim()) { setVerPresupuestoOrigen(null); return; }
+    setVerPresupuestoOrigen({ ...actual, guardando: true });
+    const { data, error } = await supabase.from('gastos').update({ detalle }).eq('id', actual.mov.id).select('id');
+    if (error || !data || data.length === 0) {
+      alert('❌ No se pudo actualizar el concepto: ' + (error?.message || 'tu rol no tiene permiso para editarlo.'));
+      setVerPresupuestoOrigen({ ...actual, guardando: false });
+      return;
+    }
+    setGastos(prev => prev.map(g => (g.id === actual.mov.id ? { ...g, detalle } : g)));
+    setVerPresupuestoOrigen(null);
+  };
+
   // Al eliminar en Finanzas un Gasto/Ingreso generado desde una Solicitud, la Solicitud vuelve a
   // "Pendiente" y pierde el vínculo (gasto/ingreso_generado_id y lote), para que se pueda corregir
   // y pagar de nuevo — antes quedaba en "Pagado" sin ningún movimiento en Finanzas.
@@ -9508,11 +9534,10 @@ const App = () => {
                             {r.solicitudOrigenId && (
                               <button type="button" onClick={() => handleVerSolicitudOrigen(r.solicitudOrigenId)} title="Ver la solicitud original" className="block cursor-pointer border-0 bg-transparent p-0 text-left font-[inherit] text-[0.7rem] text-[#6C63D1] underline-offset-2 hover:underline">🔗 Generado desde Solicitudes</button>
                             )}
-                            {r.presupuestoItemId && r.observaciones === OBSERVACIONES_GASTO_DESDE_PRESUPUESTO && (
-                              <div className="text-[0.7rem] text-[#6C63D1]">🔗 Generado desde Presupuesto</div>
-                            )}
-                            {r.presupuestoItemId && r.observaciones !== OBSERVACIONES_GASTO_DESDE_PRESUPUESTO && (
-                              <div className="text-[0.7rem] text-[#6C63D1]">📅 Vinculado a Presupuesto: {presupuestoItems.find(p => p.id === r.presupuestoItemId)?.nombre || 'concepto'}</div>
+                            {r.presupuestoItemId && (
+                              <button type="button" onClick={() => handleVerPresupuestoOrigen(r)} title="Ver el concepto de Presupuesto de origen" className="block cursor-pointer border-0 bg-transparent p-0 text-left font-[inherit] text-[0.7rem] text-[#6C63D1] underline-offset-2 hover:underline">
+                                {r.observaciones === OBSERVACIONES_GASTO_DESDE_PRESUPUESTO ? '🔗 Generado desde Presupuesto' : `📅 Vinculado a Presupuesto: ${presupuestoItems.find(p => p.id === r.presupuestoItemId)?.nombre || 'concepto'}`}
+                              </button>
                             )}
                             {r.observaciones && r.observaciones.startsWith(OBSERVACIONES_GASTO_LOTE_TERCERO) && (
                               <div className="flex flex-wrap items-center gap-1.5 text-[0.7rem] text-[#6C63D1]">
@@ -11160,6 +11185,58 @@ const App = () => {
                     <Button variant="outline" disabled={verSolicitudOrigen.guardando} onClick={() => setVerSolicitudOrigen(null)}>Cerrar</Button>
                     {puedeGestionarSolicitudOrigen && (
                       <Button disabled={verSolicitudOrigen.guardando} onClick={handleGuardarConceptoSolicitudOrigen}>{verSolicitudOrigen.guardando ? 'Guardando...' : 'Guardar concepto'}</Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          );
+        })()}
+
+        {/* MODAL PRESUPUESTO DE ORIGEN — desde "🔗 Generado desde Presupuesto" / "📅 Vinculado a
+            Presupuesto" en Finanzas. Mismo formato y botones que el de Solicitud de origen. */}
+        {verPresupuestoOrigen && (() => {
+          const { item, mov } = verPresupuestoOrigen;
+          const moneda = mov.moneda || getMoneda(item.empresa);
+          const beneficiario = item.terceroId
+            ? (todosTerceros.find(t => t.id === item.terceroId)?.nombre || '—')
+            : (colaboradoresPublico.find(c => c.id === item.responsableId)?.nombre || item.responsableNombre || '—');
+          const generado = mov.observaciones === OBSERVACIONES_GASTO_DESDE_PRESUPUESTO;
+          const tieneDeduccion = mov.valorBruto != null && Number(mov.deduccionAplicada) > 0;
+          return (
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
+              <Card className="max-h-[90vh] w-full max-w-lg gap-4 overflow-y-auto px-0 py-6">
+                <CardHeader className="sm:px-7">
+                  <CardTitle className="text-lg">🔗 Presupuesto de origen</CardTitle>
+                  <CardDescription>{generado ? 'El movimiento de Finanzas se generó al marcar pagado este concepto de Presupuesto.' : 'Este movimiento de Finanzas está vinculado a este concepto de Presupuesto.'}</CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-4 sm:px-7">
+                  <div className="grid grid-cols-2 gap-3 rounded-lg border border-solid border-border bg-background p-4 text-sm">
+                    <div className="col-span-2"><p className="m-0 text-xs text-muted-foreground">Concepto de Presupuesto</p><p className="m-0 font-bold text-primary">{item.nombre}</p></div>
+                    <div><p className="m-0 text-xs text-muted-foreground">Tipo</p><p className="m-0">{item.tipo || '—'}</p></div>
+                    <div><p className="m-0 text-xs text-muted-foreground">Estado</p><Badge variant={estadoBadge('Pagado')}>Pagado</Badge></div>
+                    <div><p className="m-0 text-xs text-muted-foreground">Mes pagado</p><p className="m-0">{mov.fecha ? mov.fecha.substring(0, 7) : '—'}</p></div>
+                    <div><p className="m-0 text-xs text-muted-foreground">Valor mensual</p><p className="m-0 font-bold text-success">{formatMoneyByMoneda(parseFloat(item.valorMensual) || 0, moneda)}</p></div>
+                    <div><p className="m-0 text-xs text-muted-foreground">{item.terceroId ? 'Beneficiario' : 'Colaborador'}</p><p className="m-0">{beneficiario}</p></div>
+                    <div><p className="m-0 text-xs text-muted-foreground">Empresa</p><p className="m-0">{item.empresa || '—'}</p></div>
+                    <div><p className="m-0 text-xs text-muted-foreground">CECO</p><p className="m-0">{item.ceco || '—'}</p></div>
+                    <div><p className="m-0 text-xs text-muted-foreground">Forma de pago</p><p className="m-0">{item.formaPago || '—'}{item.diaLimitePago ? ` · día ${item.diaLimitePago}` : ''}</p></div>
+                    <div className="col-span-2"><p className="m-0 text-xs text-muted-foreground">Pagado en Finanzas</p><p className="m-0 font-bold">{formatMoneyByMoneda(parseFloat(mov.valor) || 0, moneda)}{tieneDeduccion && <span className="font-normal text-muted-foreground"> · Bruto {formatMoneyByMoneda(parseFloat(mov.valorBruto) || 0, moneda)} − deducción {formatMoneyByMoneda(parseFloat(mov.deduccionAplicada) || 0, moneda)}</span>}</p></div>
+                  </div>
+                  <CampoUI label="Concepto" htmlFor="po-concepto">
+                    {puedeGestionarSolicitudOrigen ? (
+                      <Textarea id="po-concepto" rows={2} value={verPresupuestoOrigen.concepto} onChange={(e) => setVerPresupuestoOrigen({ ...verPresupuestoOrigen, concepto: e.target.value })} />
+                    ) : (
+                      <p className="m-0 text-sm">{mov.detalle || '—'}</p>
+                    )}
+                  </CampoUI>
+                  {puedeGestionarSolicitudOrigen && <p className="m-0 -mt-2 text-xs text-muted-foreground">Al guardar se actualiza el concepto de este registro en Finanzas (el concepto de Presupuesto no cambia).</p>}
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" onClick={() => verSoportesMovimiento('gasto', mov)}><Paperclip size={14} /> Ver soportes</Button>
+                    <div className="flex-1" />
+                    <Button variant="outline" disabled={verPresupuestoOrigen.guardando} onClick={() => setVerPresupuestoOrigen(null)}>Cerrar</Button>
+                    {puedeGestionarSolicitudOrigen && (
+                      <Button disabled={verPresupuestoOrigen.guardando} onClick={handleGuardarConceptoPresupuestoOrigen}>{verPresupuestoOrigen.guardando ? 'Guardando...' : 'Guardar concepto'}</Button>
                     )}
                   </div>
                 </CardContent>
