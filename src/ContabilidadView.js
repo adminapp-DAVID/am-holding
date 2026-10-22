@@ -3,7 +3,7 @@ import JSZip from 'jszip';
 import * as XLSX from 'xlsx';
 import {
   Archive, ArrowDown, ArrowUp, BookOpen, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Download,
-  ExternalLink, FileSpreadsheet, RotateCcw as GirarIzquierda, RotateCw as GirarDerecha, Save, FileText, FolderOpen, Image as IconoImagen, Loader2, Paperclip, RotateCcw, Search, ZoomIn, ZoomOut,
+  ExternalLink, FileSpreadsheet, Trash2, RotateCcw as GirarIzquierda, RotateCw as GirarDerecha, Save, FileText, FolderOpen, Image as IconoImagen, Loader2, Paperclip, RotateCcw, Search, ZoomIn, ZoomOut,
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { guardarSoporteGirado, paginasPdf } from './girarSoportes';
@@ -86,7 +86,8 @@ const TablaExcel = ({ rows, moneda, formatMoneyByMoneda }) => {
 // sus soportes, en pestañas. Lo usan Contabilidad (un movimiento de Finanzas) y Solicitudes.
 //   fila: { entidadTipo, id, solicitudOrigenId, concepto, fecha, empresa, cuenta, tipo, colaborador }
 //   documentosSistema(fila): async → [{ id, nombre_original, generar: async () => Blob } | { id, nombre_original, excel }]
-export function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excelSolicitud, documentosSistema, formatMoneyByMoneda, puedeGirar }) {
+//   onEliminar(archivo): async → true si se borró (Admin / Coordinadora / Gerente en Finanzas).
+export function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excelSolicitud, documentosSistema, formatMoneyByMoneda, puedeGirar, onEliminar }) {
   const [archivos, setArchivos] = useState(null); // null = cargando
   const [error, setError] = useState('');
   const [indice, setIndice] = useState(0);
@@ -189,6 +190,23 @@ export function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excel
     const b = blobs.current[actual.id];
     if (b) paginasPdf(b.blob).then(setPaginas).catch(() => setPaginas(0));
   }, [puedeGirar, actual, tipoActual, urls]);
+
+  const [eliminando, setEliminando] = useState(false);
+  const eliminarActual = async () => {
+    if (!actual || actual.sistema || actual.excel || !onEliminar) return;
+    setEliminando(true);
+    setError('');
+    try {
+      const ok = await onEliminar({ id: actual.id, bucketPath: actual.bucket_path, nombre: actual.nombre_original, deSolicitud: actual.deSolicitud });
+      if (ok) {
+        const viejo = blobs.current[actual.id];
+        if (viejo) { URL.revokeObjectURL(viejo.url); delete blobs.current[actual.id]; }
+        // Un soporte compartido con la solicitud de origen se quita de ambos lados.
+        setArchivos(prev => prev.filter(a => a.id !== actual.id && !(a.bucket_path && a.bucket_path === actual.bucket_path)));
+        setIndice(0);
+      }
+    } catch (e) { setError(e.message); } finally { setEliminando(false); }
+  };
 
   const guardarGiro = async (grados, pagina = null) => {
     if (!actual || !grados) return;
@@ -357,6 +375,11 @@ export function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excel
                 )}
                 {!actual.excel && <Button size="sm" variant="outline" onClick={() => abrirPestana(actual)} title="Abrir en una pestaña nueva"><ExternalLink size={14} /> Abrir</Button>}
                 <Button size="sm" onClick={() => descargar(actual)}><Download size={14} /> Descargar</Button>
+                {onEliminar && !actual.sistema && !actual.excel && actual.bucket_path && (
+                  <Button size="icon" variant="outline" className="text-destructive" disabled={eliminando} onClick={eliminarActual} title="Eliminar este soporte" aria-label="Eliminar este soporte">
+                    {eliminando ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                  </Button>
+                )}
               </div>
             )}
             <div className={cn('relative flex min-h-0 flex-1 overflow-auto p-4', tipoActual === 'imagen' && zoom > 1 ? 'items-start justify-start' : 'items-center justify-center')}>
@@ -393,6 +416,8 @@ const ContabilidadView = ({
   registros, empresas, getMoneda, formatMoneyByMoneda, EmpresaLogo,
   excelSolicitud, // async (solicitudId) => { rows, moneda, nombreArchivo, tipo } | null
   puedeGirarSoportes, // Administrador / Coordinadora: guardar soportes girados
+  documentosSistemaDeFila, // async (fila) => documentos del sistema (PDF / Excel de la solicitud de origen)
+  eliminarSoporte, // async (archivo, fila) => true si se borró (null = no se puede borrar)
   tieneExcelSolicitud, // (solicitudId) => boolean: la solicitud de origen tiene Excel (Legalización / Reembolso)
   reportes, // { desde, hasta, setDesde, setHasta, onFinanzas, onSolicitudes, onZip, progresoZip }
 }) => {
@@ -636,7 +661,7 @@ const ContabilidadView = ({
         </CardContent>
       </Card>
 
-      {visor && <VisorSoportes fila={visor} onCerrar={() => setVisor(null)} formatoValor={formatoValor} EmpresaLogo={EmpresaLogo} excelSolicitud={excelSolicitud} formatMoneyByMoneda={formatMoneyByMoneda} puedeGirar={puedeGirarSoportes} />}
+      {visor && <VisorSoportes fila={visor} onCerrar={() => setVisor(null)} formatoValor={formatoValor} EmpresaLogo={EmpresaLogo} excelSolicitud={documentosSistemaDeFila ? undefined : excelSolicitud} documentosSistema={documentosSistemaDeFila} formatMoneyByMoneda={formatMoneyByMoneda} puedeGirar={puedeGirarSoportes} onEliminar={eliminarSoporte ? (a) => eliminarSoporte(a, visor) : undefined} />}
     </div>
   );
 };
