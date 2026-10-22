@@ -9,6 +9,7 @@ import { RotateCcw, Download, Loader2, ChevronDown, ChevronRight, CheckCircle2, 
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { InputMoneda } from '@/components/ui/input-moneda';
 import { Select } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -60,7 +61,7 @@ const cargarPlantilla = async () => {
 
 const ExportadorPABView = ({
   user, empresas, solicitudes, presupuestoDetalle, filtroPresupuesto, setFiltroPresupuesto,
-  usuarios, terceros, lotes, lotePorClave, onRecargarLotes, onRecargarDatos, onRegistrarPagoLote, cecosGasto, getMoneda, formatCOP
+  usuarios, terceros, lotes, lotePorClave, onRecargarLotes, onRecargarDatos, onRecargarSolicitudes, onRegistrarPagoLote, cecosGasto, getMoneda, formatCOP
 }) => {
   const esAdmin = user?.rol === 'Administrador';
   const [configs, setConfigs] = useState([]);
@@ -81,7 +82,7 @@ const ExportadorPABView = ({
     (async () => {
       const { data, error } = await supabase
         .from('config_bancaria_empresa')
-        .select('id, nombre_cuenta, nit_pagador, numero_cuenta, tipo_cuenta, tipo_pago_nomina, tipo_pago_proveedores, tipo_pago_terceros, activo, empresas ( nombre )')
+        .select('id, nombre_cuenta, nit_pagador, numero_cuenta, tipo_cuenta, tipo_pago_nomina, tipo_pago_proveedores, tipo_pago_terceros, activo, empresa_id, empresas ( nombre )')
         .eq('activo', true);
       if (error) { setErrorConfigs(error.message); return; }
       setConfigs((data || []).map(c => ({ ...c, empresa: c.empresas?.nombre || '' })));
@@ -120,6 +121,7 @@ const ExportadorPABView = ({
     )) return;
     setGenerando(true);
     const generados = [];
+    let asignoSolicitudes = false;
     try {
       const plantilla = await cargarPlantilla();
       for (const g of grupos) {
@@ -133,6 +135,14 @@ const ExportadorPABView = ({
         });
         if (error || !data || !data[0]) throw new Error(error?.message || 'La base de datos no devolvió el lote creado');
         const { numero, secuencia } = data[0];
+        // Solicitudes "General": quedan asignadas a la empresa de este lote.
+        const generales = g.items.filter(c => c.entidadTipo === 'solicitud' && c.meta?.general).map(c => c.entidadId);
+        if (generales.length && config.empresa_id) {
+          const { error: errorAsignar } = await supabase.from('solicitudes').update({ empresa_id: config.empresa_id })
+            .in('id', generales).is('empresa_id', null).select('id');
+          if (errorAsignar) console.error('No se pudo asignar la empresa del lote a las solicitudes generales:', errorAsignar);
+          asignoSolicitudes = true;
+        }
         const bytes = await generarArchivoPAB(JSZip, plantilla, { ...encabezadoBase, secuencia }, g.items.map((c, i) => ({ ...c.fila, referencia: referenciaLotePAB(numero, i + 1) })));
         descargarBytes(bytes, nombreArchivoPAB({ empresa, tipoPago: g.tipoPago, fechaAplicacion, numeroLote: numero }));
         generados.push(`#${numero} (${secuencia})`);
@@ -145,6 +155,7 @@ const ExportadorPABView = ({
       setGenerando(false);
       setDeseleccionados([]);
       await onRecargarLotes();
+      if (asignoSolicitudes) await onRecargarSolicitudes?.();
     }
   };
 
@@ -471,11 +482,11 @@ const ExportadorPABView = ({
                     <div className="text-sm font-semibold">🏦 Costos bancarios del lote <span className="font-normal text-muted-foreground">(opcional — se registran como Gasto aparte)</span></div>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <Campo label="Comisión bancaria (con IVA)" htmlFor="pab-comision">
-                        <Input id="pab-comision" type="text" inputMode="decimal" placeholder="0" value={pagoLote.costos.comision} onChange={(e) => cambiarCostos({ comision: e.target.value })} className="h-8 text-xs" />
+                        <InputMoneda id="pab-comision" placeholder="0" value={pagoLote.costos.comision} onChange={(e) => cambiarCostos({ comision: e.target.value })} className="h-8 text-xs" />
                       </Campo>
                       <Campo label="GMF 4x1000" htmlFor="pab-gmf">
                         <div className="flex gap-2">
-                          <Input id="pab-gmf" type="text" inputMode="decimal" placeholder="0" value={pagoLote.costos.gmf} onChange={(e) => cambiarCostos({ gmf: e.target.value })} className="h-8 text-xs" />
+                          <InputMoneda id="pab-gmf" placeholder="0" value={pagoLote.costos.gmf} onChange={(e) => cambiarCostos({ gmf: e.target.value })} className="h-8 text-xs" />
                           <Button type="button" size="sm" variant="outline" onClick={() => cambiarCostos({ gmf: String(Math.round(totalPagado * 0.004)) })} title="0,4% del total pagado">Calcular</Button>
                         </div>
                       </Campo>

@@ -35,6 +35,7 @@ export const VISTAS_SOPORTE = {
   pagosPAB: 'Pagos PAB',
   responsables: 'Colaboradores',
   datosBancarios: 'Datos bancarios',
+  contabilidad: 'Contabilidad',
   auditoria: 'Auditoría',
   'mi-perfil': 'Mi perfil',
 };
