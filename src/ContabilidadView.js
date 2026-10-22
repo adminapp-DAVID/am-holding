@@ -82,7 +82,11 @@ const TablaExcel = ({ rows, moneda, formatMoneyByMoneda }) => {
   );
 };
 
-function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excelSolicitud, formatMoneyByMoneda, puedeGirar }) {
+// Visor de documentos de un registro: los que genera el sistema (PDF / Excel de la solicitud) y
+// sus soportes, en pestañas. Lo usan Contabilidad (un movimiento de Finanzas) y Solicitudes.
+//   fila: { entidadTipo, id, solicitudOrigenId, concepto, fecha, empresa, cuenta, tipo, colaborador }
+//   documentosSistema(fila): async → [{ id, nombre_original, generar: async () => Blob } | { id, nombre_original, excel }]
+export function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excelSolicitud, documentosSistema, formatMoneyByMoneda, puedeGirar }) {
   const [archivos, setArchivos] = useState(null); // null = cargando
   const [error, setError] = useState('');
   const [indice, setIndice] = useState(0);
@@ -100,6 +104,8 @@ function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excelSolicit
   // En un ref: la función llega nueva en cada render de App y no debe recargar el visor.
   const excelRef = useRef(excelSolicitud);
   excelRef.current = excelSolicitud;
+  const sistemaRef = useRef(documentosSistema);
+  sistemaRef.current = documentosSistema;
 
   useEffect(() => {
     let vivo = true;
@@ -118,8 +124,13 @@ function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excelSolicit
       if (fila.solicitudOrigenId && excelRef.current) {
         try { excel = await excelRef.current(fila.solicitudOrigenId); } catch (e) { console.error('Excel de la solicitud:', e); }
       }
+      let sistema = [];
+      if (sistemaRef.current) {
+        try { sistema = await sistemaRef.current(fila); } catch (e) { console.error('Documentos del sistema:', e); setError('No se pudo generar un documento: ' + e.message); }
+      }
       if (!vivo) return;
       setArchivos([
+        ...sistema.map(d => ({ tamano_kb: null, ...d, sistema: true })),
         ...(excel ? [{ id: 'excel-solicitud', nombre_original: excel.nombreArchivo, tamano_kb: null, deSolicitud: true, excel }] : []),
         ...(data || []).map(r => ({ ...r, deSolicitud: false })),
         ...(deSol || []).filter(r => !propias.has(r.bucket_path)).map(r => ({ ...r, deSolicitud: true })),
@@ -135,6 +146,7 @@ function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excelSolicit
     if (blobs.current[a.id]) return blobs.current[a.id];
     let blob;
     if (a.excel) blob = blobExcel(a.excel);
+    else if (a.generar) blob = await a.generar();
     else {
       const { data, error: e } = await supabase.storage.from('soportes').download(a.bucket_path);
       if (e || !data) throw new Error(e?.message || 'No se pudo descargar el archivo');
@@ -146,7 +158,18 @@ function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excelSolicit
     return entrada;
   }, []);
 
+  // Pestañas: PDF y Excel generados por el sistema, y los soportes subidos.
+  const grupoDe = (a) => (a.excel ? 'excel' : a.generar ? 'pdf' : 'soportes');
+  const grupos = archivos ? ['pdf', 'excel', 'soportes'].filter(g => g === 'soportes' ? archivos.some(a => a.sistema) || archivos.some(a => grupoDe(a) === 'soportes') : archivos.some(a => grupoDe(a) === g)) : [];
   const actual = archivos?.[indice] || null;
+  const grupoActual = actual ? grupoDe(actual) : (grupos[0] || 'soportes');
+  const [grupoVacio, setGrupoVacio] = useState(null); // pestaña "Soportes" sin archivos
+  const grupoVisible = grupoVacio || grupoActual;
+  const irAGrupo = (g) => {
+    const i = (archivos || []).findIndex(a => grupoDe(a) === g);
+    if (i >= 0) { setIndice(i); setGrupoVacio(null); } else setGrupoVacio(g);
+  };
+  const ETIQUETA_GRUPO = { pdf: 'PDF', excel: 'Excel', soportes: 'Soportes' };
   const tipoActual = actual ? tipoArchivo(actual.nombre_original) : null;
 
   const idActual = actual?.id;
@@ -162,7 +185,7 @@ function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excelSolicit
   useEffect(() => {
     setPaginas(0);
     setPaginaGirar('');
-    if (!puedeGirar || !actual || tipoActual !== 'pdf' || !urls[actual.id]) return;
+    if (!puedeGirar || !actual || actual.sistema || tipoActual !== 'pdf' || !urls[actual.id]) return;
     const b = blobs.current[actual.id];
     if (b) paginasPdf(b.blob).then(setPaginas).catch(() => setPaginas(0));
   }, [puedeGirar, actual, tipoActual, urls]);
@@ -239,6 +262,7 @@ function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excelSolicit
               <span>{fila.fecha}</span>
               <span>{fila.empresa || 'Sin empresa'}</span>
               {fila.cuenta && <span>🏦 {fila.cuenta}</span>}
+              {fila.colaborador && <span>👤 {fila.colaborador}</span>}
               <Badge variant={VARIANTE_TIPO[fila.tipo] || 'muted'}>{fila.tipo}</Badge>
             </DialogDescription>
           </div>
@@ -252,26 +276,42 @@ function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excelSolicit
           {/* Lista de archivos */}
           <aside className="flex max-h-48 shrink-0 flex-col border-0 border-b border-solid border-border md:max-h-none md:w-72 md:border-b-0 md:border-r">
             <div className="flex items-center justify-between px-4 py-3">
-              <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Soportes {archivos ? `(${archivos.length})` : ''}</span>
+              <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{grupos.length > 1 ? 'Documentos' : 'Soportes'} {archivos ? `(${archivos.length})` : ''}</span>
               {archivos?.length > 1 && (
                 <Button size="sm" variant="outline" onClick={descargarTodo} disabled={zipeando} title="Descargar todos en un ZIP">
                   {zipeando ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />} Todo
                 </Button>
               )}
             </div>
+            {grupos.length > 1 && (
+              <div className="mx-3 mb-2 flex rounded-lg bg-muted p-1" role="tablist">
+                {grupos.map(g => {
+                  const n = archivos.filter(a => grupoDe(a) === g).length;
+                  return (
+                    <button key={g} type="button" role="tab" aria-selected={grupoVisible === g} onClick={() => irAGrupo(g)}
+                      className={cn('flex-1 cursor-pointer whitespace-nowrap rounded-md border-0 px-2 py-1.5 font-[inherit] text-xs font-semibold',
+                        grupoVisible === g ? 'bg-card text-foreground shadow-sm' : 'bg-transparent text-muted-foreground hover:text-foreground')}>
+                      {ETIQUETA_GRUPO[g]}{g === 'soportes' ? ` (${n})` : ''}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <div className="flex-1 overflow-y-auto px-2 pb-2">
               {archivos === null ? (
                 <p className="m-0 flex items-center gap-2 p-3 text-sm text-muted-foreground"><Loader2 size={14} className="animate-spin" /> Cargando…</p>
               ) : archivos.length === 0 ? (
                 <p className="m-0 p-3 text-sm text-muted-foreground">Este registro no tiene soportes.</p>
-              ) : archivos.map((a, i) => (
-                <button key={a.id} type="button" onClick={() => setIndice(i)}
+              ) : grupoVacio && !archivos.some(a => grupoDe(a) === grupoVacio) ? (
+                <p className="m-0 p-3 text-sm text-muted-foreground">No hay soportes subidos.</p>
+              ) : archivos.map((a, i) => (grupos.length > 1 && grupoDe(a) !== grupoVisible) ? null : (
+                <button key={a.id} type="button" onClick={() => { setIndice(i); setGrupoVacio(null); }}
                   className={cn('mb-1 flex w-full cursor-pointer items-center gap-2.5 rounded-md border border-solid px-3 py-2 text-left font-[inherit]',
                     i === indice ? 'border-primary bg-primary/10' : 'border-transparent bg-transparent hover:bg-muted')}>
                   <IconoArchivo nombre={a.nombre_original} size={18} className="shrink-0" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold">{a.nombre_original}</span>
-                    <span className="block text-xs text-muted-foreground">{a.excel ? 'Excel de la solicitud' : `${tamano(a.tamano_kb)}${a.deSolicitud ? ' · de la solicitud' : ''}`}</span>
+                    <span className="block text-xs text-muted-foreground">{a.excel ? 'Excel de la solicitud' : a.generar ? 'Generado por el sistema' : `${tamano(a.tamano_kb)}${a.deSolicitud ? ' · de la solicitud' : ''}`}</span>
                   </span>
                 </button>
               ))}
@@ -280,7 +320,7 @@ function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excelSolicit
 
           {/* Vista previa */}
           <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-muted/40">
-            {actual && (
+            {actual && !grupoVacio && (
               <div className="flex flex-wrap items-center gap-2 border-0 border-b border-solid border-border bg-card px-4 py-2">
                 <Button size="icon" variant="ghost" onClick={() => mover(-1)} disabled={archivos.length < 2} aria-label="Anterior"><ChevronLeft size={18} /></Button>
                 <span className="text-xs text-muted-foreground">{indice + 1} / {archivos.length}</span>
@@ -291,7 +331,7 @@ function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excelSolicit
                   <>
                     <Button size="icon" variant="outline" onClick={() => setGiro(g => (g + 270) % 360)} aria-label="Girar a la izquierda" title="Girar a la izquierda"><GirarIzquierda size={16} /></Button>
                     <Button size="icon" variant="outline" onClick={() => setGiro(g => (g + 90) % 360)} aria-label="Girar a la derecha" title="Girar a la derecha"><GirarDerecha size={16} /></Button>
-                    {puedeGirar && giro !== 0 && (
+                    {puedeGirar && giro !== 0 && !actual.sistema && (
                       <Button size="sm" variant="success" disabled={girando} onClick={() => guardarGiro(giro)} title="Reemplaza el archivo por la versión girada">
                         {girando ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Guardar girada
                       </Button>
@@ -321,8 +361,8 @@ function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excelSolicit
             )}
             <div className={cn('relative flex min-h-0 flex-1 overflow-auto p-4', tipoActual === 'imagen' && zoom > 1 ? 'items-start justify-start' : 'items-center justify-center')}>
               {error && <p className="absolute left-4 top-3 m-0 rounded-md bg-destructive/10 px-3 py-1.5 text-sm text-destructive">❌ {error}</p>}
-              {!actual ? (
-                <div className="flex flex-col items-center gap-2 text-muted-foreground"><FolderOpen size={40} /><span className="text-sm">{archivos === null ? 'Cargando soportes…' : 'Sin soportes para mostrar'}</span></div>
+              {!actual || grupoVacio ? (
+                <div className="flex flex-col items-center gap-2 text-muted-foreground"><FolderOpen size={40} /><span className="text-sm">{archivos === null ? 'Cargando documentos…' : 'Sin soportes para mostrar'}</span></div>
               ) : actual.excel ? (
                 <TablaExcel rows={actual.excel.rows} moneda={actual.excel.moneda} formatMoneyByMoneda={formatMoneyByMoneda} />
               ) : cargandoArchivo && !urls[actual.id] ? (

@@ -20,7 +20,7 @@ import DatosBancariosView from './DatosBancariosView';
 import ExportadorPABView from './ExportadorPABView';
 import NotificacionesCampana from './NotificacionesCampana';
 import AuditoriaView from './AuditoriaView';
-import ContabilidadView from './ContabilidadView';
+import ContabilidadView, { VisorSoportes } from './ContabilidadView';
 import RevisarFotos from './components/RevisarFotos';
 import { esImagen, prepararArchivos } from './archivos';
 import { guardarSoporteGirado } from './girarSoportes';
@@ -513,6 +513,8 @@ const App = () => {
   // formulario se validan (tipo y 10 MB), las fotos se enderezan y reducen (src/archivos.js) y
   // se muestran para revisarlas y girarlas (RevisarFotos). { archivos, resolver }
   const [revisionFotos, setRevisionFotos] = useState(null);
+  // Visor "Ver documentos" de una solicitud (PDF y Excel del sistema + soportes, en pestañas).
+  const [visorSolicitud, setVisorSolicitud] = useState(null);
   const revisarFotos = (archivos) => new Promise(resolve => setRevisionFotos({ archivos, resolver: resolve }));
   // Envuelve el onChange de un <input type="file">: el handler recibe un evento con los archivos
   // ya preparados en e.target.files (o no se llama si se cancela o ninguno es válido).
@@ -3462,9 +3464,9 @@ const App = () => {
   const ultimasSolicitudes = [...solicitudesUsuario].sort((a, b) => new Date(b.fecha) - new Date(a.fecha)).slice(0, 5);
 
   // Generar PDF
-  const handleGenerarPDF = async (s) => {
-    setGenerandoPDF(s.id);
-    try {
+  // PDF de una solicitud (Anticipo, Comisión, Legalización, Reembolso, Legalización T. Pro): se
+  // arma aquí y quien lo llama decide si lo descarga o lo muestra en el visor de documentos.
+  const construirPDFSolicitud = async (s) => {
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
@@ -3512,8 +3514,17 @@ const App = () => {
       const totalLabel = esTipoValorUnico(s.tipo) ? 'TOTAL SOLICITADO' : 'TOTAL';
       const totalValue = esTipoValorUnico(s.tipo) ? formatMoneyByMoneda(s.valor, monedaDeSolicitud(s)) : formatMoneyByMoneda(s.totalCalculado, monedaDeSolicitud(s));
       doc.text(`${totalLabel}: ${totalValue}`, 20, yPos);
+      return doc;
+  };
+  const nombrePDFSolicitud = (s) => (s.tipo === 'Pago a Tercero'
+    ? `Pago_a_Tercero_${(s.terceroInfo?.nombre || 'tercero').replace(/\s+/g, '_')}_${s.id}.pdf`
+    : `${s.tipo}-${s.id}.pdf`);
 
-      doc.save(`${s.tipo}-${s.id}.pdf`);
+  const handleGenerarPDF = async (s) => {
+    setGenerandoPDF(s.id);
+    try {
+      const doc = await construirPDFSolicitud(s);
+      doc.save(nombrePDFSolicitud(s));
     } catch (error) {
       // Antes este error quedaba solo en la consola del navegador — quien hacía clic en
       // "📄 PDF" no se enteraba de que había fallado. Ahora se avisa siempre.
@@ -3601,8 +3612,7 @@ const App = () => {
 
   // Botón "📄 PDF" del historial — vuelve a generar y descargar la misma ficha (la solicitud
   // ya trae terceroInfo embebido, no hace falta ninguna consulta adicional).
-  const handleGenerarPDFPagoTercero = (s) => {
-    const doc = construirPDFPagoTercero({
+  const construirPDFDePagoTercero = (s) => construirPDFPagoTercero({
       empresa: s.empresa,
       empresaNit: NIT_EMPRESAS[s.empresa] || '',
       fecha: s.fecha,
@@ -3613,8 +3623,7 @@ const App = () => {
       tercero: s.terceroInfo || {},
       estado: s.estado
     });
-    doc.save(`Pago_a_Tercero_${(s.terceroInfo?.nombre || 'tercero').replace(/\s+/g, '_')}_${s.id}.pdf`);
-  };
+  const handleGenerarPDFPagoTercero = (s) => construirPDFDePagoTercero(s).save(nombrePDFSolicitud(s));
 
   // Trae los soportes (archivos) de una solicitud desde public.soportes y abre el modal
   // "Ver Soportes" ya existente (mismo que usan Gastos/Ingresos) para verlos/descargarlos.
@@ -3725,6 +3734,22 @@ const App = () => {
   // Legalización T. Pro) se muestra como un soporte más. Si la solicitud no está cargada (rol que
   // solo carga las suyas) se lee de la base.
   const TIPOS_CON_EXCEL_SOLICITUD = ['Legalización', 'Reembolso', 'Legalización T. Pro'];
+  // Documentos que genera el sistema para el visor de una solicitud: su PDF (todas) y su Excel
+  // (Legalización / Reembolso / Legalización T. Pro con ítems). Se arman al abrir, con los datos
+  // actuales; descargarlos es opcional.
+  const documentosSistemaSolicitud = (s) => {
+    const docs = [{
+      id: 'pdf-sistema', nombre_original: nombrePDFSolicitud(s),
+      generar: async () => (s.tipo === 'Pago a Tercero' ? construirPDFDePagoTercero(s) : await construirPDFSolicitud(s)).output('blob'),
+    }];
+    if (TIPOS_CON_EXCEL_SOLICITUD.includes(s.tipo) && s.documentos?.length > 0) {
+      const excel = { ...construirExcelSolicitud(s), tipo: s.tipo };
+      docs.push({ id: 'excel-sistema', nombre_original: excel.nombreArchivo, excel });
+    }
+    return docs;
+  };
+  const abrirVisorSolicitud = (s) => setVisorSolicitud(s);
+
   const excelDeSolicitudOrigen = async (solicitudId) => {
     let s = solicitudes.find(x => x.id === solicitudId);
     if (!s) {
@@ -8648,52 +8673,21 @@ const App = () => {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center justify-center">
-                          {(s.tipo === 'Legalización' || s.tipo === 'Reembolso' || s.tipo === 'Legalización T. Pro') && s.documentos?.length > 0 && (() => {
-                            const esDueño = s.responsableId === user.id;
-                            return (
-                              <>
-                                {(user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa' || esDueño) && (
-                                  <Button variant="ghost" size="icon" onClick={() => handleGenerarPDF(s)} disabled={generandoPDF === s.id} className="text-[#6C63D1]" title="PDF" aria-label="PDF">
-                                    {generandoPDF === s.id ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} />}
-                                  </Button>
-                                )}
-                                {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente') && (
-                                  <Button variant="ghost" size="icon" onClick={() => handleGenerarExcel(s)} className="text-success" title="Excel" aria-label="Excel">
-                                    <FileSpreadsheet size={16} />
-                                  </Button>
-                                )}
-                                {/* Ver Soportes: los roles de gestión/auditoría lo ven en cualquier solicitud, y
-                                    el dueño (Responsable/Gerente incluidos) siempre puede ver lo que él mismo subió. */}
-                                {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente' || esDueño) && (
-                                  <Button variant="ghost" size="icon" onClick={() => handleVerSoportesSolicitud(s)} className="text-success" title="Ver Soportes" aria-label="Ver Soportes">
-                                    <Paperclip size={16} />
-                                  </Button>
-                                )}
-                              </>
-                            );
-                          })()}
+                          {/* Ver documentos: PDF y Excel que genera el sistema + soportes, en un solo visor
+                              (antes eran íconos de descarga sueltos). Lo ven los roles de gestión/
+                              auditoría y el dueño de la solicitud. */}
+                          {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente' || s.responsableId === user.id) && (
+                            <Button variant="ghost" size="icon" onClick={() => abrirVisorSolicitud(s)} className="text-[#6C63D1]" title="Ver documentos (PDF, Excel y soportes)" aria-label="Ver documentos">
+                              <FolderOpen size={16} />
+                            </Button>
+                          )}
                           {/* Pago a Tercero: "Ver Detalle" muestra al instante los datos del tercero y su
-                              cuenta bancaria (sin descargar nada) para que quien vaya a pagar no tenga
-                              que adivinar dónde consignar; "📄" regenera la misma ficha en PDF; sus
-                              soportes son archivos simples (no se desglosan como Legalización/Reembolso),
-                              así que solo necesitan el botón "Ver Soportes". */}
-                          {s.tipo === 'Pago a Tercero' && (() => {
-                            const esDueño = s.responsableId === user.id;
-                            const puedeVer = user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente' || esDueño;
-                            return puedeVer && (
-                              <>
-                                <Button variant="ghost" size="icon" onClick={() => setVerDetalleTercero(s)} title="Ver Detalle del Tercero" aria-label="Ver Detalle del Tercero">
-                                  <Eye size={16} />
-                                </Button>
-                                <Button variant="ghost" size="icon" onClick={() => handleGenerarPDFPagoTercero(s)} className="text-[#6C63D1]" title="PDF" aria-label="PDF">
-                                  <FileDown size={16} />
-                                </Button>
-                                <Button variant="ghost" size="icon" onClick={() => handleVerSoportesSolicitud(s)} className="text-success" title="Ver Soportes" aria-label="Ver Soportes">
-                                  <Paperclip size={16} />
-                                </Button>
-                              </>
-                            );
-                          })()}
+                              cuenta bancaria, para que quien vaya a pagar no tenga que buscarlos. */}
+                          {s.tipo === 'Pago a Tercero' && (user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente' || s.responsableId === user.id) && (
+                            <Button variant="ghost" size="icon" onClick={() => setVerDetalleTercero(s)} title="Ver Detalle del Tercero" aria-label="Ver Detalle del Tercero">
+                              <Eye size={16} />
+                            </Button>
+                          )}
                           {/* Editar: solo mientras está Pendiente — quien la creó, o Administrador/
                               Coordinadora Administrativa. Reabre el formulario de arriba precargado. */}
                           {puedeEditarSolicitud(s) && (
@@ -11387,6 +11381,24 @@ const App = () => {
             </div>
           );
         })()}
+
+        {/* VER DOCUMENTOS DE UNA SOLICITUD — mismo visor de Contabilidad */}
+        {visorSolicitud && (
+          <VisorSoportes
+            fila={{
+              entidadTipo: 'solicitud', id: visorSolicitud.id, solicitudOrigenId: null,
+              concepto: visorSolicitud.detalle || visorSolicitud.tipo, fecha: visorSolicitud.fecha,
+              empresa: visorSolicitud.empresa || EMPRESA_GENERAL, cuenta: '', tipo: visorSolicitud.tipo,
+              colaborador: colaboradoresPublico.find(c => c.id === visorSolicitud.responsableId)?.nombre || visorSolicitud.responsableNombre || '',
+            }}
+            formatoValor={() => formatMoneyByMoneda(montoSolicitud(visorSolicitud), monedaDeSolicitud(visorSolicitud))}
+            documentosSistema={() => documentosSistemaSolicitud(visorSolicitud)}
+            formatMoneyByMoneda={formatMoneyByMoneda}
+            EmpresaLogo={EmpresaLogo}
+            puedeGirar={puedeGirarSoportes}
+            onCerrar={() => setVisorSolicitud(null)}
+          />
+        )}
 
         {/* REVISAR FOTOS ANTES DE SUBIR — ver conArchivosPreparados */}
         {revisionFotos && (
