@@ -415,6 +415,10 @@ const App = () => {
   // anticipo previo de la empresa). Hoy solo aplica a este colaborador — ver el botón "Usar
   // seleccionados en Legalización T. Pro" en Mi Bandeja de Soportes, que solo él ve.
   const COLABORADOR_LEGALIZACION_TPRO = 'Luis Rivas';
+  // Tipos con el mismo formulario (ítems del gasto + soportes): al editar una solicitud Pendiente
+  // o Devuelta se puede pasar de uno a otro sin perder lo digitado (ej. una Legalización T. Pro
+  // que en realidad era un Reembolso). Los demás tipos tienen otra estructura y no se cambian.
+  const TIPOS_CON_ITEMS = ['Reembolso', 'Legalización', 'Legalización T. Pro'];
   // Flujo reducido a 3 estados (sin Aprobado/Pagado): el colaborador ya pagó de su bolsillo, así
   // que no hay "aprobar antes de pagar" — Administrador/Coordinadora revisan y la pasan directo a
   // "Legalizado" (eso genera el Gasto en Finanzas automáticamente, igual que "Pagado" en los
@@ -2704,7 +2708,8 @@ const App = () => {
         // este chequeo, la app mostraba "✅ Solicitud actualizada" aunque nada se hubiera guardado.
         const { data: filasActualizadas, error: updateError } = await supabase
           .from('solicitudes')
-          .update(camposSolicitud)
+          // El tipo solo cambia entre tipos con ítems (ver TIPOS_CON_ITEMS en el formulario).
+          .update({ ...camposSolicitud, ...(solicitudOriginalEnEdicion && solicitudOriginalEnEdicion.tipo !== newSolicitud.tipo && TIPOS_CON_ITEMS.includes(solicitudOriginalEnEdicion.tipo) && TIPOS_CON_ITEMS.includes(newSolicitud.tipo) ? { tipo: newSolicitud.tipo } : {}) })
           .eq('id', editingSolicitudId)
           .select('id');
         if (updateError) {
@@ -8085,13 +8090,14 @@ const App = () => {
                 {editingSolicitudId && (() => {
                   const solicitudEnEdicion = solicitudes.find(x => x.id === editingSolicitudId);
                   const esLegalizadaTPro = solicitudEnEdicion?.tipo === 'Legalización T. Pro' && solicitudEnEdicion?.estado === 'Legalizado';
+                  const tipoEditable = TIPOS_CON_ITEMS.includes(solicitudEnEdicion?.tipo) && ['Pendiente', 'Devuelto'].includes(solicitudEnEdicion?.estado);
                   return (
                     <div className="rounded-lg border border-solid border-[#6C63D1] bg-[#F1EFFB] p-4 text-[#4A4499]">
                       <p className="m-0 font-bold">✏️ {esLegalizadaTPro ? 'Editando una Legalización T. Pro ya Legalizada' : 'Editando una Solicitud Pendiente'}</p>
                       <p className="m-0 mt-2 text-sm">
                         {esLegalizadaTPro
                           ? 'Corrige lo que haga falta. Como ya está Legalizada y el Gasto ya quedó registrado en Finanzas, se queda en estado "Legalizado" al guardar (no se reenvía a revisión).'
-                          : 'Corrige lo que haga falta y agrega algún soporte faltante más abajo. El Tipo no se puede cambiar. Cuando termines, dale "Guardar Cambios" — o "Cancelar edición" para dejarla como estaba.'}
+                          : `Corrige lo que haga falta y agrega algún soporte faltante más abajo. ${tipoEditable ? 'El Tipo solo se puede cambiar entre Reembolso, Legalización y Legalización T. Pro.' : 'El Tipo no se puede cambiar.'} Cuando termines, dale "Guardar Cambios" — o "Cancelar edición" para dejarla como estaba.`}
                       </p>
                     </div>
                   );
@@ -8100,28 +8106,35 @@ const App = () => {
                 <div className={cn('grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]', isReadOnly && 'pointer-events-none opacity-50')}>
                   <CampoUI label="Fecha" htmlFor="sol-fecha"><Input id="sol-fecha" type="date" value={newSolicitud.fecha} onChange={(e) => setNewSolicitud({...newSolicitud, fecha: e.target.value})} /></CampoUI>
                   <CampoUI label="Tipo" htmlFor="sol-tipo">
-                  <Select id="sol-tipo" value={newSolicitud.tipo} disabled={!!editingSolicitudId} onChange={(e) => {
+                  {(() => {
+                  // En edición solo se cambia entre tipos con ítems (TIPOS_CON_ITEMS) y mientras la
+                  // solicitud siga Pendiente o Devuelta; los ítems digitados se conservan.
+                  const enEdicion = editingSolicitudId ? solicitudes.find(x => x.id === editingSolicitudId) : null;
+                  const tipoEditableEnEdicion = !!enEdicion && TIPOS_CON_ITEMS.includes(enEdicion.tipo) && ['Pendiente', 'Devuelto'].includes(enEdicion.estado);
+                  const ofrecer = (t) => !enEdicion || (tipoEditableEnEdicion ? TIPOS_CON_ITEMS.includes(t) : t === enEdicion.tipo);
+                  return (
+                  <Select id="sol-tipo" value={newSolicitud.tipo} disabled={!!editingSolicitudId && !tipoEditableEnEdicion} onChange={(e) => {
                     const nuevoTipo = e.target.value;
+                    const conservaItems = TIPOS_CON_ITEMS.includes(newSolicitud.tipo) && TIPOS_CON_ITEMS.includes(nuevoTipo);
                     setNewSolicitud({
                       ...newSolicitud,
                       tipo: nuevoTipo,
-                      documentos: [],
+                      documentos: conservaItems ? newSolicitud.documentos : [],
+                      ...(nuevoTipo !== 'Legalización' ? { anticipoIds: [], valorAnticipoOriginal: '' } : {}),
                     });
                   }}>
-                    <option value="">Seleccionar Tipo</option>
-                    <option value="Anticipo">Anticipo</option>
-                    <option value="Legalización">Legalización</option>
-                    <option value="Reembolso">Reembolso</option>
-                    <option value="Pago a Tercero">Pago a Tercero</option>
-                    <option value="Comisión">Comisión</option>
+                    {!enEdicion && <option value="">Seleccionar Tipo</option>}
+                    {['Anticipo', 'Legalización', 'Reembolso', 'Pago a Tercero', 'Comisión'].filter(ofrecer).map(t => <option key={t} value={t}>{t}</option>)}
                     {/* "Legalización T. Pro" (gastos pagados con efectivo/tarjeta personal): hoy
                         solo aplica a un colaborador — se ofrece en el desplegable para él, y se
                         mantiene visible si ya se está editando una solicitud de ese tipo (para
                         que Administrador/Coordinadora también la vean correctamente). */}
-                    {(user.nombre === COLABORADOR_LEGALIZACION_TPRO || newSolicitud.tipo === 'Legalización T. Pro') && (
+                    {(user.nombre === COLABORADOR_LEGALIZACION_TPRO || newSolicitud.tipo === 'Legalización T. Pro' || enEdicion?.tipo === 'Legalización T. Pro') && ofrecer('Legalización T. Pro') && (
                       <option value="Legalización T. Pro">Legalización T. Pro</option>
                     )}
                   </Select>
+                  );
+                  })()}
                   </CampoUI>
                   {/* Las solicitudes se hacen a la holding en general: la empresa (y la cuenta) que
                       paga la definen Administrador/Coordinadora al marcarla Pagado. Aquí solo se
