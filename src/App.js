@@ -515,6 +515,9 @@ const App = () => {
   const [revisionFotos, setRevisionFotos] = useState(null);
   // Visor "Ver documentos" de una solicitud (PDF y Excel del sistema + soportes, en pestañas).
   const [visorSolicitud, setVisorSolicitud] = useState(null);
+  // Visor de documentos de un movimiento del Historial de Finanzas y de una Cuenta de cobro.
+  const [visorMovimiento, setVisorMovimiento] = useState(null);
+  const [visorCuentaCobro, setVisorCuentaCobro] = useState(null);
   const revisarFotos = (archivos) => new Promise(resolve => setRevisionFotos({ archivos, resolver: resolve }));
   // Envuelve el onChange de un <input type="file">: el handler recibe un evento con los archivos
   // ya preparados en e.target.files (o no se llama si se cancela o ninguno es válido).
@@ -1051,11 +1054,12 @@ const App = () => {
   // Mismo cuidado de siempre con el archivo físico: solo se borra de Storage si ninguna otra
   // fila de public.soportes (de cualquier entidad, ej. el Gasto que esta misma solicitud generó
   // en Finanzas) sigue apuntándole.
-  const handleEliminarUnSoporte = async (soporte) => {
-    if (!soporte.id) return;
-    if (!window.confirm(`¿Eliminar "${soporte.nombre}"? Esta acción no se puede deshacer.`)) return;
-    setEliminandoSoporteId(soporte.id);
-    try {
+  // Borra un soporte de un registro (y de su solicitud de origen si lo comparten) y actualiza los
+  // conteos. ctx: { entidadTipo, entidadId, solicitudOrigenId }. Devuelve true si se borró.
+  // La usan "Ver soportes" y el visor de documentos (Finanzas y Contabilidad).
+  const eliminarSoporteCompartido = async (soporte, ctx) => {
+    if (!soporte.id) return false;
+    if (!window.confirm(`¿Eliminar "${soporte.nombre}"? Esta acción no se puede deshacer.`)) return false;
       const { data: otras, error: errorOtras } = await supabase
         .from('soportes')
         .select('id')
@@ -1063,12 +1067,12 @@ const App = () => {
       if (errorOtras) {
         console.error('Error revisando si el archivo está compartido:', errorOtras);
         alert('❌ No se pudo eliminar: ' + errorOtras.message);
-        return;
+        return false;
       }
       // En Finanzas, un movimiento generado desde una Solicitud comparte soportes con ella: al
       // eliminar se quita el archivo de AMBOS (movimiento y solicitud original), si no volvería
       // a aparecer como "de la solicitud original".
-      const ctxDueños = verSoportesContexto;
+      const ctxDueños = ctx;
       const filtroDueños = ctxDueños?.solicitudOrigenId
         ? `and(entidad_tipo.eq.${ctxDueños.entidadTipo},entidad_id.eq.${ctxDueños.entidadId}),and(entidad_tipo.eq.solicitud,entidad_id.eq.${ctxDueños.solicitudOrigenId})`
         : null;
@@ -1081,19 +1085,17 @@ const App = () => {
       if (errorDelete || !borradas || borradas.length === 0) {
         console.error('Error eliminando soporte:', errorDelete);
         alert('❌ No se pudo eliminar: ' + (errorDelete?.message || 'no tienes permiso para borrar este soporte.'));
-        return;
+        return false;
       }
       const idsBorrados = new Set((borradas || []).map(b => b.id));
       const esCompartido = (otras || []).some(o => !idsBorrados.has(o.id));
       if (!esCompartido) {
         await supabase.storage.from('soportes').remove([soporte.bucketPath]);
       }
-      setVerSoportes(prev => (prev || []).filter(s => (filtroDueños ? s.bucketPath !== soporte.bucketPath : s.id !== soporte.id)));
       if (ctxDueños?.solicitudOrigenId) {
         const conteoSol = await contarSoportesPorEntidad('solicitud', [ctxDueños.solicitudOrigenId]);
         setSolicitudes(prev => prev.map(x => x.id === ctxDueños.solicitudOrigenId ? { ...x, cantidadSoportes: conteoSol[ctxDueños.solicitudOrigenId] || 0 } : x));
       }
-      const ctx = verSoportesContexto;
       if (ctx?.entidadTipo === 'solicitud' || ctx?.entidadTipo === 'gasto' || ctx?.entidadTipo === 'ingreso') {
         const mov = ctx.entidadTipo === 'gasto' ? gastos.find(x => x.id === ctx.entidadId) : ctx.entidadTipo === 'ingreso' ? ingresos.find(x => x.id === ctx.entidadId) : null;
         const nuevoConteo = mov ? await contarSoportesMovimientos(ctx.entidadTipo, [mov]) : await contarSoportesPorEntidad(ctx.entidadTipo, [ctx.entidadId]);
@@ -1103,10 +1105,23 @@ const App = () => {
         else if (ctx.entidadTipo === 'gasto') setGastos(actualizar);
         else setIngresos(actualizar);
       }
+      return true;
+  };
+
+  const handleEliminarUnSoporte = async (soporte) => {
+    if (!soporte.id) return;
+    setEliminandoSoporteId(soporte.id);
+    try {
+      const ctx = verSoportesContexto;
+      if (await eliminarSoporteCompartido(soporte, ctx)) {
+        setVerSoportes(prev => (prev || []).filter(s => (ctx?.solicitudOrigenId ? s.bucketPath !== soporte.bucketPath : s.id !== soporte.id)));
+      }
     } finally {
       setEliminandoSoporteId(null);
     }
   };
+  const puedeEliminarSoportesFinanzas = ['Administrador', 'Coordinadora Administrativa', 'Gerente'].includes(user?.rol);
+  const eliminarSoporteDesdeVisor = (archivo, fila) => eliminarSoporteCompartido(archivo, { entidadTipo: fila.entidadTipo, entidadId: fila.id, solicitudOrigenId: fila.solicitudOrigenId || null });
 
   // Fusiona TODOS los soportes ya guardados de una solicitud (el PDF consolidado original y/o
   // cualquier suelto que hubiera quedado de una edición anterior) con los soportes nuevos que se
@@ -3750,7 +3765,22 @@ const App = () => {
   };
   const abrirVisorSolicitud = (s) => setVisorSolicitud(s);
 
-  const excelDeSolicitudOrigen = async (solicitudId) => {
+  // PDF y Excel de la solicitud de origen de un movimiento de Finanzas (para el visor de
+  // documentos en Finanzas y Contabilidad). Un Pago a Tercero registrado directo en Finanzas
+  // (sin solicitud) muestra su ficha PDF.
+  const documentosSistemaDeOrigen = async (fila) => {
+    if (fila.solicitudOrigenId) {
+      const s = await obtenerSolicitud(fila.solicitudOrigenId);
+      return s ? documentosSistemaSolicitud(s).map(d => ({ ...d, id: `${d.id}-origen`, deSolicitud: true })) : [];
+    }
+    const r = fila.registro;
+    if (r && (r.tipo === 'Pago a Tercero' || r.terceroInfo)) {
+      const datos = { ...r, responsableNombre: colaboradoresPublico.find(c => c.id === r.responsableId)?.nombre || r.responsableNombre || '', moneda: r.moneda || getMoneda(r.empresa) };
+      return [{ id: 'pdf-tercero', nombre_original: nombrePDFSolicitud({ ...datos, tipo: 'Pago a Tercero' }), generar: async () => construirPDFDePagoTercero(datos).output('blob') }];
+    }
+    return [];
+  };
+  const obtenerSolicitud = async (solicitudId) => {
     let s = solicitudes.find(x => x.id === solicitudId);
     if (!s) {
       const { data } = await supabase.from('solicitudes')
@@ -3759,7 +3789,11 @@ const App = () => {
       if (!data) return null;
       s = solicitudDBToLocal(data);
     }
-    if (!TIPOS_CON_EXCEL_SOLICITUD.includes(s.tipo)) return null;
+    return s;
+  };
+  const excelDeSolicitudOrigen = async (solicitudId) => {
+    const s = await obtenerSolicitud(solicitudId);
+    if (!s || !TIPOS_CON_EXCEL_SOLICITUD.includes(s.tipo)) return null;
     return { ...construirExcelSolicitud(s), tipo: s.tipo };
   };
 
@@ -4291,7 +4325,10 @@ const App = () => {
   };
 
   // Genera el PDF de la Cuenta de Cobro con el formato "Prestación de Servicios Profesionales".
-  const handleGenerarPDFCuentaCobro = (c) => {
+  // PDF de la cuenta de cobro: se descarga o se muestra en el visor de documentos.
+  const nombrePDFCuentaCobro = (c) => `Cuenta_de_Cobro_${c.numero}_${(c.responsableNombre || '').replace(/\s+/g, '_')}.pdf`;
+  const handleGenerarPDFCuentaCobro = (c) => construirPDFCuentaCobro(c).save(nombrePDFCuentaCobro(c));
+  const construirPDFCuentaCobro = (c) => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -4389,7 +4426,7 @@ const App = () => {
     doc.text(`C.C  ${c.responsableCedula}`, firmaIzqX, y);
     doc.text('C.C', firmaDerX, y);
 
-    doc.save(`Cuenta_de_Cobro_${c.numero}_${c.responsableNombre.replace(/\s+/g, '_')}.pdf`);
+    return doc;
   };
 
   // Solo se usa hoy para cambiar "estado" (Admin/Coordinadora aprueban/pagan) — campo ya
@@ -7661,6 +7698,8 @@ const App = () => {
             EmpresaLogo={EmpresaLogo}
             tieneExcelSolicitud={(id) => TIPOS_CON_EXCEL_SOLICITUD.includes(solicitudes.find(x => x.id === id)?.tipo)}
             excelSolicitud={excelDeSolicitudOrigen}
+            documentosSistemaDeFila={documentosSistemaDeOrigen}
+            eliminarSoporte={puedeEliminarSoportesFinanzas ? eliminarSoporteDesdeVisor : null}
             puedeGirarSoportes={user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa'}
             reportes={{
               desde: filtroFechaInicio, hasta: filtroFechaFin, setDesde: setFiltroFechaInicio, setHasta: setFiltroFechaFin,
@@ -9666,13 +9705,15 @@ const App = () => {
                                 <Button variant="ghost" size="icon" onClick={() => setVerDetalleTercero({...r, responsableNombre: nombreColaborador, moneda: r.moneda || getMoneda(r.empresa)})} title="Ver Detalle del Tercero" aria-label="Ver Detalle del Tercero">
                                   <Eye size={16} />
                                 </Button>
-                                <Button variant="ghost" size="icon" onClick={() => handleGenerarPDFPagoTercero({...r, responsableNombre: nombreColaborador, moneda: r.moneda || getMoneda(r.empresa)})} className="text-[#6C63D1]" title="PDF" aria-label="PDF">
-                                  <FileDown size={16} />
-                                </Button>
                               </>
                             )}
-                            {(r.cantidadSoportes > 0 || r.soporteDriveLink) ? (
-                              <Button variant="ghost" size="sm" onClick={() => verSoportesFn(r)} className="text-success" title="Ver soportes"><Paperclip size={14} /> {r.soporteDriveLink ? 'Drive' : r.cantidadSoportes}</Button>
+                            {/* Registros históricos con soporte en Drive: se abre Drive como siempre. Los
+                                demás abren el visor de documentos (soportes + PDF/Excel de la
+                                solicitud de origen o la ficha del Pago a Tercero). */}
+                            {r.soporteDriveLink ? (
+                              <Button variant="ghost" size="sm" onClick={() => verSoportesFn(r)} className="text-success" title="Ver soporte en Drive"><Paperclip size={14} /> Drive</Button>
+                            ) : (r.cantidadSoportes > 0 || r.solicitudOrigenId || esPagoTercero) ? (
+                              <Button variant="ghost" size="sm" onClick={() => setVisorMovimiento(r)} className="text-success" title="Ver documentos (soportes y documentos del sistema)" aria-label="Ver documentos"><FolderOpen size={14} /> {r.cantidadSoportes || ''}</Button>
                             ) : (
                               <span className="px-2 text-xs text-muted-foreground">—</span>
                             )}
@@ -10723,14 +10764,10 @@ const App = () => {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-center gap-1">
-                          {c.responsableCedula && (
-                            <Button variant="ghost" size="icon" onClick={() => handleGenerarPDFCuentaCobro(c)} title="Descargar PDF" aria-label="Descargar PDF"><FileDown size={16} /></Button>
-                          )}
-                          {c.cantidadSoportes > 0 && (
-                            <Button variant="ghost" size="icon" onClick={() => handleVistaRapidaCuentaCobro(c)} title="Vista previa de la cuenta de cobro" aria-label="Vista previa de la cuenta de cobro"><Eye size={16} /></Button>
-                          )}
-                          {c.cantidadSoportes > 0 ? (
-                            <Button variant="ghost" size="sm" onClick={() => handleVerSoportesCuentaCobro(c)} className="text-success" title="Ver soportes"><Paperclip size={14} /> {c.cantidadSoportes}</Button>
+                          {/* Ver documentos: el PDF de la cuenta de cobro (si el colaborador tiene cédula)
+                              y sus soportes, en el mismo visor de Solicitudes. */}
+                          {(c.responsableCedula || c.cantidadSoportes > 0) ? (
+                            <Button variant="ghost" size="sm" onClick={() => setVisorCuentaCobro(c)} className="text-[#6C63D1]" title="Ver documentos (PDF y soportes)" aria-label="Ver documentos"><FolderOpen size={15} />{c.cantidadSoportes > 0 ? ` ${c.cantidadSoportes}` : ''}</Button>
                           ) : (
                             <span className="px-2 text-xs text-muted-foreground">—</span>
                           )}
@@ -11397,6 +11434,45 @@ const App = () => {
             EmpresaLogo={EmpresaLogo}
             puedeGirar={puedeGirarSoportes}
             onCerrar={() => setVisorSolicitud(null)}
+          />
+        )}
+
+        {/* VER DOCUMENTOS DE UN MOVIMIENTO DE FINANZAS */}
+        {visorMovimiento && (() => {
+          const r = visorMovimiento;
+          const fila = {
+            entidadTipo: r._origen === 'ingreso' || r.tipo === 'Ingreso' ? 'ingreso' : 'gasto', id: r.id, solicitudOrigenId: r.solicitudOrigenId || null,
+            concepto: r.detalle || r.tipo, fecha: r.fecha, empresa: r.empresa, cuenta: (r.tipo === 'Traslado' ? r.cuentaSalida : r.cuenta) || '', tipo: r.tipo,
+            colaborador: colaboradoresPublico.find(c => c.id === r.responsableId)?.nombre || r.responsableNombre || '', registro: r,
+          };
+          return (
+            <VisorSoportes
+              fila={fila}
+              formatoValor={() => formatMoneyByMoneda(parseFloat(r.valor) || 0, r.moneda || getMoneda(r.empresa))}
+              documentosSistema={documentosSistemaDeOrigen}
+              formatMoneyByMoneda={formatMoneyByMoneda}
+              EmpresaLogo={EmpresaLogo}
+              puedeGirar={puedeGirarSoportes}
+              onEliminar={puedeEliminarSoportesFinanzas ? (a) => eliminarSoporteDesdeVisor(a, fila) : undefined}
+              onCerrar={() => setVisorMovimiento(null)}
+            />
+          );
+        })()}
+
+        {/* VER DOCUMENTOS DE UNA CUENTA DE COBRO */}
+        {visorCuentaCobro && (
+          <VisorSoportes
+            fila={{
+              entidadTipo: 'cuenta_cobro', id: visorCuentaCobro.id, solicitudOrigenId: null,
+              concepto: `Cuenta de cobro ${visorCuentaCobro.numero || ''}`.trim(), fecha: visorCuentaCobro.fecha, empresa: visorCuentaCobro.empresa, cuenta: '',
+              tipo: 'Cuenta de cobro', colaborador: colaboradoresPublico.find(x => x.id === visorCuentaCobro.responsableId)?.nombre || visorCuentaCobro.responsableNombre || '',
+            }}
+            formatoValor={() => formatMoneyByMoneda(parseFloat(visorCuentaCobro.monto) || 0, getMoneda(visorCuentaCobro.empresa))}
+            documentosSistema={() => (visorCuentaCobro.responsableCedula ? [{ id: 'pdf-cuenta-cobro', nombre_original: nombrePDFCuentaCobro(visorCuentaCobro), generar: async () => construirPDFCuentaCobro(visorCuentaCobro).output('blob') }] : [])}
+            formatMoneyByMoneda={formatMoneyByMoneda}
+            EmpresaLogo={EmpresaLogo}
+            puedeGirar={puedeGirarSoportes}
+            onCerrar={() => setVisorCuentaCobro(null)}
           />
         )}
 
