@@ -3,9 +3,10 @@ import JSZip from 'jszip';
 import * as XLSX from 'xlsx';
 import {
   Archive, ArrowDown, ArrowUp, BookOpen, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Download,
-  ExternalLink, FileSpreadsheet, FileText, FolderOpen, Image as IconoImagen, Loader2, Paperclip, RotateCcw, Search, ZoomIn, ZoomOut,
+  ExternalLink, FileSpreadsheet, RotateCcw as GirarIzquierda, RotateCw as GirarDerecha, Save, FileText, FolderOpen, Image as IconoImagen, Loader2, Paperclip, RotateCcw, Search, ZoomIn, ZoomOut,
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
+import { guardarSoporteGirado, paginasPdf } from './girarSoportes';
 import {
   AGRUPACIONES, CAMPOS_ORDEN, FILTRO_CONTABILIDAD, MESES, agruparFilas, filasContabilidad, filtrarFilas, ordenarFilas,
   tipoArchivo, totalesPorMoneda,
@@ -81,13 +82,19 @@ const TablaExcel = ({ rows, moneda, formatMoneyByMoneda }) => {
   );
 };
 
-function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excelSolicitud, formatMoneyByMoneda }) {
+function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excelSolicitud, formatMoneyByMoneda, puedeGirar }) {
   const [archivos, setArchivos] = useState(null); // null = cargando
   const [error, setError] = useState('');
   const [indice, setIndice] = useState(0);
   const [urls, setUrls] = useState({}); // { id: objectURL }
   const [cargandoArchivo, setCargandoArchivo] = useState(false);
   const [zoom, setZoom] = useState(1);
+  // Girar lo ya subido: en fotos el giro se ve al instante y se guarda con "Guardar girada"; en
+  // PDF se gira la página elegida y se guarda de una (solo Administrador / Coordinadora).
+  const [giro, setGiro] = useState(0);
+  const [paginas, setPaginas] = useState(0);
+  const [paginaGirar, setPaginaGirar] = useState('');
+  const [girando, setGirando] = useState(false);
   const [zipeando, setZipeando] = useState(false);
   const blobs = useRef({});
   // En un ref: la función llega nueva en cada render de App y no debe recargar el visor.
@@ -142,12 +149,39 @@ function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excelSolicit
   const actual = archivos?.[indice] || null;
   const tipoActual = actual ? tipoArchivo(actual.nombre_original) : null;
 
+  const idActual = actual?.id;
+  useEffect(() => { setZoom(1); setGiro(0); }, [idActual]);
+
   useEffect(() => {
-    setZoom(1);
     if (!actual || urls[actual.id] || !['pdf', 'imagen'].includes(tipoActual)) return;
     setCargandoArchivo(true);
     cargarBlob(actual).catch(e => setError(e.message)).finally(() => setCargandoArchivo(false));
   }, [actual, tipoActual, urls, cargarBlob]);
+
+  // Páginas del PDF actual (para elegir cuál girar).
+  useEffect(() => {
+    setPaginas(0);
+    setPaginaGirar('');
+    if (!puedeGirar || !actual || tipoActual !== 'pdf' || !urls[actual.id]) return;
+    const b = blobs.current[actual.id];
+    if (b) paginasPdf(b.blob).then(setPaginas).catch(() => setPaginas(0));
+  }, [puedeGirar, actual, tipoActual, urls]);
+
+  const guardarGiro = async (grados, pagina = null) => {
+    if (!actual || !grados) return;
+    const queGira = tipoActual === 'pdf' ? (pagina ? `la página ${pagina}` : 'todas las páginas') : 'la foto';
+    if (!window.confirm(`¿Guardar ${queGira} girada${grados === 180 ? ' 180°' : ''}? Reemplaza el archivo para todos los que lo ven (solicitud y Finanzas).`)) return;
+    setGirando(true);
+    setError('');
+    try {
+      const nuevo = await guardarSoporteGirado({ bucketPath: actual.bucket_path, nombre: actual.nombre_original }, { grados, pagina });
+      const viejo = blobs.current[actual.id];
+      if (viejo) { URL.revokeObjectURL(viejo.url); delete blobs.current[actual.id]; }
+      setUrls(prev => { const n = { ...prev }; delete n[actual.id]; return n; });
+      setArchivos(prev => prev.map(a => (a.id === actual.id ? { ...a, bucket_path: nuevo.bucketPath, nombre_original: nuevo.nombre, tamano_kb: nuevo.tamanoKb } : a)));
+      setGiro(0);
+    } catch (e) { setError(e.message); } finally { setGirando(false); }
+  };
 
   const descargar = async (a) => {
     try {
@@ -253,6 +287,27 @@ function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excelSolicit
                 <Button size="icon" variant="ghost" onClick={() => mover(1)} disabled={archivos.length < 2} aria-label="Siguiente"><ChevronRight size={18} /></Button>
                 <span className="mx-2 hidden min-w-0 flex-1 truncate text-sm font-semibold sm:block">{actual.nombre_original}</span>
                 <span className="flex-1 sm:hidden" />
+                {tipoActual === 'imagen' && !actual.excel && (
+                  <>
+                    <Button size="icon" variant="outline" onClick={() => setGiro(g => (g + 270) % 360)} aria-label="Girar a la izquierda" title="Girar a la izquierda"><GirarIzquierda size={16} /></Button>
+                    <Button size="icon" variant="outline" onClick={() => setGiro(g => (g + 90) % 360)} aria-label="Girar a la derecha" title="Girar a la derecha"><GirarDerecha size={16} /></Button>
+                    {puedeGirar && giro !== 0 && (
+                      <Button size="sm" variant="success" disabled={girando} onClick={() => guardarGiro(giro)} title="Reemplaza el archivo por la versión girada">
+                        {girando ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Guardar girada
+                      </Button>
+                    )}
+                  </>
+                )}
+                {tipoActual === 'pdf' && puedeGirar && paginas > 0 && (
+                  <div className="flex items-center gap-1" title="Gira una página del PDF (p. ej. una foto que quedó de lado) y guarda el PDF corregido">
+                    <Select aria-label="Página a girar" value={paginaGirar} onChange={(e) => setPaginaGirar(e.target.value)} className="h-8 w-32 text-xs">
+                      <option value="">Todas las pág.</option>
+                      {Array.from({ length: paginas }, (_, i) => <option key={i} value={i + 1}>Página {i + 1}</option>)}
+                    </Select>
+                    <Button size="icon" variant="outline" disabled={girando} onClick={() => guardarGiro(-90, paginaGirar ? Number(paginaGirar) : null)} aria-label="Girar página a la izquierda"><GirarIzquierda size={16} /></Button>
+                    <Button size="icon" variant="outline" disabled={girando} onClick={() => guardarGiro(90, paginaGirar ? Number(paginaGirar) : null)} aria-label="Girar página a la derecha">{girando ? <Loader2 size={16} className="animate-spin" /> : <GirarDerecha size={16} />}</Button>
+                  </div>
+                )}
                 {tipoActual === 'imagen' && (
                   <>
                     <Button size="icon" variant="outline" onClick={() => setZoom(z => Math.max(1, z - 0.5))} disabled={zoom <= 1} aria-label="Alejar"><ZoomOut size={16} /></Button>
@@ -277,7 +332,7 @@ function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excelSolicit
               ) : tipoActual === 'imagen' && urls[actual.id] ? (
                 <img src={urls[actual.id]} alt={actual.nombre_original} onClick={() => setZoom(z => (z > 1 ? 1 : 2))}
                   className={cn('rounded-md bg-card shadow-sm transition-[width]', zoom > 1 ? 'max-w-none cursor-zoom-out' : 'max-h-full max-w-full cursor-zoom-in object-contain')}
-                  style={zoom > 1 ? { width: `${zoom * 100}%` } : undefined} />
+                  style={{ ...(zoom > 1 ? { width: `${zoom * 100}%` } : {}), ...(giro ? { transform: `rotate(${giro}deg)${giro % 180 && zoom === 1 ? ' scale(0.8)' : ''}` } : {}) }} />
               ) : (
                 <div className="flex flex-col items-center gap-3 text-center text-muted-foreground">
                   <IconoArchivo nombre={actual.nombre_original} size={44} />
@@ -297,6 +352,7 @@ function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excelSolicit
 const ContabilidadView = ({
   registros, empresas, getMoneda, formatMoneyByMoneda, EmpresaLogo,
   excelSolicitud, // async (solicitudId) => { rows, moneda, nombreArchivo, tipo } | null
+  puedeGirarSoportes, // Administrador / Coordinadora: guardar soportes girados
   tieneExcelSolicitud, // (solicitudId) => boolean: la solicitud de origen tiene Excel (Legalización / Reembolso)
   reportes, // { desde, hasta, setDesde, setHasta, onFinanzas, onSolicitudes, onZip, progresoZip }
 }) => {
@@ -540,7 +596,7 @@ const ContabilidadView = ({
         </CardContent>
       </Card>
 
-      {visor && <VisorSoportes fila={visor} onCerrar={() => setVisor(null)} formatoValor={formatoValor} EmpresaLogo={EmpresaLogo} excelSolicitud={excelSolicitud} formatMoneyByMoneda={formatMoneyByMoneda} />}
+      {visor && <VisorSoportes fila={visor} onCerrar={() => setVisor(null)} formatoValor={formatoValor} EmpresaLogo={EmpresaLogo} excelSolicitud={excelSolicitud} formatMoneyByMoneda={formatMoneyByMoneda} puedeGirar={puedeGirarSoportes} />}
     </div>
   );
 };

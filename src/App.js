@@ -21,8 +21,11 @@ import ExportadorPABView from './ExportadorPABView';
 import NotificacionesCampana from './NotificacionesCampana';
 import AuditoriaView from './AuditoriaView';
 import ContabilidadView from './ContabilidadView';
+import RevisarFotos from './components/RevisarFotos';
+import { esImagen, prepararArchivos } from './archivos';
+import { guardarSoporteGirado } from './girarSoportes';
 import TopNav from './components/TopNav';
-import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, FileDown, Eye, Plus, Check, X, Pencil, Search, Loader2, FileSpreadsheet, Upload, FilePlus2, Pause, Play, LayoutDashboard, FileText, Banknote, DollarSign, Clock, Undo2, CheckCircle2, Building2, Users, ClipboardList, Archive, TrendingUp, TrendingDown, Scale, BarChart3, Trophy, FolderOpen, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, RotateCw, FileDown, Eye, Plus, Check, X, Pencil, Search, Loader2, FileSpreadsheet, Upload, FilePlus2, Pause, Play, LayoutDashboard, FileText, Banknote, DollarSign, Clock, Undo2, CheckCircle2, Building2, Users, ClipboardList, Archive, TrendingUp, TrendingDown, Scale, BarChart3, Trophy, FolderOpen, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -506,6 +509,25 @@ const App = () => {
   const [confirmarPasswordRecuperacion, setConfirmarPasswordRecuperacion] = useState('');
   const [guardandoPasswordRecuperacion, setGuardandoPasswordRecuperacion] = useState(false);
   const [currentView, setCurrentView] = useState('dashboard');
+  // Archivos que se suben (soportes, comprobantes, documentos): antes de pasarlos a cada
+  // formulario se validan (tipo y 10 MB), las fotos se enderezan y reducen (src/archivos.js) y
+  // se muestran para revisarlas y girarlas (RevisarFotos). { archivos, resolver }
+  const [revisionFotos, setRevisionFotos] = useState(null);
+  const revisarFotos = (archivos) => new Promise(resolve => setRevisionFotos({ archivos, resolver: resolve }));
+  // Envuelve el onChange de un <input type="file">: el handler recibe un evento con los archivos
+  // ya preparados en e.target.files (o no se llama si se cancela o ninguno es válido).
+  const conArchivosPreparados = (handler, { revisar = true } = {}) => async (e) => {
+    const input = e.target;
+    const lista = Array.from(input.files || []);
+    input.value = '';
+    if (!lista.length) return;
+    const { archivos, errores } = await prepararArchivos(lista);
+    if (errores.length) alert(`⚠️ No se ${errores.length === 1 ? 'pudo usar este archivo' : 'pudieron usar estos archivos'}:\n\n• ${errores.join('\n• ')}`);
+    if (!archivos.length) return;
+    const finales = revisar && archivos.some(esImagen) ? await revisarFotos(archivos) : archivos;
+    if (!finales || !finales.length) return;
+    handler({ target: { files: finales, value: '', name: input.name, id: input.id } });
+  };
   // Solicitudes (Anticipo/Legalización/Reembolso) — conectado a Supabase (tabla public.solicitudes).
   // Los soportes de Legalización/Reembolso se siguen uniendo en un solo PDF consolidado
   // (mergeSoportesToPDF), pero ese PDF ya no se guarda embebido en la solicitud: se sube al
@@ -6220,9 +6242,28 @@ const App = () => {
         return;
       }
       const url = URL.createObjectURL(data);
-      setPreviewSoporte({ nombre: soporte.nombre, url, tipo, esObjectUrl: true });
+      setPreviewSoporte({ nombre: soporte.nombre, url, tipo, esObjectUrl: true, bucketPath: soporte.bucketPath, giro: 0 });
     } finally {
       setCargandoPreviewSoporte(false);
+    }
+  };
+
+  // Fotos ya subidas que quedaron volteadas: Administrador / Coordinadora guardan la versión
+  // girada (reemplaza el archivo para la solicitud y su movimiento de Finanzas).
+  const puedeGirarSoportes = user?.rol === 'Administrador' || user?.rol === 'Coordinadora Administrativa';
+  const handleGuardarPreviewGirada = async () => {
+    const p = previewSoporte;
+    if (!p?.bucketPath || !p.giro) return;
+    if (!window.confirm('¿Guardar la foto girada? Reemplaza el archivo para todos los que lo ven (solicitud y Finanzas).')) return;
+    setPreviewSoporte({ ...p, guardando: true });
+    try {
+      const nuevo = await guardarSoporteGirado({ bucketPath: p.bucketPath, nombre: p.nombre }, { grados: p.giro });
+      setVerSoportes(prev => (prev || null) && prev.map(x => (x.bucketPath === p.bucketPath ? { ...x, bucketPath: nuevo.bucketPath, nombre: nuevo.nombre, tamaño: nuevo.tamanoKb * 1024 } : x)));
+      handleCerrarPreviewSoporte();
+      alert('✅ Foto guardada derecha.');
+    } catch (e) {
+      alert('❌ ' + e.message);
+      setPreviewSoporte({ ...p, guardando: false });
     }
   };
 
@@ -7595,6 +7636,7 @@ const App = () => {
             EmpresaLogo={EmpresaLogo}
             tieneExcelSolicitud={(id) => TIPOS_CON_EXCEL_SOLICITUD.includes(solicitudes.find(x => x.id === id)?.tipo)}
             excelSolicitud={excelDeSolicitudOrigen}
+            puedeGirarSoportes={user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa'}
             reportes={{
               desde: filtroFechaInicio, hasta: filtroFechaFin, setDesde: setFiltroFechaInicio, setHasta: setFiltroFechaFin,
               onFinanzas: downloadReporteFinanzas, onSolicitudes: downloadReporteSolicitudes, onZip: downloadSoportesZIP, progresoZip,
@@ -7817,7 +7859,7 @@ const App = () => {
                         <ColaboradorAvatar foto={miPerfilForm.foto} nombre={miPerfilForm.nombre} size={64} />
                         <label className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'text-xs', subiendoMiArchivo === 'foto' && 'pointer-events-none opacity-50')}>
                           {subiendoMiArchivo === 'foto' ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />} {subiendoMiArchivo === 'foto' ? 'Subiendo...' : (miPerfilForm.foto ? 'Cambiar' : 'Subir foto')}
-                          <input type="file" accept="image/*" disabled={subiendoMiArchivo === 'foto'} onChange={handleMiPerfilFoto} className="hidden" />
+                          <input type="file" accept="image/*" disabled={subiendoMiArchivo === 'foto'} onChange={conArchivosPreparados(handleMiPerfilFoto, { revisar: false })} className="hidden" />
                         </label>
                         {miPerfilForm.foto && <Button variant="link" size="sm" onClick={handleMiPerfilQuitarFoto} className="h-auto p-0 text-xs text-destructive">Quitar foto</Button>}
                       </div>
@@ -7896,7 +7938,7 @@ const App = () => {
                               <Button variant="ghost" size="sm" onClick={() => handleMiPerfilEliminarDocumento(campo)} className="text-destructive"><Trash2 size={14} /> Quitar</Button>
                             </div>
                           ) : (
-                            <Input type="file" accept=".pdf,image/*" aria-label={campo === 'documentoCedula' ? 'Cédula' : 'Pasaporte'} disabled={subiendoMiArchivo === campo} onChange={(e) => handleMiPerfilDocumento(e, campo)} className={claseInputArchivo} />
+                            <Input type="file" accept=".pdf,image/*" aria-label={campo === 'documentoCedula' ? 'Cédula' : 'Pasaporte'} disabled={subiendoMiArchivo === campo} onChange={conArchivosPreparados((e) => handleMiPerfilDocumento(e, campo))} className={claseInputArchivo} />
                           )}
                           {subiendoMiArchivo === campo && <p className="m-0 inline-flex items-center gap-1 text-xs text-muted-foreground"><Loader2 size={12} className="animate-spin" /> Subiendo...</p>}
                         </div>
@@ -7976,7 +8018,7 @@ const App = () => {
                     </CampoUI>
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
-                    <Input type="file" accept="application/pdf,image/*" onChange={handleSeleccionarArchivoPendiente} aria-label="Archivo del soporte" className={cn(claseInputArchivo, 'min-w-[200px] flex-1')} />
+                    <Input type="file" accept="application/pdf,image/*" onChange={conArchivosPreparados(handleSeleccionarArchivoPendiente)} aria-label="Archivo del soporte" className={cn(claseInputArchivo, 'min-w-[200px] flex-1')} />
                     {nuevoSoportePendiente.archivo && <span className="flex items-center gap-1 text-xs text-success"><Paperclip size={14} /> {nuevoSoportePendiente.archivo.nombre}</span>}
                     <Button onClick={handleAgregarSoportePendiente} disabled={subiendoSoportePendiente}>
                       {subiendoSoportePendiente ? 'Subiendo...' : <><Plus size={16} /> Agregar a mi bandeja</>}
@@ -8288,7 +8330,7 @@ const App = () => {
                     {/* SOPORTES — archivos simples (foto, PDF, etc.), sin unirse en un solo PDF */}
                     <ListaSoportesUI
                       titulo="Soportes (foto, PDF, etc.)"
-                      inputProps={{ multiple: true, onChange: handleAddSoporteTercero }}
+                      inputProps={{ multiple: true, onChange: conArchivosPreparados(handleAddSoporteTercero) }}
                       archivos={soportesTerceroTemp}
                       resumen={`Archivos cargados: ${soportesTerceroTemp.length}`}
                       onQuitar={handleRemoveSoporteTercero}
@@ -8341,7 +8383,7 @@ const App = () => {
                     {!editingSolicitudId && (
                       <ListaSoportesUI
                         titulo="Soportes (PDFs e imágenes — se unen en un solo PDF)"
-                        inputProps={{ multiple: true, accept: 'application/pdf,image/*', onChange: handleAddSoporteLegalizacion }}
+                        inputProps={{ multiple: true, accept: 'application/pdf,image/*', onChange: conArchivosPreparados(handleAddSoporteLegalizacion) }}
                         archivos={soportesLegalizacionTemp}
                         resumen={`Archivos cargados: ${soportesLegalizacionTemp.length} (se unirán en un solo PDF al guardar)`}
                         onQuitar={handleRemoveSoporteLegalizacion}
@@ -8353,7 +8395,7 @@ const App = () => {
                 {newSolicitud.tipo === 'Comisión' && !editingSolicitudId && (
                   <ListaSoportesUI
                     titulo="Soportes de la comisión * (PDFs e imágenes — se unen en un solo PDF)"
-                    inputProps={{ multiple: true, accept: 'application/pdf,image/*', onChange: handleAddSoporteLegalizacion }}
+                    inputProps={{ multiple: true, accept: 'application/pdf,image/*', onChange: conArchivosPreparados(handleAddSoporteLegalizacion) }}
                     archivos={soportesLegalizacionTemp}
                     resumen={`Archivos cargados: ${soportesLegalizacionTemp.length} (se unirán en un solo PDF al guardar)`}
                     onQuitar={handleRemoveSoporteLegalizacion}
@@ -8364,7 +8406,7 @@ const App = () => {
                   <div className="flex flex-col gap-2 rounded-lg border border-solid border-border bg-background p-4">
                     <h3 className="m-0 flex items-center gap-1.5 text-sm font-bold text-[#6C63D1]"><Paperclip size={15} /> Agregar soporte(s) de los ítems nuevos / faltante</h3>
                     <p className="m-0 text-xs text-muted-foreground">Sube aquí los soportes de los ítems que agregaste arriba (o algún soporte que haya faltado al crear la solicitud). Al guardar se fusionan con el PDF ya consolidado en uno solo nuevo — no quedan sueltos.</p>
-                    <Input type="file" accept="application/pdf,image/*" multiple onChange={handleSeleccionarSoporteAdicionalEdicion} aria-label="Agregar soportes" className={claseInputArchivo} />
+                    <Input type="file" accept="application/pdf,image/*" multiple onChange={conArchivosPreparados(handleSeleccionarSoporteAdicionalEdicion)} aria-label="Agregar soportes" className={claseInputArchivo} />
                     {soportesAdicionalesEdicion.length > 0 && (
                       <div className="flex flex-col gap-1.5">
                         {soportesAdicionalesEdicion.map(soporte => (
@@ -8771,7 +8813,7 @@ const App = () => {
                       <ColaboradorAvatar foto={newResponsable.foto} nombre={newResponsable.nombre} size={64} />
                       <label className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'text-xs')}>
                         <Upload size={13} /> {newResponsable.foto ? 'Cambiar' : 'Subir foto'}
-                        <input type="file" accept="image/*" onChange={handleColaboradorFoto} className="hidden" />
+                        <input type="file" accept="image/*" onChange={conArchivosPreparados(handleColaboradorFoto, { revisar: false })} className="hidden" />
                       </label>
                       {newResponsable.foto && <Button variant="link" size="sm" onClick={() => handleColaboradorRemoveArchivo('foto')} className="h-auto p-0 text-xs text-destructive">Quitar foto</Button>}
                     </div>
@@ -8865,7 +8907,7 @@ const App = () => {
                             <Button variant="ghost" size="sm" onClick={() => handleColaboradorEliminarDocumento(campo)} className="text-destructive"><Trash2 size={14} /> Quitar</Button>
                           </div>
                         ) : (
-                          <Input type="file" accept=".pdf,image/*" aria-label={campo === 'documentoCedula' ? 'Cédula' : 'Pasaporte'} disabled={subiendoDocumento === campo} onChange={(e) => handleColaboradorDocumento(e, campo)} className={claseInputArchivo} />
+                          <Input type="file" accept=".pdf,image/*" aria-label={campo === 'documentoCedula' ? 'Cédula' : 'Pasaporte'} disabled={subiendoDocumento === campo} onChange={conArchivosPreparados((e) => handleColaboradorDocumento(e, campo))} className={claseInputArchivo} />
                         )}
                         {subiendoDocumento === campo && <p className="m-0 text-xs text-muted-foreground">Subiendo...</p>}
                       </div>
@@ -9262,7 +9304,7 @@ const App = () => {
               {/* CARGA DE SOPORTES */}
               <ListaSoportesUI
                 titulo="Soportes (Archivos)"
-                inputProps={{ multiple: true, onChange: handleAddSoporte }}
+                inputProps={{ multiple: true, onChange: conArchivosPreparados(handleAddSoporte) }}
                 archivos={soportesTemp}
                 resumen={`Archivos cargados: ${soportesTemp.length}`}
                 onQuitar={handleRemoveSoporte}
@@ -9651,11 +9693,10 @@ const App = () => {
                                   multiple
                                   disabled={agregandoSoporteId === r.id}
                                   className="hidden"
-                                  onChange={(e) => {
+                                  onChange={conArchivosPreparados((e) => {
                                     const files = e.target.files;
                                     if (files && files.length) handleAgregarSoporteHistorial(r, files);
-                                    e.target.value = '';
-                                  }}
+                                  })}
                                 />
                               </label>
                             )}
@@ -10607,7 +10648,7 @@ const App = () => {
               {/* CARGA DE SOPORTES */}
               <ListaSoportesUI
                 titulo="Soportes (PDF u otros archivos)"
-                inputProps={{ multiple: true, onChange: handleAddSoporteCuentaCobro }}
+                inputProps={{ multiple: true, onChange: conArchivosPreparados(handleAddSoporteCuentaCobro) }}
                 archivos={soportesCuentaCobroTemp}
                 resumen={`Archivos cargados: ${soportesCuentaCobroTemp.length}`}
                 onQuitar={handleRemoveSoporteCuentaCobro}
@@ -10808,7 +10849,7 @@ const App = () => {
             )}
 
             <CampoUI label={`Comprobante(s) de ${accion === 'ingreso' ? 'la consignación' : 'pago'} del banco *`} htmlFor="cps-comprobantes">
-              <Input id="cps-comprobantes" type="file" multiple onChange={handleSeleccionarComprobantePago} className={claseInputArchivo} />
+              <Input id="cps-comprobantes" type="file" multiple onChange={conArchivosPreparados(handleSeleccionarComprobantePago)} className={claseInputArchivo} />
               <p className="m-0 text-xs text-muted-foreground">Puedes adjuntar varios, ej. factura + soporte de pago.</p>
               <ArchivosElegidosUI archivos={confirmarPagoSolicitud.comprobantes || []} onQuitar={handleQuitarComprobantePago} />
             </CampoUI>
@@ -10875,7 +10916,7 @@ const App = () => {
               </CampoUI>
             </div>
             <CampoUI label="📎 Usar el/los mismo(s) comprobante(s) para todos (opcional)" htmlFor="cpp-todos">
-              <Input id="cpp-todos" type="file" multiple onChange={handleSeleccionarComprobantePresupuestoTodos} className={claseInputArchivo} />
+              <Input id="cpp-todos" type="file" multiple onChange={conArchivosPreparados(handleSeleccionarComprobantePresupuestoTodos)} className={claseInputArchivo} />
               <p className="m-0 text-xs text-muted-foreground">Puedes elegir varios.</p>
             </CampoUI>
             <div className="flex flex-col rounded-lg border border-solid border-border">
@@ -10888,7 +10929,7 @@ const App = () => {
                       <p className="m-0 text-xs text-muted-foreground">{formatMoney(item.netoAPagar, filtroPresupuesto.empresa)}</p>
                     </div>
                     <div className="flex min-w-[180px] flex-col items-end gap-1">
-                      <Input type="file" multiple aria-label={`Comprobante de ${item.nombre}`} onChange={(e) => handleSeleccionarComprobantePresupuestoItem(item.id, e)} className={cn(claseInputArchivo, 'h-auto py-1 text-xs')} />
+                      <Input type="file" multiple aria-label={`Comprobante de ${item.nombre}`} onChange={conArchivosPreparados((e) => handleSeleccionarComprobantePresupuestoItem(item.id, e))} className={cn(claseInputArchivo, 'h-auto py-1 text-xs')} />
                       {archivosItem.length > 0 ? (
                         <ArchivosElegidosUI archivos={archivosItem} onQuitar={(id) => handleQuitarComprobantePresupuestoItem(item.id, id)} compacto />
                       ) : (
@@ -10956,7 +10997,7 @@ const App = () => {
               </Select>
             </CampoUI>
             <CampoUI label="Comprobante(s) de pago del banco *" htmlFor="cpl-comprobantes">
-              <Input id="cpl-comprobantes" type="file" multiple onChange={handleSeleccionarComprobantePagoLoteReembolsos} className={claseInputArchivo} />
+              <Input id="cpl-comprobantes" type="file" multiple onChange={conArchivosPreparados(handleSeleccionarComprobantePagoLoteReembolsos)} className={claseInputArchivo} />
               <p className="m-0 text-xs text-muted-foreground">Aplica a todo el lote; puedes adjuntar varios.</p>
               <ArchivosElegidosUI archivos={confirmarPagoLoteReembolsos.comprobantes || []} onQuitar={handleQuitarComprobantePagoLoteReembolsos} />
             </CampoUI>
@@ -11072,7 +11113,7 @@ const App = () => {
                         <CampoUI label={idx === 0 ? 'Soporte factura *' : null} className="col-span-2 sm:col-span-1">
                           <label className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-9 w-full justify-start overflow-hidden text-xs', (linea.factura || linea.facturaExistente) ? 'text-success' : 'text-destructive')}>
                             <Paperclip size={14} /> <span className="truncate">{linea.factura ? linea.factura.nombre : (linea.facturaExistente ? 'Ya cargada · agregar otra' : 'Adjuntar factura *')}</span>
-                            <input type="file" className="hidden" onChange={(e) => handleSeleccionarFacturaLinea(linea.id, e)} />
+                            <input type="file" className="hidden" onChange={conArchivosPreparados((e) => handleSeleccionarFacturaLinea(linea.id, e))} />
                           </label>
                         </CampoUI>
                         <Button variant="ghost" size="icon" onClick={() => handleQuitarLineaFacturaTercero(linea.id)} disabled={lt.lineas.length === 1 || !!linea.gastoId} className="justify-self-end text-destructive" title="Quitar esta línea" aria-label="Quitar esta línea"><Trash2 size={16} /></Button>
@@ -11091,7 +11132,7 @@ const App = () => {
 
                 <ListaSoportesUI
                   titulo={editando ? 'Agregar otro soporte de pago (opcional — el que ya tiene el lote se conserva)' : 'Soporte de pago (recibo único del banco para todo el lote) *'}
-                  inputProps={{ multiple: true, onChange: handleSeleccionarComprobantePagoTercero }}
+                  inputProps={{ multiple: true, onChange: conArchivosPreparados(handleSeleccionarComprobantePagoTercero) }}
                   archivos={(lt.comprobantesPago || []).map(c => ({ ...c, tamaño: Math.round((c.data || '').length * 0.75) }))}
                   resumen="Se copia a cada uno de los gastos del lote (un solo archivo en el sistema)."
                   onQuitar={handleQuitarComprobantePagoTercero}
@@ -11347,6 +11388,15 @@ const App = () => {
           );
         })()}
 
+        {/* REVISAR FOTOS ANTES DE SUBIR — ver conArchivosPreparados */}
+        {revisionFotos && (
+          <RevisarFotos
+            archivos={revisionFotos.archivos}
+            onConfirmar={(finales) => { revisionFotos.resolver(finales); setRevisionFotos(null); }}
+            onCancelar={() => { revisionFotos.resolver(null); setRevisionFotos(null); }}
+          />
+        )}
+
         {/* MODAL VER SOPORTES */}
         {verSoportes && (
           <ModalUI titulo="📎 Soportes">
@@ -11390,6 +11440,15 @@ const App = () => {
               <div className="flex items-center justify-between gap-3">
                 <p className="m-0 flex min-w-0 items-center gap-1.5 truncate text-sm font-bold"><FileText size={15} className="shrink-0 text-primary" /> {previewSoporte.nombre}</p>
                 <div className="flex shrink-0 gap-2">
+                  {previewSoporte.tipo === 'imagen' && (
+                    <>
+                      <Button size="icon" variant="outline" className="size-8" onClick={() => setPreviewSoporte({ ...previewSoporte, giro: ((previewSoporte.giro || 0) + 270) % 360 })} aria-label="Girar a la izquierda" title="Girar a la izquierda"><RotateCcw size={14} /></Button>
+                      <Button size="icon" variant="outline" className="size-8" onClick={() => setPreviewSoporte({ ...previewSoporte, giro: ((previewSoporte.giro || 0) + 90) % 360 })} aria-label="Girar a la derecha" title="Girar a la derecha"><RotateCw size={14} /></Button>
+                      {puedeGirarSoportes && previewSoporte.bucketPath && !!previewSoporte.giro && (
+                        <Button size="sm" variant="success" disabled={previewSoporte.guardando} onClick={handleGuardarPreviewGirada}>{previewSoporte.guardando ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Guardar girada</Button>
+                      )}
+                    </>
+                  )}
                   {/* El archivo ya está cargado en memoria para la vista previa (object URL o
                       data URL) — se descarga directo desde ahí, sin volver a pedirlo a Storage. */}
                   <Button size="sm" onClick={() => { const link = document.createElement('a'); link.href = previewSoporte.url; link.download = previewSoporte.nombre; link.click(); }}><FileDown size={14} /> Descargar</Button>
@@ -11400,7 +11459,8 @@ const App = () => {
                 {previewSoporte.tipo === 'pdf' ? (
                   <iframe src={previewSoporte.url} title={previewSoporte.nombre} className="h-[75vh] w-full rounded-md border-0" />
                 ) : (
-                  <img src={previewSoporte.url} alt={previewSoporte.nombre} className="max-h-[75vh] max-w-full object-contain" />
+                  <img src={previewSoporte.url} alt={previewSoporte.nombre} className="max-h-[75vh] max-w-full object-contain transition-transform"
+                    style={previewSoporte.giro ? { transform: `rotate(${previewSoporte.giro}deg)${previewSoporte.giro % 180 ? ' scale(0.75)' : ''}` } : undefined} />
                 )}
               </div>
             </Card>
