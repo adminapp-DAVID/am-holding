@@ -43,7 +43,7 @@ const GRUPOS = [
 ];
 
 export default function TopNav({
-  active, onNavigate, role, userName, notifCount = 0,
+  active, onNavigate, role, roleLabel, userName, notifCount = 0,
   badges = {}, onBellClick, bell, onLogout, logoSrc,
 }) {
   const [open, setOpen] = useState(null);      // grupo desplegado
@@ -113,7 +113,7 @@ export default function TopNav({
           <div className="tn-dd">
             <button className="tn-user" onClick={() => setUserOpen(!userOpen)}>
               <span className="tn-avatar">{iniciales}</span>
-              <span className="tn-uinfo"><b>{userName}</b><small>{role}</small></span>
+              <span className="tn-uinfo"><b>{userName}</b><small>{roleLabel || role}</small></span>
               <ChevronDown size={14} />
             </button>
             {userOpen && (

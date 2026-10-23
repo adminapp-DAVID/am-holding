@@ -219,7 +219,7 @@ begin
     end if;
     -- A Administrador / Coordinadora (menos a quien hizo la acción y al dueño, que ya recibió la suya).
     for r in select id from public.usuarios
-             where rol in ('Administrador', 'Coordinadora Administrativa')
+             where rol in ('Administrador', 'Coordinadora Administrativa', 'Gerente Financiero')
                and id::text is distinct from v_usuario_id and id::text is distinct from v_duenio loop
       perform public.notificar(r.id, v_tipo,
         v_mensaje || case when v_duenio is distinct from v_usuario_id then coalesce(' · ' || v_duenio_nombre, '') else '' end, v_enlace, v_auditoria_id);
@@ -284,7 +284,7 @@ begin
 
   if cardinality(v_nombres) > 0 then
     v_mensaje := cardinality(v_nombres) || ' colaborador(es) con perfil incompleto: ' || array_to_string(v_nombres, ', ') || '.';
-    for a in select id from public.usuarios where rol in ('Administrador', 'Coordinadora Administrativa') loop
+    for a in select id from public.usuarios where rol in ('Administrador', 'Coordinadora Administrativa', 'Gerente Financiero') loop
       update public.notificaciones set mensaje = v_mensaje, created_at = now()
       where destinatario_id = a.id and tipo = 'perfil_resumen' and not leida;
       if not found then

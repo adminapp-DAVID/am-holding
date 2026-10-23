@@ -288,7 +288,7 @@ returns void language plpgsql security definer set search_path = public as $$
 declare r record;
 begin
   for r in select id from public.usuarios
-           where rol in ('Administrador', 'Coordinadora Administrativa') or (p_gerente and rol = 'Gerente') loop
+           where rol in ('Administrador', 'Coordinadora Administrativa', 'Gerente Financiero') or (p_gerente and rol = 'Gerente') loop
     perform public.notificar_politica(r.id, p_tipo, p_mensaje, p_entidad, p_unica);
   end loop;
 end;
