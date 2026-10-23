@@ -10,7 +10,7 @@ export const POLITICA_POR_DEFECTO = {
   contenido: '', pago_dia_semana: 5, corte_dia_semana: 4, corte_hora: '11:00', dia_mes_corrido: 15,
   devolucion_horas: 5, legal_general_dias: 10, legal_general_habiles: true, legal_nacional_dias: 15,
   legal_nacional_habiles: true, legal_internacional_dia: 30, legal_recordar_dias_antes: 2,
-  anticipo_min_horas: 48, notificaciones_activas: true,
+  anticipo_min_horas: 48, notificaciones_activas: true, vigente_desde: '2026-10-23T05:00:00Z',
 };
 
 // Fecha (AAAA-MM-DD) de un instante en hora Colombia.
@@ -37,6 +37,7 @@ export const textoPlazoLegalizacion = (dias, habiles) => `${dias} día${dias ===
 export const resumenPolitica = (p) => {
   const x = { ...POLITICA_POR_DEFECTO, ...(p || {}) };
   return [
+    ['Vigente desde', new Date(x.vigente_desde).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/Bogota' })],
     ['Pago de reembolsos', `${DIAS_SEMANA[x.pago_dia_semana - 1]}${x.dia_mes_corrido ? ` (si cae día ${x.dia_mes_corrido}, el lunes siguiente)` : ''}; si es festivo, el siguiente día hábil`],
     ['Corte para reembolsos', `${DIAS_SEMANA[x.corte_dia_semana - 1]} a las ${textoHora(x.corte_hora)}`],
     ['Plazo para corregir una devuelta', `${x.devolucion_horas} horas`],
