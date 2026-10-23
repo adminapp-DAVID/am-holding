@@ -9,7 +9,7 @@ import 'jspdf-autotable';
 import JSZip from 'jszip';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import * as XLSX from 'xlsx';
-import { construirExcelTraslado } from './traslados';
+import { construirExcelTraslado, destinoTraslado } from './traslados';
 import logoAmHolding from './assets/logos/logo-am-holding.png';
 import logoNoss from './assets/logos/logo-noss.png';
 import logoProGlobal from './assets/logos/logo-pro-global.png';
@@ -6674,9 +6674,9 @@ const App = () => {
   const registrosFinanzasTodos = [
     ...gastosUsuario.flatMap(g => {
       if (g.tipo !== 'Traslado') return [{ ...g, _origen: 'gasto' }];
-      const [empresaDestino, cuentaDestinoNombre] = g.cuentaDestino && g.cuentaDestino.includes(': ')
-        ? g.cuentaDestino.split(': ')
-        : [g.empresa, g.cuentaDestino];
+      // Destino "Empresa Externa — Cta: N — Detalle" queda como empresa "Empresa Externa" y cuenta
+      // "Cta: N — Detalle" (antes se partía en el ": " de "Cta:").
+      const { empresa: empresaDestino, cuenta: cuentaDestinoNombre } = destinoTraslado(g.cuentaDestino, g.empresa);
       // Cuando el traslado cruza de moneda (hoy en la práctica: ARKO en USD hacia/desde el
       // resto de la holding en COP), el valor que entra a la cuenta destino (valorDestino, en
       // la moneda del destino) es distinto del que sale (valor, en la moneda de origen) — el
@@ -7451,27 +7451,44 @@ const App = () => {
     XLSX.writeFile(wb, nombreArchivo);
   };
 
+  // Reporte de Finanzas: las mismas filas y el mismo orden del historial de Finanzas
+  // (registrosFinanzasTodos) — un Traslado sale en dos líneas, Salida (empresa/cuenta/valor de
+  // origen) y Entrada (empresa/cuenta/valor que recibe el destino).
   const downloadReporteFinanzas = () => {
-    const encabezados = ['Fecha', 'Movimiento', 'Empresa', 'Colaborador', 'CECO', 'Cuenta', 'Cuenta salida', 'Cuenta destino', 'Detalle', 'Valor', 'Moneda', 'Valor destino', 'Categoría', 'Estado', 'Tercero', 'Documento tercero', 'Observaciones', 'Soporte (link Drive)', 'Lote de pago'];
-    const filaGasto = (g) => [
-      g.fecha, g.tipo, g.empresa, nombreColaboradorReporte(g.responsableId, g.responsable), g.ceco || '',
-      g.cuenta || '', g.cuentaSalida || '', g.cuentaDestino || '', g.detalle || '',
-      parseFloat(g.valor) || 0,
-      // Traslado: el valor sale en la moneda de la empresa origen; el resto, en su moneda real.
-      g.tipo === 'Traslado' ? getMoneda(g.empresa) : (g.moneda || getMoneda(g.empresa)),
-      g.valorDestino !== null && g.valorDestino !== undefined && g.valorDestino !== '' ? parseFloat(g.valorDestino) || '' : '',
-      g.categoria || '', g.estado || '', g.terceroInfo?.nombre || '', g.terceroInfo?.dni || '',
-      g.observaciones || '', g.soporteDriveLink || '', g.lotePagoId || ''
-    ];
-    const filaIngreso = (i) => [
-      i.fecha, 'Ingreso', i.empresa, nombreColaboradorReporte(i.responsableId, i.responsable), i.ceco || '',
-      i.cuenta || '', '', '', i.detalle || '', parseFloat(i.valor) || 0, getMoneda(i.empresa), '',
-      i.categoria || '', i.estado || '', '', '', i.observaciones || '', i.soporteDriveLink || '', ''
-    ];
-    const filas = [
-      ...gastosUsuario.filter(g => enRangoReportes(g.fecha)).map(filaGasto),
-      ...ingresosUsuario.filter(i => enRangoReportes(i.fecha)).map(filaIngreso)
-    ].sort((a, b) => String(b[0]).localeCompare(String(a[0])));
+    const encabezados = ['Fecha', 'Registrado en el sistema', 'Movimiento', 'Lado', 'Colaborador', 'Empresa', 'CECO', 'Nombre CECO', 'Cuenta', 'Cuenta contraparte', 'Detalle', 'Valor', 'Moneda', 'Valor bruto', 'Deducción', 'Estado', 'Gasto neutro', 'Tercero', 'Documento tercero', 'Origen', 'Concepto de Presupuesto', 'Observaciones', 'Soportes', 'Soporte (link Drive)', 'Lote de pago'];
+    const registrado = (iso) => (iso ? new Date(iso).toLocaleString('es-CO', { timeZone: 'America/Bogota', dateStyle: 'short', timeStyle: 'short' }) : '');
+    const monedaFila = (r) => {
+      if (r.tipo === 'Traslado') {
+        const origen = gastosUsuario.find(g => g.id === r.id) || r;
+        return r._ladoTraslado === 'entrada' && r.empresa !== 'Empresa Externa' ? getMoneda(r.empresa) : getMoneda(origen.empresa);
+      }
+      const esPagoTercero = r.tipo === 'Pago a Tercero' || !!r.terceroInfo;
+      return (esPagoTercero || (r.tipo === 'Gasto' && r.moneda)) ? (r.moneda || getMoneda(r.empresa)) : getMoneda(r.empresa);
+    };
+    const origenFila = (r) => {
+      if (r.solicitudOrigenId) return 'Solicitudes';
+      if (r.observaciones === OBSERVACIONES_GASTO_DESDE_PRESUPUESTO) return 'Presupuesto';
+      if (r.observaciones && r.observaciones.startsWith(OBSERVACIONES_GASTO_LOTE_TERCERO)) return 'Factura de tercero (lote)';
+      return 'Finanzas';
+    };
+    const filas = registrosFinanzasTodos.filter(r => enRangoReportes(r.fecha)).map(r => {
+      const origen = r.tipo === 'Traslado' ? (gastosUsuario.find(g => g.id === r.id) || r) : r;
+      const destino = destinoTraslado(origen.cuentaDestino, origen.empresa);
+      const contraparte = r._ladoTraslado === 'salida' ? `${destino.empresa}: ${destino.cuenta || ''}`
+        : r._ladoTraslado === 'entrada' ? `${origen.empresa}: ${origen.cuentaSalida || ''}` : '';
+      return [
+        r.fecha, registrado(r.createdAt), r.tipo, r._ladoTraslado === 'salida' ? 'Salida' : r._ladoTraslado === 'entrada' ? 'Entrada' : '',
+        nombreColaboradorReporte(r.responsableId, r.responsableNombre || r.responsable), r.empresa || '',
+        r.ceco || '', cecosDB.find(c => c.codigo === r.ceco)?.nombre || '',
+        r.cuenta || '', contraparte, r.detalle || '',
+        parseFloat(r.valor) || 0, monedaFila(r),
+        r.valorBruto != null ? (parseFloat(r.valorBruto) || 0) : '', r.deduccionAplicada != null ? (parseFloat(r.deduccionAplicada) || 0) : '',
+        r.estado || '', r.neutro ? 'Sí' : '',
+        r.terceroInfo?.nombre || (r.terceroId ? todosTerceros.find(t => t.id === r.terceroId)?.nombre || '' : ''), r.terceroInfo?.dni || '',
+        origenFila(r), r.presupuestoItemId ? presupuestoItems.find(p => p.id === r.presupuestoItemId)?.nombre || '' : '',
+        r.observaciones || '', r.cantidadSoportes || 0, r.soporteDriveLink || '', r.lotePagoId || ''
+      ];
+    });
     if (filas.length === 0) {
       alert('No hay movimientos de Finanzas en el rango de fechas elegido.');
       return;
