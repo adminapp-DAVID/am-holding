@@ -2385,12 +2385,22 @@ const App = () => {
 
   const handleEliminarSoportePendiente = async (item) => {
     if (!window.confirm('¿Eliminar este recibo de tu bandeja?')) return;
-    await supabase.storage.from('soportes').remove([item.bucketPath]);
-    const { error } = await supabase.from('soportes_pendientes').delete().eq('id', item.id);
+    // Primero el registro (con .select: si RLS lo bloquea no hay error, solo 0 filas) y solo
+    // después el archivo — antes se borraba el archivo primero y, si la base no dejaba borrar
+    // el registro, el recibo volvía a aparecer sin su archivo.
+    const { data: borrados, error } = await supabase.from('soportes_pendientes').delete().eq('id', item.id).select('id');
     if (error) {
       console.error('Error eliminando recibo de la bandeja:', error);
       alert('❌ No se pudo eliminar: ' + error.message);
       return;
+    }
+    if (!borrados?.length) {
+      alert('❌ No se pudo eliminar: tu usuario no tiene permiso para borrar este recibo. Avísale a Administración.');
+      return;
+    }
+    if (item.bucketPath) {
+      const { error: errorArchivo } = await supabase.storage.from('soportes').remove([item.bucketPath]);
+      if (errorArchivo) console.warn('El recibo se quitó de la bandeja, pero su archivo no se pudo borrar:', errorArchivo);
     }
     setSoportesPendientes(soportesPendientes.filter(s => s.id !== item.id));
     setSeleccionPendientes(seleccionPendientes.filter(id => id !== item.id));
