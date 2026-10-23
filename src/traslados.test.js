@@ -8,7 +8,7 @@ describe('destinoTraslado', () => {
   it('lee los tres formatos de cuenta_destino', () => {
     expect(destinoTraslado('PRONOVA CAPITAL SAS: BBVA', 'AM')).toMatchObject({ externa: false, empresa: 'PRONOVA CAPITAL SAS', cuenta: 'BBVA' });
     expect(destinoTraslado('Bancolombia', 'AM')).toMatchObject({ externa: false, empresa: 'AM', cuenta: 'Bancolombia' });
-    expect(destinoTraslado('Empresa Externa — Cta: 123 — Banco X', 'AM')).toMatchObject({ externa: true, numero: '123', detalle: 'Banco X' });
+    expect(destinoTraslado('Empresa Externa — Cta: 123 — Banco X', 'AM')).toMatchObject({ externa: true, empresa: 'Empresa Externa', cuenta: 'Cta: 123 — Banco X', numero: '123', detalle: 'Banco X' });
   });
 });
 

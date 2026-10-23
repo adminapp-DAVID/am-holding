@@ -9,7 +9,7 @@ const EXTERNA = /^Empresa Externa — Cta: (.*?) — (.*)$/;
 export const destinoTraslado = (cuentaDestino, empresaOrigen) => {
   const texto = String(cuentaDestino || '');
   const ext = texto.match(EXTERNA);
-  if (ext) return { externa: true, empresa: 'Empresa Externa', cuenta: texto, numero: ext[1], detalle: ext[2] };
+  if (ext) return { externa: true, empresa: 'Empresa Externa', cuenta: `Cta: ${ext[1]} — ${ext[2]}`, numero: ext[1], detalle: ext[2] };
   if (texto.startsWith('Empresa Externa')) return { externa: true, empresa: 'Empresa Externa', cuenta: texto, numero: '', detalle: '' };
   const pos = texto.indexOf(': ');
   return pos >= 0
