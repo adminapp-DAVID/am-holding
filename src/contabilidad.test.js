@@ -13,7 +13,7 @@ const filas = filasContabilidad(registros);
 describe('contabilidad', () => {
   it('un traslado queda una sola vez, con su cuenta de salida', () => {
     expect(filas).toHaveLength(4);
-    expect(filas.find(f => f.tipo === 'Traslado')).toMatchObject({ cuenta: 'Bancolombia', empresa: 'AM' });
+    expect(filas.find(f => f.tipo === 'Traslado')).toMatchObject({ cuenta: 'Bancolombia', empresa: 'AM', conExcel: true, soportes: 1 });
     expect(filas.find(f => f.id === 9)).toMatchObject({ entidadTipo: 'ingreso', anio: '2025', mes: '2025-12' });
   });
 
@@ -23,7 +23,7 @@ describe('contabilidad', () => {
     expect(f({ cuenta: 'Davivienda' })).toEqual([2]);
     expect(f({ anio: '2026', mes: '10' })).toEqual([1, 3]);
     expect(f({ texto: 'nomina' })).toEqual([2]);
-    expect(f({ soloConSoportes: true })).toEqual([1, 9]);
+    expect(f({ soloConSoportes: true })).toEqual([1, 3, 9]);
     expect(f({ desde: '2026-10-01', hasta: '2026-10-05' })).toEqual([1]);
   });
 

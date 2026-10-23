@@ -58,9 +58,9 @@ const blobExcel = ({ rows, tipo }) => {
 };
 
 // Vista previa del Excel de la solicitud (no es un archivo guardado: se arma con sus datos).
-const TablaExcel = ({ rows, moneda, formatMoneyByMoneda }) => {
+const TablaExcel = ({ rows, moneda, monedaFila, formatMoneyByMoneda }) => {
   const ancho = Math.max(...rows.map(r => r.length), 1);
-  const celda = (v) => (typeof v === 'number' ? formatMoneyByMoneda(v, moneda) : v);
+  const celda = (v, i) => (typeof v === 'number' ? formatMoneyByMoneda(v, monedaFila?.[i] || moneda) : v);
   return (
     <div className="h-full w-full overflow-auto rounded-md border border-solid border-border bg-card">
       <table className="w-full border-collapse text-xs">
@@ -69,9 +69,9 @@ const TablaExcel = ({ rows, moneda, formatMoneyByMoneda }) => {
             r.length === 0 ? <tr key={i}><td colSpan={ancho} className="h-3" /></tr> : (
               <tr key={i} className={cn(i === 0 && 'bg-primary/15 font-bold', r.length === 1 && i > 0 && 'font-semibold')}>
                 {r.length === 1 ? (
-                  <td colSpan={ancho} className="border-0 border-b border-solid border-border px-2 py-1.5">{celda(r[0])}</td>
+                  <td colSpan={ancho} className="border-0 border-b border-solid border-border px-2 py-1.5">{celda(r[0], i)}</td>
                 ) : r.map((v, j) => (
-                  <td key={j} className={cn('border-0 border-b border-r border-solid border-border px-2 py-1.5 align-top', typeof v === 'number' && 'whitespace-nowrap text-right tabular-nums')}>{celda(v)}</td>
+                  <td key={j} className={cn('border-0 border-b border-r border-solid border-border px-2 py-1.5 align-top', typeof v === 'number' && 'whitespace-nowrap text-right tabular-nums')}>{celda(v, i)}</td>
                 ))}
               </tr>
             )
@@ -329,7 +329,7 @@ export function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excel
                   <IconoArchivo nombre={a.nombre_original} size={18} className="shrink-0" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold">{a.nombre_original}</span>
-                    <span className="block text-xs text-muted-foreground">{a.excel ? 'Excel de la solicitud' : a.generar ? 'Generado por el sistema' : `${tamano(a.tamano_kb)}${a.deSolicitud ? ' · de la solicitud' : ''}`}</span>
+                    <span className="block text-xs text-muted-foreground">{a.excel ? (a.excel.etiqueta || 'Excel de la solicitud') : a.generar ? 'Generado por el sistema' : `${tamano(a.tamano_kb)}${a.deSolicitud ? ' · de la solicitud' : ''}`}</span>
                   </span>
                 </button>
               ))}
@@ -387,7 +387,7 @@ export function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excel
               {!actual || grupoVacio ? (
                 <div className="flex flex-col items-center gap-2 text-muted-foreground"><FolderOpen size={40} /><span className="text-sm">{archivos === null ? 'Cargando documentos…' : 'Sin soportes para mostrar'}</span></div>
               ) : actual.excel ? (
-                <TablaExcel rows={actual.excel.rows} moneda={actual.excel.moneda} formatMoneyByMoneda={formatMoneyByMoneda} />
+                <TablaExcel rows={actual.excel.rows} moneda={actual.excel.moneda} monedaFila={actual.excel.monedaFila} formatMoneyByMoneda={formatMoneyByMoneda} />
               ) : cargandoArchivo && !urls[actual.id] ? (
                 <div className="flex items-center gap-2 text-muted-foreground"><Loader2 size={20} className="animate-spin" /> Cargando vista previa…</div>
               ) : tipoActual === 'pdf' && urls[actual.id] ? (
