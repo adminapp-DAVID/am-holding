@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge, estadoBadge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { DIAS_SEMANA, POLITICA_POR_DEFECTO, avisosPolitica, bloquesContenido, resumenPolitica } from './politicas';
+import { DIAS_SEMANA, POLITICA_POR_DEFECTO, avisosPolitica, bloquesContenido, fechaColombia, resumenPolitica } from './politicas';
 
 // Módulo Administrativo → 📘 Políticas Financieras. Todos leen las políticas; Administrador y
 // Coordinadora Administrativa tienen además el Gestor: los valores que usa la base para calcular
@@ -49,7 +49,7 @@ const PoliticasView = ({ user, politica, onPoliticaGuardada, solicitudes, nombre
   const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
-    if (politica) setForm({ ...POLITICA_POR_DEFECTO, ...politica, corte_hora: String(politica.corte_hora || '11:00').slice(0, 5) });
+    if (politica) setForm({ ...POLITICA_POR_DEFECTO, ...politica, corte_hora: String(politica.corte_hora || '11:00').slice(0, 5), vigente_desde: fechaColombia(politica.vigente_desde || POLITICA_POR_DEFECTO.vigente_desde) });
   }, [politica]);
 
   const set = (campo, valor) => setForm(f => ({ ...f, [campo]: valor }));
@@ -58,6 +58,8 @@ const PoliticasView = ({ user, politica, onPoliticaGuardada, solicitudes, nombre
   const guardar = async () => {
     setGuardando(true);
     const cambios = Object.fromEntries(CAMPOS_EDITABLES.map(k => [k, form[k]]));
+    // En pantalla es una fecha; se guarda como el inicio de ese día en hora Colombia.
+    cambios.vigente_desde = `${form.vigente_desde}T00:00:00-05:00`;
     const { data, error } = await supabase.from('politicas_financieras')
       .update({ ...cambios, updated_at: new Date().toISOString(), updated_by: user.nombre })
       .eq('id', 1).select('*');
@@ -130,6 +132,9 @@ const PoliticasView = ({ user, politica, onPoliticaGuardada, solicitudes, nombre
             </CardHeader>
             <CardContent className="flex flex-col gap-5">
               <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]">
+                <Campo label="Vigente desde" htmlFor="pol-vigencia" ayuda="Lo registrado antes no se marca como extemporáneo">
+                  <Input id="pol-vigencia" type="date" value={form.vigente_desde} onChange={(e) => e.target.value && set('vigente_desde', e.target.value)} />
+                </Campo>
                 <Campo label="Día de pago de reembolsos" htmlFor="pol-pago">
                   <Select id="pol-pago" value={form.pago_dia_semana} onChange={entero('pago_dia_semana', 1)}>
                     {DIAS_SEMANA.slice(0, 5).map((d, i) => <option key={d} value={i + 1}>{d}</option>)}

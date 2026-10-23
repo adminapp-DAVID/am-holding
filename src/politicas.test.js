@@ -18,7 +18,8 @@ describe('politicas', () => {
   it('resumen y horas', () => {
     expect(textoHora('11:00:00')).toBe('11:00 a. m.');
     expect(textoHora('15:30')).toBe('3:30 p. m.');
-    expect(resumenPolitica({})[1][1]).toBe('Jueves a las 11:00 a. m.');
+    expect(resumenPolitica({})[0][1]).toBe('23 de octubre de 2026');
+    expect(resumenPolitica({})[2][1]).toBe('Jueves a las 11:00 a. m.');
   });
 
   it('avisos por solicitud', () => {

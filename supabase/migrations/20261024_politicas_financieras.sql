@@ -41,6 +41,7 @@ create table if not exists public.politicas_financieras (
   legal_recordar_dias_antes int not null default 2 check (legal_recordar_dias_antes >= 0),
   anticipo_min_horas int not null default 48 check (anticipo_min_horas >= 0),
   notificaciones_activas boolean not null default true,
+  vigente_desde timestamptz not null default '2026-10-23 00:00:00-05',  -- desde cuándo aplica a lo que se registra
   updated_at timestamptz not null default now(),
   updated_by text
 );
@@ -71,7 +72,7 @@ revoke all on public.politicas_financieras from anon, authenticated;
 grant select on public.politicas_financieras to authenticated;
 grant update (contenido, pago_dia_semana, corte_dia_semana, corte_hora, dia_mes_corrido, devolucion_horas,
   legal_general_dias, legal_general_habiles, legal_nacional_dias, legal_nacional_habiles, legal_internacional_dia,
-  legal_recordar_dias_antes, anticipo_min_horas, notificaciones_activas, updated_at, updated_by)
+  legal_recordar_dias_antes, anticipo_min_horas, notificaciones_activas, vigente_desde, updated_at, updated_by)
   on public.politicas_financieras to authenticated;
 drop policy if exists politicas_select on public.politicas_financieras;
 create policy politicas_select on public.politicas_financieras for select to authenticated using (true);
@@ -79,6 +80,9 @@ drop policy if exists politicas_update on public.politicas_financieras;
 create policy politicas_update on public.politicas_financieras for update to authenticated
   using (public.current_rol() in ('Administrador', 'Coordinadora Administrativa'))
   with check (public.current_rol() in ('Administrador', 'Coordinadora Administrativa'));
+
+-- Tabla ya creada sin esta columna (ver 20261026_politicas_vigencia.sql).
+alter table public.politicas_financieras add column if not exists vigente_desde timestamptz not null default '2026-10-23 00:00:00-05';
 
 -- 2) Columnas nuevas ---------------------------------------------------------------------------
 alter table public.solicitudes add column if not exists tipo_anticipo text;           -- General | Viaje nacional | Viaje internacional
@@ -235,9 +239,12 @@ begin
     end if;
   end if;
 
-  -- Reembolso: día de pago según la hora de envío y el corte.
+  -- Reembolso: día de pago según la hora de envío y el corte. Los creados antes de que la
+  -- política entrara en vigencia (vigente_desde) no se marcan ni se les estima el pago.
   if new.tipo = 'Reembolso' then
-    if new.fecha_pago_estimada is null then
+    if v_creada < pf.vigente_desde then
+      new.fecha_pago_estimada := null; new.extemporanea := false;
+    elsif new.fecha_pago_estimada is null then
       new.fecha_pago_estimada := public.fecha_pago_reembolso(v_creada);
       new.extemporanea := public.hora_local(v_creada) > public.corte_semana(v_creada);
     end if;
@@ -247,6 +254,7 @@ begin
 
   -- Anticipo: anticipación mínima frente a la fecha en que se necesita el recurso.
   new.requiere_confirmacion_gerencia := new.tipo = 'Anticipo' and new.fecha_requerida is not null
+    and v_creada >= pf.vigente_desde
     and (new.fecha_requerida - public.hora_local(v_creada)::date) * 24 < pf.anticipo_min_horas;
 
   if tg_op = 'UPDATE' and new.estado is distinct from old.estado then
