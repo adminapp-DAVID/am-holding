@@ -9,6 +9,7 @@ import 'jspdf-autotable';
 import JSZip from 'jszip';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import * as XLSX from 'xlsx';
+import { construirExcelTraslado } from './traslados';
 import logoAmHolding from './assets/logos/logo-am-holding.png';
 import logoNoss from './assets/logos/logo-noss.png';
 import logoProGlobal from './assets/logos/logo-pro-global.png';
@@ -3774,6 +3775,13 @@ const App = () => {
       return s ? documentosSistemaSolicitud(s).map(d => ({ ...d, id: `${d.id}-origen`, deSolicitud: true })) : [];
     }
     const r = fila.registro;
+    // Traslado: Excel con la relación de sus campos, en la salida y en la entrada. La línea
+    // "entrada" del historial trae empresa/valor del destino; el Excel se arma con el registro real.
+    if (r && r.tipo === 'Traslado') {
+      const t = gastosUsuario.find(g => g.id === r.id) || r;
+      const excel = construirExcelTraslado(t, { getMoneda, nits: NIT_EMPRESAS, cecoNombre: cecosDB.find(c => c.codigo === t.ceco)?.nombre || '' });
+      return [{ id: 'excel-traslado', nombre_original: excel.nombreArchivo, excel }];
+    }
     if (r && (r.tipo === 'Pago a Tercero' || r.terceroInfo)) {
       const datos = { ...r, responsableNombre: colaboradoresPublico.find(c => c.id === r.responsableId)?.nombre || r.responsableNombre || '', moneda: r.moneda || getMoneda(r.empresa) };
       return [{ id: 'pdf-tercero', nombre_original: nombrePDFSolicitud({ ...datos, tipo: 'Pago a Tercero' }), generar: async () => construirPDFDePagoTercero(datos).output('blob') }];
@@ -9712,7 +9720,7 @@ const App = () => {
                                 solicitud de origen o la ficha del Pago a Tercero). */}
                             {r.soporteDriveLink ? (
                               <Button variant="ghost" size="sm" onClick={() => verSoportesFn(r)} className="text-success" title="Ver soporte en Drive"><Paperclip size={14} /> Drive</Button>
-                            ) : (r.cantidadSoportes > 0 || r.solicitudOrigenId || esPagoTercero) ? (
+                            ) : (r.cantidadSoportes > 0 || r.solicitudOrigenId || esPagoTercero || r.tipo === 'Traslado') ? (
                               <Button variant="ghost" size="sm" onClick={() => setVisorMovimiento(r)} className="text-success" title="Ver documentos (soportes y documentos del sistema)" aria-label="Ver documentos"><FolderOpen size={14} /> {r.cantidadSoportes || ''}</Button>
                             ) : (
                               <span className="px-2 text-xs text-muted-foreground">—</span>
