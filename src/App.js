@@ -23,6 +23,7 @@ import NotificacionesCampana from './NotificacionesCampana';
 import AuditoriaView from './AuditoriaView';
 import PoliticasView from './PoliticasView';
 import { rolDePermisos } from './roles';
+import { buscarReciboDuplicado } from './bandeja';
 import { POLITICA_POR_DEFECTO, TIPOS_ANTICIPO, anticipoFueraDePlazo, avisosPolitica } from './politicas';
 import ContabilidadView, { VisorSoportes } from './ContabilidadView';
 import RevisarFotos from './components/RevisarFotos';
@@ -2346,6 +2347,15 @@ const App = () => {
     if (!(nuevoSoportePendiente.descripcion || '').trim()) {
       alert('Escribe "Por concepto de" (es obligatorio)');
       return;
+    }
+    // ¿Ya se subió este mismo recibo? (en la bandeja, enviado en una solicitud o ya pagado)
+    const repetido = buscarReciboDuplicado(nuevoSoportePendiente, [...soportesPendientes, ...soportesEnviados], parsearMonto);
+    if (repetido) {
+      const sol = repetido.solicitudId ? solicitudes.find(x => x.id === repetido.solicitudId) : null;
+      const donde = !sol ? 'ya está en tu bandeja'
+        : ['Pagado', 'Legalizado'].includes(sol.estado) ? `ya fue PAGADO en el ${sol.tipo} del ${sol.fecha}`
+        : `ya está enviado en el ${sol.tipo} del ${sol.fecha} (${sol.estado})`;
+      if (!window.confirm(`⚠️ Este recibo parece repetido: ${donde}.\n\n${repetido.fecha} · ${repetido.proveedor || 'sin proveedor'} · ${formatMoneyByMoneda(repetido.valor, newSolicitud.moneda)}${repetido.descripcion ? ` · ${repetido.descripcion}` : ''}\n\n¿Subirlo de todas formas?`)) return;
     }
     if (!confirmarMontos([{ etiqueta: 'Valor', texto: nuevoSoportePendiente.valor }])) return;
     setSubiendoSoportePendiente(true);
@@ -8392,6 +8402,11 @@ const App = () => {
                                   <span className="text-muted-foreground">{r.fecha}</span>
                                   <span>{r.proveedor || '—'}</span>
                                   <span className="text-muted-foreground">{r.descripcion}</span>
+                                  {cerrada({ solicitud: sol }) && (
+                                    <Badge variant="success" className="text-[0.6rem]" title="Este recibo ya se pagó: no lo vuelvas a montar">
+                                      ✅ Pagado{sol.aprobadoAt ? ` ${new Date(sol.aprobadoAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'America/Bogota' })}` : ''}
+                                    </Badge>
+                                  )}
                                   <span className="ml-auto font-semibold">{formatMoneyByMoneda(r.valor, monedaDeSolicitud(sol))}</span>
                                 </li>
                               ))}
