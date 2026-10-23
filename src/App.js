@@ -399,6 +399,11 @@ const App = () => {
 
   const formatMoney = (valor, empresa) => formatMoneyByMoneda(valor, getMoneda(empresa));
 
+  // Hora de registro en el sistema (hora Colombia), ej. "3:45 p. m.". Vacío en registros sin created_at.
+  const horaRegistro = (createdAt) => (createdAt
+    ? new Date(createdAt).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Bogota' })
+    : '');
+
   // Traslado: la Cuenta Destino se guarda como "EMPRESA: CUENTA" cuando cruza a otra empresa
   // (ver el desplegable "Cuenta Destino" del formulario), o solo el nombre de la cuenta cuando
   // el destino es la misma empresa de origen. Esta función resuelve la empresa del destino en
@@ -1459,6 +1464,8 @@ const App = () => {
   const solicitudDBToLocal = (row) => ({
     id: row.id,
     fecha: row.fecha,
+    // Fecha y hora en que se registró en el sistema (la "fecha" de arriba la elige quien solicita).
+    createdAt: row.created_at || null,
     tipo: row.tipo,
     valor: row.valor,
     totalCalculado: row.total_calculado,
@@ -1516,7 +1523,7 @@ const App = () => {
       // aprobado_por_id (Sección 19), hay 3 FKs de solicitudes hacia usuarios. Sin indicar
       // por cuál columna se hace el embed, PostgREST no sabe cuál usar y el select entero
       // falla con "more than one relationship was found" (deja el historial vacío).
-      .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, lote_pago_id, motivo_devolucion, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
+      .select('id, created_at, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, lote_pago_id, motivo_devolucion, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -3495,7 +3502,7 @@ const App = () => {
       yPos += 15;
 
       doc.setFontSize(10);
-      doc.text(`Fecha: ${s.fecha}`, 20, yPos);
+      doc.text(`Fecha: ${s.fecha}${s.createdAt ? ` · registrada ${horaRegistro(s.createdAt)}` : ''}`, 20, yPos);
       doc.text(`Colaborador: ${s.responsableNombre}`, pageWidth / 2, yPos);
       yPos += 8;
       doc.text(`Empresa: ${empresaSolicitudTexto(s)}`, 20, yPos);
@@ -3794,7 +3801,7 @@ const App = () => {
     let s = solicitudes.find(x => x.id === solicitudId);
     if (!s) {
       const { data } = await supabase.from('solicitudes')
-        .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, anticipo_ids, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
+        .select('id, created_at, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, anticipo_ids, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
         .eq('id', solicitudId).maybeSingle();
       if (!data) return null;
       s = solicitudDBToLocal(data);
@@ -5051,7 +5058,7 @@ const App = () => {
   const handleVerSolicitudOrigen = async (solicitudId) => {
     const { data, error } = await supabase
       .from('solicitudes')
-      .select('id, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, lote_pago_id, motivo_devolucion, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
+      .select('id, created_at, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, lote_pago_id, motivo_devolucion, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
       .eq('id', solicitudId)
       .maybeSingle();
     if (error) { console.error('Error cargando la solicitud de origen:', error); alert('❌ No se pudo abrir la solicitud: ' + error.message); return; }
@@ -7849,7 +7856,7 @@ const App = () => {
                     <TableBody>
                       {ultimasSolicitudes.map(s => (
                         <TableRow key={s.id}>
-                          <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{s.fecha}</TableCell>
+                          <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{s.fecha}{s.createdAt && <div className="text-[0.65rem]" title="Hora de registro en el sistema">🕒 {horaRegistro(s.createdAt)}</div>}</TableCell>
                           {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <TableCell className="text-xs"><div className="flex items-center gap-2"><ColaboradorAvatar foto={colaboradoresPublico.find(c => c.id === s.responsableId)?.foto_url} nombre={colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre} size={22} />{colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—'}</div></TableCell>}
                           <TableCell className="whitespace-nowrap font-bold text-primary">{s.tipo}</TableCell>
                           <TableCell className="whitespace-nowrap text-right font-bold text-success">{formatMoneyByMoneda((s.tipo === 'Pago a Tercero' || esTipoValorUnico(s.tipo)) ? (parseFloat(s.valor) || 0) : (s.totalCalculado || 0), monedaDeSolicitud(s))}</TableCell>
@@ -8647,7 +8654,7 @@ const App = () => {
                             )}
                           </TableCell>
                         )}
-                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{s.fecha}</TableCell>
+                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{s.fecha}{s.createdAt && <div className="text-[0.65rem]" title="Hora de registro en el sistema">🕒 {horaRegistro(s.createdAt)}</div>}</TableCell>
                         {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <TableCell className="text-xs"><div className="flex items-center gap-2"><ColaboradorAvatar foto={colaboradoresPublico.find(c => c.id === s.responsableId)?.foto_url} nombre={colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre} size={22} />{colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—'}</div></TableCell>}
                         <TableCell className="whitespace-nowrap font-bold text-primary">{s.tipo}<div className={cn('text-[0.65rem] font-semibold', s.empresa ? 'text-muted-foreground' : 'text-[#C4622D]')} title={s.empresa ? 'Empresa que pagó' : 'La empresa que paga se define al marcarla Pagado'}>{empresaSolicitudTexto(s)}</div></TableCell>
                         <TableCell className="min-w-[200px] max-w-[280px] text-muted-foreground">
