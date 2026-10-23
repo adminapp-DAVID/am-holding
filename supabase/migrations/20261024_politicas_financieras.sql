@@ -93,6 +93,11 @@ alter table public.solicitudes add column if not exists extemporanea boolean not
 alter table public.solicitudes add column if not exists devuelta_limite timestamptz;
 alter table public.solicitudes add column if not exists devuelta_vencida boolean not null default false;
 alter table public.solicitudes add column if not exists legalizar_antes date;         -- Anticipo pagado
+-- Excepción a la política aprobada por Administración (ver 20261027_politicas_excepcion.sql).
+alter table public.solicitudes add column if not exists excepcion_politica boolean not null default false;
+alter table public.solicitudes add column if not exists excepcion_motivo text;
+alter table public.solicitudes add column if not exists excepcion_por text;
+alter table public.solicitudes add column if not exists excepcion_at timestamptz;
 
 -- Para no repetir un mismo recordatorio (a qué solicitud se refiere la notificación).
 alter table public.notificaciones add column if not exists entidad_id text;
@@ -229,6 +234,7 @@ begin
   if tg_op = 'INSERT' then
     v_creada := coalesce(new.created_at, now());
     new.devuelta_limite := null; new.devuelta_vencida := false; new.legalizar_antes := null;
+    new.excepcion_politica := false; new.excepcion_motivo := null; new.excepcion_por := null; new.excepcion_at := null;
   else
     v_creada := coalesce(old.created_at, now());
     -- Lo calculado no lo cambia la app (solo la base, o la revisión automática).
@@ -236,6 +242,8 @@ begin
       new.devuelta_limite := old.devuelta_limite; new.devuelta_vencida := old.devuelta_vencida;
       new.legalizar_antes := old.legalizar_antes; new.fecha_pago_estimada := old.fecha_pago_estimada;
       new.extemporanea := old.extemporanea;
+      new.excepcion_politica := old.excepcion_politica; new.excepcion_motivo := old.excepcion_motivo;
+      new.excepcion_por := old.excepcion_por; new.excepcion_at := old.excepcion_at;
     end if;
   end if;
 
@@ -254,7 +262,7 @@ begin
 
   -- Anticipo: anticipación mínima frente a la fecha en que se necesita el recurso.
   new.requiere_confirmacion_gerencia := new.tipo = 'Anticipo' and new.fecha_requerida is not null
-    and v_creada >= pf.vigente_desde
+    and v_creada >= pf.vigente_desde and not coalesce(new.excepcion_politica, false)
     and (new.fecha_requerida - public.hora_local(v_creada)::date) * 24 < pf.anticipo_min_horas;
 
   if tg_op = 'UPDATE' and new.estado is distinct from old.estado then
