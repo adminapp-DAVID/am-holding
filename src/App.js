@@ -21,6 +21,8 @@ import DatosBancariosView from './DatosBancariosView';
 import ExportadorPABView from './ExportadorPABView';
 import NotificacionesCampana from './NotificacionesCampana';
 import AuditoriaView from './AuditoriaView';
+import PoliticasView from './PoliticasView';
+import { POLITICA_POR_DEFECTO, TIPOS_ANTICIPO, anticipoFueraDePlazo, avisosPolitica } from './politicas';
 import ContabilidadView, { VisorSoportes } from './ContabilidadView';
 import RevisarFotos from './components/RevisarFotos';
 import { esImagen, prepararArchivos } from './archivos';
@@ -614,7 +616,9 @@ const App = () => {
   // exponer cédula, banco ni documentos de nadie (eso solo lo ve Admin/Coordinadora o el dueño).
   const [colaboradoresPublico, setColaboradoresPublico] = useState([]);
   const [editingResponsableOrigen, setEditingResponsableOrigen] = useState('responsables'); // 'responsables' | 'admin' — de qué lista viene el registro que se está editando
-  const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', valorAnticipoOriginal: '', anticipoIds: [], detalle: '', empresa: '', documentos: [], moneda: 'COP', terceroId: '', terceroNombre: '', terceroDni: '', terceroTipoDocumento: '', terceroPaisOrigen: '', terceroBanco: '', terceroCodigoBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false });
+  // Políticas Financieras (fila única de public.politicas_financieras); null mientras carga.
+  const [politicaFinanciera, setPoliticaFinanciera] = useState(null);
+  const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', valorAnticipoOriginal: '', anticipoIds: [], detalle: '', empresa: '', documentos: [], moneda: 'COP', tipoAnticipo: 'General', fechaRequerida: '', terceroId: '', terceroNombre: '', terceroDni: '', terceroTipoDocumento: '', terceroPaisOrigen: '', terceroBanco: '', terceroCodigoBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false });
   // Edición de una Solicitud ya guardada — solo se permite mientras está en estado Pendiente
   // (quien la creó, o Administrador/Coordinadora Administrativa). Reutiliza el mismo formulario
   // "Nueva Solicitud" de arriba: al editar, se precarga newSolicitud con los datos existentes y
@@ -1468,6 +1472,16 @@ const App = () => {
     createdAt: row.created_at || null,
     tipo: row.tipo,
     valor: row.valor,
+    // Políticas Financieras: tipo_anticipo y fecha_requerida los llena quien pide el anticipo; el
+    // resto lo calcula la base (20261024_politicas_financieras.sql).
+    tipoAnticipo: row.tipo_anticipo || 'General',
+    fechaRequerida: row.fecha_requerida || '',
+    requiereConfirmacionGerencia: !!row.requiere_confirmacion_gerencia,
+    fechaPagoEstimada: row.fecha_pago_estimada || '',
+    extemporanea: !!row.extemporanea,
+    devueltaLimite: row.devuelta_limite || null,
+    devueltaVencida: !!row.devuelta_vencida,
+    legalizarAntes: row.legalizar_antes || '',
     totalCalculado: row.total_calculado,
     valorAnticipoOriginal: row.valor_anticipo_original || '',
     // "anticipo_ids" (lista) es la fuente de verdad desde que Legalización admite varios
@@ -1523,7 +1537,7 @@ const App = () => {
       // aprobado_por_id (Sección 19), hay 3 FKs de solicitudes hacia usuarios. Sin indicar
       // por cuál columna se hace el embed, PostgREST no sabe cuál usar y el select entero
       // falla con "more than one relationship was found" (deja el historial vacío).
-      .select('id, created_at, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, lote_pago_id, motivo_devolucion, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
+      .select('id, created_at, fecha, tipo, valor, total_calculado, tipo_anticipo, fecha_requerida, requiere_confirmacion_gerencia, fecha_pago_estimada, extemporanea, devuelta_limite, devuelta_vencida, legalizar_antes, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, lote_pago_id, motivo_devolucion, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -2077,6 +2091,14 @@ const App = () => {
     await cargarTerceros();
   };
 
+  // Si la tabla aún no existe (SQL sin correr) se usan los valores por defecto, para no frenar el
+  // formulario de anticipos.
+  const cargarPoliticaFinanciera = async () => {
+    const { data, error } = await supabase.from('politicas_financieras').select('*').eq('id', 1).maybeSingle();
+    if (error) console.error('Error cargando políticas financieras:', error);
+    setPoliticaFinanciera(data || { ...POLITICA_POR_DEFECTO, sinTabla: true });
+  };
+
   // Trae el listado de usuarios y de solicitudes apenas hay sesión activa (login o restauración de sesión).
   useEffect(() => {
     if (user) {
@@ -2091,6 +2113,7 @@ const App = () => {
       cargarCecos();
       cargarTerceros();
       cargarTodosTerceros();
+      cargarPoliticaFinanciera();
     } else {
       setUsuariosDB([]);
       setSolicitudes([]);
@@ -2179,6 +2202,7 @@ const App = () => {
     if (currentView === 'presupuesto') { cargarTodosTerceros(); cargarPresupuestoItems(); cargarPresupuestoAnual(); cargarPresupuestoOverrides(); cargarPresupuestoAprobaciones(); cargarCuentasCobro(); }
     if (currentView === 'responsables') { cargarUsuarios(); cargarColaboradoresPublico(); }
     if (currentView === 'datosBancarios' || currentView === 'auditoria') { cargarUsuarios(); cargarTodosTerceros(); }
+    if (currentView === 'politicas') { cargarPoliticaFinanciera(); cargarSolicitudes(); }
     if (currentView === 'pagosPAB') { cargarUsuarios(); cargarTodosTerceros(); cargarSolicitudes(); cargarCuentasCobro(); cargarPresupuestoItems(); cargarPresupuestoOverrides(); cargarPresupuestoAprobaciones(); cargarLotesPago(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentView]);
@@ -2500,6 +2524,8 @@ const App = () => {
       empresa: s.empresa || '',
       documentos: s.documentos || [],
       moneda: monedaDeSolicitud(s),
+      tipoAnticipo: s.tipoAnticipo || 'General',
+      fechaRequerida: s.fechaRequerida || '',
       terceroId: s.terceroId || '',
       terceroNombre: s.terceroInfo?.nombre || '',
       terceroDni: s.terceroInfo?.dni || '',
@@ -2533,6 +2559,8 @@ const App = () => {
       empresa: 'AM SPORTS GROUP SAS',
       documentos: [],
       moneda: 'COP',
+      tipoAnticipo: 'General',
+      fechaRequerida: '',
       terceroId: '',
       terceroNombre: '',
       terceroDni: '',
@@ -2594,6 +2622,21 @@ const App = () => {
     if (esTipoValorUnico(newSolicitud.tipo) && parsearMonto(newSolicitud.valor) <= 0) {
       alert(newSolicitud.tipo === 'Comisión' ? 'El valor de la comisión debe ser mayor a cero' : 'El valor solicitado debe ser mayor a cero');
       return;
+    }
+
+    // Anticipo (Políticas Financieras): se pide con la anticipación mínima. Fuera de plazo se
+    // permite, pero queda sujeto a confirmación de gerencia (la base lo marca y avisa).
+    if (newSolicitud.tipo === 'Anticipo') {
+      if (!newSolicitud.fechaRequerida) {
+        alert('Indica la fecha en que necesitas el recurso');
+        return;
+      }
+      const creadaEn = (editingSolicitudId && solicitudes.find(x => x.id === editingSolicitudId)?.createdAt) || new Date();
+      const minHoras = politicaFinanciera?.anticipo_min_horas ?? POLITICA_POR_DEFECTO.anticipo_min_horas;
+      if (anticipoFueraDePlazo(newSolicitud.fechaRequerida, creadaEn, minHoras)
+        && !window.confirm(`Según las Políticas Financieras, los anticipos se piden con mínimo ${minHoras} horas de anticipación.\n\nEsta solicitud queda fuera de plazo: deberá confirmarla gerencia y quedará sujeta a la disponibilidad presupuestaria.\n\n¿Enviarla de todas formas?`)) {
+        return;
+      }
     }
 
     // Comisión: el soporte (cuenta de cobro, factura, liquidación…) es obligatorio al crearla.
@@ -2743,6 +2786,8 @@ const App = () => {
         anticipo_ids: anticiposVinculados.map(a => a.id),
         valor_anticipo_original: newSolicitud.tipo === 'Legalización' ? (parsearMonto(newSolicitud.valorAnticipoOriginal) || null) : null,
         moneda_pago: newSolicitud.moneda || 'COP',
+        tipo_anticipo: newSolicitud.tipo === 'Anticipo' ? (newSolicitud.tipoAnticipo || 'General') : null,
+        fecha_requerida: newSolicitud.tipo === 'Anticipo' ? (newSolicitud.fechaRequerida || null) : null,
         tercero_info: terceroInfoFinal,
         tercero_id: terceroIdFinal,
         estado: estadoAlGuardar,
@@ -3774,6 +3819,8 @@ const App = () => {
     return docs;
   };
   const abrirVisorSolicitud = (s) => setVisorSolicitud(s);
+  // Un anticipo ya tiene una Legalización presentada (deja de correr su plazo de legalización).
+  const anticipoYaLegalizado = (anticipoId) => solicitudes.some(l => l.tipo === 'Legalización' && (l.anticipoIds || []).includes(anticipoId));
 
   // PDF y Excel de la solicitud de origen de un movimiento de Finanzas (para el visor de
   // documentos en Finanzas y Contabilidad). Un Pago a Tercero registrado directo en Finanzas
@@ -3801,7 +3848,7 @@ const App = () => {
     let s = solicitudes.find(x => x.id === solicitudId);
     if (!s) {
       const { data } = await supabase.from('solicitudes')
-        .select('id, created_at, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, anticipo_ids, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
+        .select('id, created_at, fecha, tipo, valor, total_calculado, tipo_anticipo, fecha_requerida, requiere_confirmacion_gerencia, fecha_pago_estimada, extemporanea, devuelta_limite, devuelta_vencida, legalizar_antes, valor_anticipo_original, anticipo_id, anticipo_ids, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
         .eq('id', solicitudId).maybeSingle();
       if (!data) return null;
       s = solicitudDBToLocal(data);
@@ -5058,7 +5105,7 @@ const App = () => {
   const handleVerSolicitudOrigen = async (solicitudId) => {
     const { data, error } = await supabase
       .from('solicitudes')
-      .select('id, created_at, fecha, tipo, valor, total_calculado, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, lote_pago_id, motivo_devolucion, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
+      .select('id, created_at, fecha, tipo, valor, total_calculado, tipo_anticipo, fecha_requerida, requiere_confirmacion_gerencia, fecha_pago_estimada, extemporanea, devuelta_limite, devuelta_vencida, legalizar_antes, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, lote_pago_id, motivo_devolucion, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
       .eq('id', solicitudId)
       .maybeSingle();
     if (error) { console.error('Error cargando la solicitud de origen:', error); alert('❌ No se pudo abrir la solicitud: ' + error.message); return; }
@@ -7742,6 +7789,16 @@ const App = () => {
           />
         )}
 
+        {currentView === 'politicas' && (
+          <PoliticasView
+            user={user}
+            politica={politicaFinanciera?.sinTabla ? null : politicaFinanciera}
+            onPoliticaGuardada={setPoliticaFinanciera}
+            solicitudes={solicitudesUsuario}
+            nombreColaborador={(s) => colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—'}
+          />
+        )}
+
         {currentView === 'auditoria' && (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
           <AuditoriaView usuarios={usuariosDB} onNavegar={setCurrentView} />
         )}
@@ -8292,6 +8349,23 @@ const App = () => {
                       <InputMoneda id="sol-valor" placeholder={`${newSolicitud.tipo === 'Comisión' ? 'Valor de la Comisión' : 'Valor Solicitado'} (${newSolicitud.moneda})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} />
                     </CampoUI>
                   )}
+                  {/* Políticas Financieras: el tipo define el plazo de legalización y la fecha,
+                      si se pidió con la anticipación mínima. */}
+                  {newSolicitud.tipo === 'Anticipo' && (
+                    <>
+                      <CampoUI label="Tipo de anticipo" htmlFor="sol-tipo-anticipo">
+                        <Select id="sol-tipo-anticipo" value={newSolicitud.tipoAnticipo || 'General'} onChange={(e) => setNewSolicitud({...newSolicitud, tipoAnticipo: e.target.value})}>
+                          {TIPOS_ANTICIPO.map(t => <option key={t} value={t}>{t}</option>)}
+                        </Select>
+                      </CampoUI>
+                      <CampoUI label="¿Cuándo necesitas el recurso? *" htmlFor="sol-fecha-requerida">
+                        <Input id="sol-fecha-requerida" type="date" value={newSolicitud.fechaRequerida || ''} onChange={(e) => setNewSolicitud({...newSolicitud, fechaRequerida: e.target.value})} />
+                        {newSolicitud.fechaRequerida && anticipoFueraDePlazo(newSolicitud.fechaRequerida, (editingSolicitudId && solicitudes.find(x => x.id === editingSolicitudId)?.createdAt) || new Date(), politicaFinanciera?.anticipo_min_horas ?? POLITICA_POR_DEFECTO.anticipo_min_horas) && (
+                          <span className="text-xs font-semibold text-[#8A6A0C]">⚠️ Menos de {politicaFinanciera?.anticipo_min_horas ?? POLITICA_POR_DEFECTO.anticipo_min_horas} h de anticipación: requiere confirmación de gerencia</span>
+                        )}
+                      </CampoUI>
+                    </>
+                  )}
                   {newSolicitud.tipo === 'Legalización' && (
                     <CampoUI label={`Valor Anticipo Original (${newSolicitud.moneda})`} htmlFor="sol-anticipo">
                       <InputMoneda id="sol-anticipo" placeholder={`Valor Anticipo Original (${newSolicitud.moneda})`} disabled={newSolicitud.anticipoIds.length > 0} value={newSolicitud.valorAnticipoOriginal} onChange={(e) => setNewSolicitud({...newSolicitud, valorAnticipoOriginal: e.target.value})} />
@@ -8673,7 +8747,7 @@ const App = () => {
                         )}
                         <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{s.fecha}{s.createdAt && <div className="text-[0.65rem]" title="Hora de registro en el sistema">🕒 {horaRegistro(s.createdAt)}</div>}</TableCell>
                         {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <TableCell className="text-xs"><div className="flex items-center gap-2"><ColaboradorAvatar foto={colaboradoresPublico.find(c => c.id === s.responsableId)?.foto_url} nombre={colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre} size={22} />{colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—'}</div></TableCell>}
-                        <TableCell className="whitespace-nowrap font-bold text-primary">{s.tipo}<div className={cn('text-[0.65rem] font-semibold', s.empresa ? 'text-muted-foreground' : 'text-[#C4622D]')} title={s.empresa ? 'Empresa que pagó' : 'La empresa que paga se define al marcarla Pagado'}>{empresaSolicitudTexto(s)}</div></TableCell>
+                        <TableCell className="whitespace-nowrap font-bold text-primary">{s.tipo}<div className={cn('text-[0.65rem] font-semibold', s.empresa ? 'text-muted-foreground' : 'text-[#C4622D]')} title={s.empresa ? 'Empresa que pagó' : 'La empresa que paga se define al marcarla Pagado'}>{empresaSolicitudTexto(s)}</div>{avisosPolitica(s, { legalizada: anticipoYaLegalizado(s.id) }).map(a => <Badge key={a.clave} variant={a.tono} className="mt-1 block w-fit whitespace-nowrap text-[0.6rem] font-semibold">{a.texto}</Badge>)}</TableCell>
                         <TableCell className="min-w-[200px] max-w-[280px] text-muted-foreground">
                           <TextoResumido texto={s.detalle} />
                           {s.tipo === 'Pago a Tercero' && s.terceroInfo?.nombre && (
