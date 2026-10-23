@@ -68,19 +68,31 @@ export const bloquesContenido = (contenido) => String(contenido || '').split('\n
 export const avisosPolitica = (s, { legalizada = false, ahora = new Date() } = {}) => {
   const avisos = [];
   const fechaCorta = (f) => new Date(`${f}T12:00:00Z`).toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+  const abierta = ['Pendiente', 'Aprobado', 'Devuelto'].includes(s.estado);
+  // excepcionable: Administración puede aprobar una excepción (aplicar_excepcion_politica).
   if (s.estado === 'Devuelto' && s.devueltaLimite && !s.devueltaVencida) {
     const limite = new Date(s.devueltaLimite);
     const hora = limite.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Bogota' });
     avisos.push({ clave: 'devuelta', tono: limite < ahora ? 'destructive' : 'warning', texto: `⏰ Corregir antes de ${hora} · ${fechaCorta(fechaColombia(limite))}` });
   }
-  if (s.devueltaVencida && ['Devuelto', 'Pendiente', 'Aprobado'].includes(s.estado)) {
-    avisos.push({ clave: 'vencida', tono: 'destructive', texto: '⌛ Devuelta fuera de plazo · semana siguiente' });
-  }
-  if (s.tipo === 'Reembolso' && s.fechaPagoEstimada && ['Pendiente', 'Aprobado', 'Devuelto'].includes(s.estado)) {
-    avisos.push({ clave: 'pago', tono: s.extemporanea ? 'warning' : 'secondary', texto: `📅 Pago est. ${fechaCorta(s.fechaPagoEstimada)}${s.extemporanea ? ' · extemporáneo' : ''}` });
-  }
-  if (s.tipo === 'Anticipo' && s.requiereConfirmacionGerencia && ['Pendiente', 'Aprobado', 'Devuelto'].includes(s.estado)) {
-    avisos.push({ clave: 'gerencia', tono: 'warning', texto: '⚠️ Requiere confirmación de gerencia' });
+  if (s.excepcionPolitica) {
+    if (abierta || s.tipo === 'Reembolso') {
+      avisos.push({
+        clave: 'excepcion', tono: 'success',
+        texto: s.tipo === 'Reembolso' && s.fechaPagoEstimada ? `✅ Excepción · pago ${fechaCorta(s.fechaPagoEstimada)}` : '✅ Excepción aprobada',
+        detalle: `Excepción de ${s.excepcionPor || 'Administración'}${s.excepcionMotivo ? `: ${s.excepcionMotivo}` : ''}`,
+      });
+    }
+  } else {
+    if (s.devueltaVencida && abierta) {
+      avisos.push({ clave: 'vencida', tono: 'destructive', texto: '⌛ Devuelta fuera de plazo · semana siguiente', excepcionable: true });
+    }
+    if (s.tipo === 'Reembolso' && s.fechaPagoEstimada && abierta) {
+      avisos.push({ clave: 'pago', tono: s.extemporanea ? 'warning' : 'secondary', texto: `📅 Pago est. ${fechaCorta(s.fechaPagoEstimada)}${s.extemporanea ? ' · extemporáneo' : ''}`, excepcionable: !!s.extemporanea });
+    }
+    if (s.tipo === 'Anticipo' && s.requiereConfirmacionGerencia && abierta) {
+      avisos.push({ clave: 'gerencia', tono: 'warning', texto: '⚠️ Requiere confirmación de gerencia', excepcionable: true });
+    }
   }
   if (s.tipo === 'Anticipo' && s.estado === 'Pagado' && s.legalizarAntes && !legalizada) {
     const vencido = s.legalizarAntes < fechaColombia(ahora);

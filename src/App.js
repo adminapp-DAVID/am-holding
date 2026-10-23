@@ -1486,6 +1486,10 @@ const App = () => {
     devueltaLimite: row.devuelta_limite || null,
     devueltaVencida: !!row.devuelta_vencida,
     legalizarAntes: row.legalizar_antes || '',
+    excepcionPolitica: !!row.excepcion_politica,
+    excepcionMotivo: row.excepcion_motivo || '',
+    excepcionPor: row.excepcion_por || '',
+    excepcionAt: row.excepcion_at || null,
     totalCalculado: row.total_calculado,
     valorAnticipoOriginal: row.valor_anticipo_original || '',
     // "anticipo_ids" (lista) es la fuente de verdad desde que Legalización admite varios
@@ -1541,7 +1545,7 @@ const App = () => {
       // aprobado_por_id (Sección 19), hay 3 FKs de solicitudes hacia usuarios. Sin indicar
       // por cuál columna se hace el embed, PostgREST no sabe cuál usar y el select entero
       // falla con "more than one relationship was found" (deja el historial vacío).
-      .select('id, created_at, fecha, tipo, valor, total_calculado, tipo_anticipo, fecha_requerida, requiere_confirmacion_gerencia, fecha_pago_estimada, extemporanea, devuelta_limite, devuelta_vencida, legalizar_antes, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, lote_pago_id, motivo_devolucion, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
+      .select('id, created_at, fecha, tipo, valor, total_calculado, tipo_anticipo, fecha_requerida, requiere_confirmacion_gerencia, fecha_pago_estimada, extemporanea, devuelta_limite, devuelta_vencida, legalizar_antes, excepcion_politica, excepcion_motivo, excepcion_por, excepcion_at, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, lote_pago_id, motivo_devolucion, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -3824,6 +3828,17 @@ const App = () => {
   };
   const abrirVisorSolicitud = (s) => setVisorSolicitud(s);
   // Un anticipo ya tiene una Legalización presentada (deja de correr su plazo de legalización).
+  // Excepción a la política (Administración): la aplica la base (aplicar_excepcion_politica), que
+  // valida el rol, fija el próximo día de pago del reembolso y avisa al colaborador.
+  const aplicarExcepcionPolitica = async (s) => {
+    const motivo = window.prompt(`Excepción a la política para ${s.tipo}${s.detalle ? ` (${s.detalle})` : ''}.\n\n${s.tipo === 'Reembolso' ? 'Se pagará el próximo día de pago (hoy, si hoy es día de pago).' : 'Queda confirmada sin requerir confirmación de gerencia.'}\n\nMotivo:`);
+    if (motivo === null) return;
+    if (!motivo.trim()) { alert('Escribe el motivo de la excepción'); return; }
+    const { data, error } = await supabase.rpc('aplicar_excepcion_politica', { p_solicitud: String(s.id), p_motivo: motivo.trim() });
+    if (error) { alert('❌ No se pudo aplicar la excepción: ' + error.message); return; }
+    await cargarSolicitudes();
+    alert(`✅ Excepción aplicada${data ? `. Pago: ${data}` : ''}. Se notificó al colaborador.`);
+  };
   const anticipoYaLegalizado = (anticipoId) => solicitudes.some(l => l.tipo === 'Legalización' && (l.anticipoIds || []).includes(anticipoId));
 
   // PDF y Excel de la solicitud de origen de un movimiento de Finanzas (para el visor de
@@ -3852,7 +3867,7 @@ const App = () => {
     let s = solicitudes.find(x => x.id === solicitudId);
     if (!s) {
       const { data } = await supabase.from('solicitudes')
-        .select('id, created_at, fecha, tipo, valor, total_calculado, tipo_anticipo, fecha_requerida, requiere_confirmacion_gerencia, fecha_pago_estimada, extemporanea, devuelta_limite, devuelta_vencida, legalizar_antes, valor_anticipo_original, anticipo_id, anticipo_ids, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
+        .select('id, created_at, fecha, tipo, valor, total_calculado, tipo_anticipo, fecha_requerida, requiere_confirmacion_gerencia, fecha_pago_estimada, extemporanea, devuelta_limite, devuelta_vencida, legalizar_antes, excepcion_politica, excepcion_motivo, excepcion_por, excepcion_at, valor_anticipo_original, anticipo_id, anticipo_ids, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
         .eq('id', solicitudId).maybeSingle();
       if (!data) return null;
       s = solicitudDBToLocal(data);
@@ -5109,7 +5124,7 @@ const App = () => {
   const handleVerSolicitudOrigen = async (solicitudId) => {
     const { data, error } = await supabase
       .from('solicitudes')
-      .select('id, created_at, fecha, tipo, valor, total_calculado, tipo_anticipo, fecha_requerida, requiere_confirmacion_gerencia, fecha_pago_estimada, extemporanea, devuelta_limite, devuelta_vencida, legalizar_antes, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, lote_pago_id, motivo_devolucion, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
+      .select('id, created_at, fecha, tipo, valor, total_calculado, tipo_anticipo, fecha_requerida, requiere_confirmacion_gerencia, fecha_pago_estimada, extemporanea, devuelta_limite, devuelta_vencida, legalizar_antes, excepcion_politica, excepcion_motivo, excepcion_por, excepcion_at, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, lote_pago_id, motivo_devolucion, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
       .eq('id', solicitudId)
       .maybeSingle();
     if (error) { console.error('Error cargando la solicitud de origen:', error); alert('❌ No se pudo abrir la solicitud: ' + error.message); return; }
@@ -7800,6 +7815,7 @@ const App = () => {
             politica={politicaFinanciera?.sinTabla ? null : politicaFinanciera}
             onPoliticaGuardada={setPoliticaFinanciera}
             solicitudes={solicitudesUsuario}
+            onExcepcion={canApprove ? aplicarExcepcionPolitica : undefined}
             nombreColaborador={(s) => colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—'}
           />
         )}
@@ -8752,7 +8768,17 @@ const App = () => {
                         )}
                         <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{s.fecha}{s.createdAt && <div className="text-[0.65rem]" title="Hora de registro en el sistema">🕒 {horaRegistro(s.createdAt)}</div>}</TableCell>
                         {(user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa') && <TableCell className="text-xs"><div className="flex items-center gap-2"><ColaboradorAvatar foto={colaboradoresPublico.find(c => c.id === s.responsableId)?.foto_url} nombre={colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre} size={22} />{colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—'}</div></TableCell>}
-                        <TableCell className="whitespace-nowrap font-bold text-primary">{s.tipo}<div className={cn('text-[0.65rem] font-semibold', s.empresa ? 'text-muted-foreground' : 'text-[#C4622D]')} title={s.empresa ? 'Empresa que pagó' : 'La empresa que paga se define al marcarla Pagado'}>{empresaSolicitudTexto(s)}</div>{avisosPolitica(s, { legalizada: anticipoYaLegalizado(s.id) }).map(a => <Badge key={a.clave} variant={a.tono} className="mt-1 block w-fit whitespace-nowrap text-[0.6rem] font-semibold">{a.texto}</Badge>)}</TableCell>
+                        <TableCell className="whitespace-nowrap font-bold text-primary">{s.tipo}<div className={cn('text-[0.65rem] font-semibold', s.empresa ? 'text-muted-foreground' : 'text-[#C4622D]')} title={s.empresa ? 'Empresa que pagó' : 'La empresa que paga se define al marcarla Pagado'}>{empresaSolicitudTexto(s)}</div>{(() => {
+                          const avisos = avisosPolitica(s, { legalizada: anticipoYaLegalizado(s.id) });
+                          return (
+                            <>
+                              {avisos.map(a => <Badge key={a.clave} variant={a.tono} title={a.detalle} className="mt-1 block w-fit whitespace-nowrap text-[0.6rem] font-semibold">{a.texto}</Badge>)}
+                              {canApprove && avisos.some(a => a.excepcionable) && (
+                                <button type="button" onClick={() => aplicarExcepcionPolitica(s)} title="Aprobar una excepción a la política (pago en el próximo día de pago / sin confirmación de gerencia)" className="mt-1 block cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-[0.65rem] font-bold text-[#6C63D1] underline underline-offset-2">Aplicar excepción</button>
+                              )}
+                            </>
+                          );
+                        })()}</TableCell>
                         <TableCell className="min-w-[200px] max-w-[280px] text-muted-foreground">
                           <TextoResumido texto={s.detalle} />
                           {s.tipo === 'Pago a Tercero' && s.terceroInfo?.nombre && (

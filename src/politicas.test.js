@@ -31,5 +31,10 @@ describe('politicas', () => {
     expect(claves({ tipo: 'Anticipo', estado: 'Pagado', legalizarAntes: '2026-10-20' })).toEqual(['legalizar']);
     expect(avisosPolitica({ tipo: 'Anticipo', estado: 'Pagado', legalizarAntes: '2026-10-20' }, { ahora })[0].tono).toBe('destructive');
     expect(claves({ tipo: 'Anticipo', estado: 'Pagado', legalizarAntes: '2026-10-20' }, { legalizada: true })).toEqual([]);
+    const exc = avisosPolitica({ tipo: 'Reembolso', estado: 'Aprobado', fechaPagoEstimada: '2026-10-23', excepcionPolitica: true, excepcionPor: 'Ana', excepcionMotivo: 'Urgente' }, { ahora });
+    expect(exc.map(a => a.clave)).toEqual(['excepcion']);
+    expect(exc[0].detalle).toBe('Excepción de Ana: Urgente');
+    expect(avisosPolitica({ tipo: 'Reembolso', estado: 'Pendiente', fechaPagoEstimada: '2026-10-30', extemporanea: true }, { ahora })[0].excepcionable).toBe(true);
+    expect(avisosPolitica({ tipo: 'Reembolso', estado: 'Pendiente', fechaPagoEstimada: '2026-10-30' }, { ahora })[0].excepcionable).toBe(false);
   });
 });

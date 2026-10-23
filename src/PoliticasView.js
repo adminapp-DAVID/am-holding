@@ -42,7 +42,7 @@ const Contenido = ({ texto }) => {
   );
 };
 
-const PoliticasView = ({ user, politica, onPoliticaGuardada, solicitudes, nombreColaborador }) => {
+const PoliticasView = ({ user, politica, onPoliticaGuardada, solicitudes, nombreColaborador, onExcepcion }) => {
   const puedeGestionar = user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa';
   const [pestana, setPestana] = useState('politicas');
   const [form, setForm] = useState(null);
@@ -220,7 +220,14 @@ const PoliticasView = ({ user, politica, onPoliticaGuardada, solicitudes, nombre
                       <TableCell className="whitespace-nowrap text-xs">{nombreColaborador(s)}</TableCell>
                       <TableCell className="text-xs"><span className="font-bold text-primary">{s.tipo}</span> <span className="text-muted-foreground">{s.detalle}</span></TableCell>
                       <TableCell><Badge variant={estadoBadge(s.estado)}>{s.estado}</Badge></TableCell>
-                      <TableCell><div className="flex flex-wrap gap-1">{avisos.map(a => <Badge key={a.clave} variant={a.tono}>{a.texto}</Badge>)}</div></TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap items-center gap-1">
+                          {avisos.map(a => <Badge key={a.clave} variant={a.tono} title={a.detalle}>{a.texto}</Badge>)}
+                          {onExcepcion && avisos.some(a => a.excepcionable) && (
+                            <Button size="sm" variant="outline" onClick={() => onExcepcion(s)} title="Aprobar una excepción a la política">Aplicar excepción</Button>
+                          )}
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
