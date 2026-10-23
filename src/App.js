@@ -390,10 +390,11 @@ const App = () => {
     // Espacio irrompible ( ) entre el signo y el número: evita que las tablas angostas
     // partan la línea dejando el signo de moneda arriba y el número abajo.
     const num = parsearMonto(valor) || 0;
+    // Pesos: sin decimales si el valor es entero; si los trae (ej. 1.250,5) se muestran sin redondear.
     if (moneda === 'USD') {
       return `US$ ${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
-    return `$ ${num.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
+    return `$ ${num.toLocaleString('es-CO', { maximumFractionDigits: 2 })}`;
   };
 
   const formatMoney = (valor, empresa) => formatMoneyByMoneda(valor, getMoneda(empresa));
@@ -2621,7 +2622,8 @@ const App = () => {
       }
     }
 
-    const totalCalculado = newSolicitud.documentos.reduce((sum, doc) => sum + (parsearMonto(doc.valor) || 0), 0);
+    // Al centavo: 21,32 + 56,82 + … en coma flotante deja colas como 209,76000000000002.
+    const totalCalculado = Math.round(newSolicitud.documentos.reduce((sum, doc) => sum + (parsearMonto(doc.valor) || 0), 0) * 100) / 100;
 
     if (!confirmarMontos([{ etiqueta: 'Valor', texto: newSolicitud.valor }, { etiqueta: 'Valor anticipo original', texto: newSolicitud.valorAnticipoOriginal }, ...newSolicitud.documentos.map((d, i) => ({ etiqueta: `Gasto ${i + 1}${d.descripcion ? ` (${d.descripcion})` : ''}`, texto: d.valor }))])) return;
     setGuardandoSolicitud(true);
@@ -8441,7 +8443,7 @@ const App = () => {
 
                       {newSolicitud.documentos.length > 0 && (
                         <p className="m-0 text-right text-sm font-bold">
-                          Total: {formatMoney(newSolicitud.documentos.reduce((sum, d) => sum + (parsearMonto(d.valor) || 0), 0), newSolicitud.moneda)}
+                          Total: {formatMoneyByMoneda(newSolicitud.documentos.reduce((sum, d) => sum + (parsearMonto(d.valor) || 0), 0), monedaDeSolicitud(newSolicitud))}
                         </p>
                       )}
                     </div>
