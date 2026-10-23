@@ -734,6 +734,10 @@ const App = () => {
   // Al usarlos, quedan marcados "usado" y ligados a la solicitud que los consumió (nunca se
   // borran solos) — tabla public.soportes_pendientes.
   const [soportesPendientes, setSoportesPendientes] = useState([]);
+  // Recibos de la bandeja ya usados en una solicitud (sección "📤 Enviados"): se siguen viendo
+  // con sus archivos mientras la solicitud no esté pagada.
+  const [soportesEnviados, setSoportesEnviados] = useState([]);
+  const [verEnviadosPagados, setVerEnviadosPagados] = useState(false);
   const [cargandoSoportesPendientes, setCargandoSoportesPendientes] = useState(true);
   const [seleccionPendientes, setSeleccionPendientes] = useState([]);
   // Toggle "Ver todos" / "Ver solo el último" en Mi Bandeja de Soportes — para no tener que
@@ -1590,22 +1594,25 @@ const App = () => {
     tipoSoporte: row.tipo_soporte || '',
     bucketPath: row.bucket_path,
     nombre: row.nombre_original,
-    tamano: row.tamano_kb || 0
+    tamano: row.tamano_kb || 0,
+    solicitudId: row.solicitud_id || null
   });
 
   const cargarSoportesPendientes = async () => {
     setCargandoSoportesPendientes(true);
-    const { data, error } = await supabase
-      .from('soportes_pendientes')
-      .select('id, fecha, proveedor, nit, descripcion, valor, tipo_soporte, bucket_path, nombre_original, tamano_kb')
-      .eq('usado', false)
-      .order('fecha', { ascending: false });
+    const columnas = 'id, fecha, proveedor, nit, descripcion, valor, tipo_soporte, bucket_path, nombre_original, tamano_kb, solicitud_id';
+    const [{ data, error }, { data: enviados, error: errorEnviados }] = await Promise.all([
+      supabase.from('soportes_pendientes').select(columnas).eq('usuario_id', user.id).eq('usado', false).order('fecha', { ascending: false }),
+      supabase.from('soportes_pendientes').select(columnas).eq('usuario_id', user.id).eq('usado', true).not('solicitud_id', 'is', null).order('fecha', { ascending: false }).limit(300),
+    ]);
     if (error) {
       console.error('Error cargando bandeja de soportes:', error);
       setCargandoSoportesPendientes(false);
       return;
     }
+    if (errorEnviados) console.error('Error cargando recibos enviados de la bandeja:', errorEnviados);
     setSoportesPendientes((data || []).map(soportePendienteDBToLocal));
+    setSoportesEnviados((enviados || []).map(soportePendienteDBToLocal));
     setCargandoSoportesPendientes(false);
   };
 
@@ -2134,6 +2141,7 @@ const App = () => {
       setPresupuestoOverrides([]);
       setDeducciones([]);
       setSoportesPendientes([]);
+      setSoportesEnviados([]);
       setCecosDB([]);
       setTercerosDB([]);
       setTodosTerceros([]);
@@ -2406,6 +2414,17 @@ const App = () => {
     setSeleccionPendientes(seleccionPendientes.filter(id => id !== item.id));
   };
 
+  const handleSeleccionarArchivoEdicionPendiente = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const tipo = file.type || inferirMimePorExtension(file.name);
+      setPendienteEditData(prev => ({ ...prev, archivoNuevo: { nombre: file.name, tipo, tamaño: file.size, data: event.target.result } }));
+    };
+    reader.readAsDataURL(file);
+  };
+
   const toggleSeleccionPendiente = (id) => {
     setSeleccionPendientes(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
@@ -2413,7 +2432,7 @@ const App = () => {
   // Editar un recibo ya guardado en la bandeja: la fila se vuelve inputs con los datos actuales.
   const handleIniciarEdicionPendiente = (item) => {
     setEditandoPendienteId(item.id);
-    setPendienteEditData({ fecha: item.fecha, proveedor: item.proveedor, nit: item.nit, descripcion: item.descripcion, valor: item.valor, tipoSoporte: item.tipoSoporte });
+    setPendienteEditData({ fecha: item.fecha, proveedor: item.proveedor, nit: item.nit, descripcion: item.descripcion, valor: item.valor, tipoSoporte: item.tipoSoporte, archivoNuevo: null });
   };
 
   const handleCancelarEdicionPendiente = () => {
@@ -2433,7 +2452,23 @@ const App = () => {
     if (!confirmarMontos([{ etiqueta: 'Valor', texto: pendienteEditData.valor }])) return;
     setGuardandoEdicionPendiente(true);
     try {
-      const { error } = await supabase
+      // Archivo nuevo (opcional): se sube aparte y, cuando el registro ya apunta a él, se borra
+      // el anterior — así nunca queda un recibo sin archivo.
+      const anterior = soportesPendientes.find(x => x.id === id);
+      let archivoCambios = {};
+      const nuevo = pendienteEditData.archivoNuevo;
+      if (nuevo) {
+        const bytes = dataUrlToUint8Array(nuevo.data);
+        const blob = new Blob([bytes], { type: nuevo.tipo || 'application/octet-stream' });
+        const ruta = `pendiente/${user.id}/${Date.now()}_${(nuevo.nombre || 'archivo').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+        const { error: errorSubida } = await supabase.storage.from('soportes').upload(ruta, blob, { contentType: nuevo.tipo || undefined, upsert: false });
+        if (errorSubida) {
+          alert('❌ No se pudo subir el archivo nuevo: ' + errorSubida.message);
+          return;
+        }
+        archivoCambios = { bucket_path: ruta, nombre_original: nuevo.nombre, tamano_kb: Math.round((nuevo.tamaño || bytes.length) / 1024) };
+      }
+      const { data: editados, error } = await supabase
         .from('soportes_pendientes')
         .update({
           fecha: pendienteEditData.fecha,
@@ -2441,13 +2476,20 @@ const App = () => {
           nit: pendienteEditData.nit || null,
           descripcion: pendienteEditData.descripcion.trim(),
           valor: parsearMonto(pendienteEditData.valor) || 0,
-          tipo_soporte: pendienteEditData.tipoSoporte || null
+          tipo_soporte: pendienteEditData.tipoSoporte || null,
+          ...archivoCambios
         })
-        .eq('id', id);
-      if (error) {
+        .eq('id', id)
+        .select('id');
+      if (error || !editados?.length) {
         console.error('Error editando recibo de la bandeja:', error);
-        alert('❌ No se pudo guardar la edición: ' + error.message);
+        if (archivoCambios.bucket_path) await supabase.storage.from('soportes').remove([archivoCambios.bucket_path]);
+        alert('❌ No se pudo guardar la edición' + (error ? ': ' + error.message : ': tu usuario no tiene permiso para editar este recibo.'));
         return;
+      }
+      if (archivoCambios.bucket_path && anterior?.bucketPath) {
+        const { error: errorBorrar } = await supabase.storage.from('soportes').remove([anterior.bucketPath]);
+        if (errorBorrar) console.warn('No se pudo borrar el archivo anterior del recibo:', errorBorrar);
       }
       await cargarSoportesPendientes();
       setEditandoPendienteId(null);
@@ -3894,8 +3936,8 @@ const App = () => {
   const handlePreviewExcelSolicitud = (s) => setPreviewExcelSolicitud({ solicitud: s, ...construirExcelSolicitud(s) });
 
   // Eliminar solicitud — borra también sus soportes (metadata + archivos en Storage)
-  const handleDeleteSolicitud = async (id) => {
-    if (!window.confirm('¿Eliminar solicitud?')) return;
+  const handleDeleteSolicitud = async (id, mensaje = '¿Eliminar solicitud?\n\nLos recibos de tu bandeja que tenía vuelven a quedar disponibles en Mi Bandeja de Soportes.') => {
+    if (!window.confirm(mensaje)) return;
 
     await eliminarSoportesDeEntidad('solicitud', id);
 
@@ -3907,6 +3949,8 @@ const App = () => {
     }
 
     setSolicitudes(solicitudes.filter(s => s.id !== id));
+    // La base devuelve sus recibos a la bandeja (20261028_bandeja_enviados.sql).
+    cargarSoportesPendientes();
   };
 
   // USUARIOS CRUD (conectado a Supabase — tabla public.usuarios)
@@ -8260,7 +8304,17 @@ const App = () => {
                                       </div>
                                     </TableCell>
                                     <TableCell className="px-1.5"><InputMoneda aria-label="Valor" value={pendienteEditData.valor} onChange={(e) => setPendienteEditData({...pendienteEditData, valor: e.target.value})} className="h-8 text-right text-xs" /></TableCell>
-                                    <TableCell className="text-muted-foreground">{item.nombre}</TableCell>
+                                    <TableCell className="px-1.5">
+                                      <div className="flex flex-col gap-1">
+                                        <span className={cn('flex items-center gap-1', pendienteEditData.archivoNuevo ? 'font-semibold text-success' : 'text-muted-foreground')}>
+                                          <Paperclip size={12} /> {pendienteEditData.archivoNuevo ? pendienteEditData.archivoNuevo.nombre : item.nombre}
+                                        </span>
+                                        <label className="w-fit cursor-pointer text-[0.7rem] font-bold text-[#6C63D1] underline underline-offset-2">
+                                          {pendienteEditData.archivoNuevo ? 'Elegir otro archivo' : 'Cambiar archivo'}
+                                          <input type="file" accept="application/pdf,image/*" onChange={conArchivosPreparados(handleSeleccionarArchivoEdicionPendiente)} className="hidden" />
+                                        </label>
+                                      </div>
+                                    </TableCell>
                                     <TableCell className="whitespace-nowrap text-center">
                                       <Button variant="ghost" size="icon" onClick={() => handleGuardarEdicionPendiente(item.id)} disabled={guardandoEdicionPendiente} title="Guardar" aria-label="Guardar" className="text-success"><Check size={16} /></Button>
                                       <Button variant="ghost" size="icon" onClick={handleCancelarEdicionPendiente} disabled={guardandoEdicionPendiente} title="Cancelar" aria-label="Cancelar" className="text-muted-foreground"><X size={16} /></Button>
@@ -8297,6 +8351,68 @@ const App = () => {
                       </div>
                     </>
                   )}
+
+                  {/* 📤 Enviados: recibos ya usados en una solicitud, agrupados por solicitud. Se ven con
+                      sus archivos; si la solicitud no se ha pagado se puede editar (ítems / tipo) o
+                      retirarla, y sus recibos vuelven a la bandeja para presentarlos de nuevo. */}
+                  {(() => {
+                    const grupos = Object.values(soportesEnviados.reduce((acc, r) => {
+                      (acc[r.solicitudId] = acc[r.solicitudId] || { solicitudId: r.solicitudId, recibos: [] }).recibos.push(r);
+                      return acc;
+                    }, {})).map(g => ({ ...g, solicitud: solicitudes.find(x => x.id === g.solicitudId) }))
+                      .filter(g => g.solicitud);
+                    const cerrada = (g) => ['Pagado', 'Legalizado'].includes(g.solicitud.estado);
+                    const visibles = grupos.filter(g => verEnviadosPagados || !cerrada(g));
+                    const ocultos = grupos.length - visibles.length;
+                    if (!grupos.length) return null;
+                    return (
+                      <div className="flex flex-col gap-3 border-0 border-t border-solid border-border pt-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <h4 className="m-0 text-sm font-bold">📤 Enviados en solicitudes</h4>
+                          {(ocultos > 0 || verEnviadosPagados) && (
+                            <Button size="sm" variant="outline" onClick={() => setVerEnviadosPagados(v => !v)}>
+                              {verEnviadosPagados ? 'Ocultar los pagados' : `Ver también los pagados (${ocultos})`}
+                            </Button>
+                          )}
+                        </div>
+                        {visibles.length === 0 && <p className="m-0 text-xs text-muted-foreground">Todo lo que enviaste ya está pagado.</p>}
+                        {visibles.map(({ solicitud: sol, recibos }) => (
+                          <div key={sol.id} className="rounded-lg border border-solid border-border bg-background p-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="purple">Enviado a {sol.tipo}</Badge>
+                              <Badge variant={estadoBadge(sol.estado)}>{sol.estado}</Badge>
+                              <span className="text-xs text-muted-foreground">{sol.fecha}{sol.detalle ? ` · ${sol.detalle}` : ''}</span>
+                              <span className="ml-auto text-xs font-bold text-success">{formatMoneyByMoneda(sol.totalCalculado || 0, monedaDeSolicitud(sol))}</span>
+                            </div>
+                            {sol.estado === 'Devuelto' && sol.motivoDevolucion && <p className="m-0 mt-1.5 text-xs text-[#C4622D]">Motivo de devolución: {sol.motivoDevolucion}</p>}
+                            <ul className="m-0 mt-2 flex list-none flex-col gap-1 p-0">
+                              {recibos.map(r => (
+                                <li key={r.id} className="flex flex-wrap items-center gap-2 text-xs">
+                                  <Button variant="ghost" size="icon" onClick={() => handlePreviewSoporte(r)} disabled={cargandoPreviewSoporte} title="Ver archivo" aria-label="Ver archivo" className="size-7"><Eye size={14} /></Button>
+                                  <span className="text-muted-foreground">{r.fecha}</span>
+                                  <span>{r.proveedor || '—'}</span>
+                                  <span className="text-muted-foreground">{r.descripcion}</span>
+                                  <span className="ml-auto font-semibold">{formatMoneyByMoneda(r.valor, monedaDeSolicitud(sol))}</span>
+                                </li>
+                              ))}
+                            </ul>
+                            {!cerrada({ solicitud: sol }) && (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {puedeEditarSolicitud(sol) && (
+                                  <Button size="sm" variant="outline" onClick={() => handleIniciarEdicionSolicitud(sol)} title="Corregir ítems o cambiar el tipo (Reembolso / Legalización)"><Pencil size={14} /> Editar solicitud</Button>
+                                )}
+                                {['Pendiente', 'Devuelto'].includes(sol.estado) && puedeEliminarSolicitud(sol) && (
+                                  <Button size="sm" variant="outline" className="text-destructive" onClick={() => handleDeleteSolicitud(sol.id, `¿Retirar esta solicitud de ${sol.tipo}?\n\nLa solicitud se elimina y sus ${recibos.length} recibo(s) vuelven a tu bandeja, con sus archivos, para presentarlos de nuevo.`)}>
+                                    <RotateCcw size={14} /> Retirar y devolver a mi bandeja
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                   </CardContent>
                 </Card>
               )}
