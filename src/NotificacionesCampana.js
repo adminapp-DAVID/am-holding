@@ -6,7 +6,13 @@ import { supabase } from './supabaseClient';
 // public.notificaciones). Las crea la base de datos (trigger auditar_cambio y el recordatorio
 // semanal de perfil); aquí solo se leen, se marcan como leídas y se navega al módulo.
 
-const ICONOS = { solicitud: '📋', cuenta_cobro: '💳', cuenta_cobro_recordatorio: '⏰', perfil: '🙋', perfil_resumen: '👥' };
+const ICONOS = {
+  solicitud: '📋', cuenta_cobro: '💳', cuenta_cobro_recordatorio: '⏰', perfil: '🙋', perfil_resumen: '👥',
+  // Políticas Financieras (20261024_politicas_financieras.sql y 20261027_politicas_excepcion.sql)
+  politica_reembolso_extemporaneo: '📅', politica_anticipo_fuera_plazo: '⚠️', politica_devuelta_plazo: '⏰',
+  politica_devuelta_vencida: '⌛', politica_legalizacion_plazo: '🧾', politica_legalizacion_recordatorio: '🧾',
+  politica_legalizacion_hoy: '🧾', politica_legalizacion_vencida: '🧾', politica_excepcion: '✅',
+};
 
 const haceCuanto = (fecha) => {
   const min = Math.round((Date.now() - new Date(fecha).getTime()) / 60000);
