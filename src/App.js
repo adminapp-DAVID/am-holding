@@ -8842,7 +8842,7 @@ const App = () => {
                 );
               })()}
 
-              <Table>
+              <Table fija>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     {canApprove && <TableHead className="text-center"></TableHead>}
@@ -9828,7 +9828,7 @@ const App = () => {
               </div>
 
               {(cargandoGastos || cargandoIngresos) && <p className="m-0 text-sm text-muted-foreground">Cargando...</p>}
-              <Table>
+              <Table fija>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <CabeceraOrdenUI orden={ordenFinanzas} onOrdenar={alternarOrdenFinanzas} campo="fecha" className="w-px">Fecha / Tipo</CabeceraOrdenUI>
