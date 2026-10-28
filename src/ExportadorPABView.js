@@ -218,8 +218,9 @@ const ExportadorPABView = ({
     if (hayCostos && !costos.ceco) { alert('Elige el CECO de la comisión / 4x1000'); return; }
     if (!confirmarMontos([{ etiqueta: 'Comisión bancaria', texto: costos.comision }, { etiqueta: '4x1000 (GMF)', texto: costos.gmf }])) return;
     if (!pagados.length && !window.confirm(`Vas a marcar los ${rechazados.length} pago(s) como rechazados por el banco: el lote queda "Rechazado" y todo vuelve a quedar libre para exportarse. ¿Continuar?`)) return;
-    // Los conceptos de Presupuesto quedan pagados en SU mes (periodo) aunque la fecha de pago sea
-    // de otro mes (ej. seguridad social mes vencido) — ya no hace falta advertirlo.
+    const mesesPresupuesto = [...new Set(pagados.filter(i => i.entidad_tipo === 'presupuesto').map(i => `${i.anio}-${String(i.mes).padStart(2, '0')}`))];
+    const otroMes = mesesPresupuesto.filter(m => m !== fechaPago.substring(0, 7));
+    if (otroMes.length && !window.confirm(`La fecha de pago (${fechaPago}) es de otro mes que los conceptos de Presupuesto (${otroMes.join(', ')}). En Presupuesto el concepto queda pagado en el mes de la fecha de pago. ¿Continuar?`)) return;
     // Solo viajan los cambios reales: el concepto corregido y el comprobante individual.
     const ajustesPago = Object.fromEntries(pagados.map(i => {
       const a = ajustes[i.entidad_clave];
