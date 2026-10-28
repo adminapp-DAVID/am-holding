@@ -9606,6 +9606,18 @@ const App = () => {
                       <p className="m-0 text-xs text-muted-foreground">💡 Por proveedor/responsable, este gasto coincide con "{candidatos[0].item.nombre}" — selecciónalo en la lista si aplica. No se vincula solo.</p>
                     )}
                     {valorSeleccionado && (() => {
+                      // Mes al que corresponde en Presupuesto (mes vencido → el anterior a la fecha); se puede cambiar.
+                      const conceptoSel = presupuestoItems.find(p => p.id === valorSeleccionado);
+                      const periodoForm = newGasto.periodo || periodoPorDefecto(newGasto.fecha, conceptoSel?.mesVencido);
+                      return (
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                          <label htmlFor="fin-periodo" className="font-semibold">Corresponde en Presupuesto al mes</label>
+                          <Input id="fin-periodo" type="month" value={periodoForm} onChange={(e) => setNewGasto({ ...newGasto, periodo: e.target.value })} className="h-8 w-auto text-xs" />
+                          {conceptoSel?.mesVencido && <span className="text-muted-foreground">(concepto mes vencido: se paga a comienzos del mes siguiente)</span>}
+                        </div>
+                      );
+                    })()}
+                    {valorSeleccionado && (() => {
                       const seleccionado = candidatos.find(c => c.item.id === valorSeleccionado);
                       return seleccionado && !seleccionado.mismoCeco ? (
                         <p className="m-0 text-xs text-[#8A6A0C]">ℹ️ Este concepto está catalogado en {seleccionado.item.ceco}. El gasto se guardará con el CECO que elegiste arriba ({newGasto.ceco}) — no se cambia solo.</p>
@@ -9994,6 +10006,14 @@ const App = () => {
                                     </div>
                                   );
                                 })()}
+                                {editandoConceptoFinanzas.permiteVinculo && editandoConceptoFinanzas.presupuestoItemId && (() => {
+                                  // Mes al que corresponde en Presupuesto (puede ser distinto del mes de la fecha del pago).
+                                  const ed = editandoConceptoFinanzas;
+                                  const valor = ed.periodo || periodoPorDefecto(ed.fecha, presupuestoItems.find(p => p.id === ed.presupuestoItemId)?.mesVencido);
+                                  return (
+                                    <Input type="month" value={valor} onChange={(e) => setEditandoConceptoFinanzas({ ...ed, periodo: e.target.value })} title="Mes al que corresponde en Presupuesto" aria-label="Mes en Presupuesto" className="h-8 w-auto border-primary text-xs" />
+                                  );
+                                })()}
                                 <Input autoFocus type="text" aria-label="Concepto" value={editandoConceptoFinanzas.texto} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, texto: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') handleGuardarConceptoFinanzas(); if (e.key === 'Escape') setEditandoConceptoFinanzas(null); }} className="h-8 min-w-[140px] flex-1 border-primary text-xs" />
                                 <Button variant="ghost" size="icon" disabled={guardandoConceptoFinanzas} onClick={handleGuardarConceptoFinanzas} title="Guardar" aria-label="Guardar" className="size-8 text-success"><Check size={16} /></Button>
                                 <Button variant="ghost" size="icon" onClick={() => setEditandoConceptoFinanzas(null)} title="Cancelar" aria-label="Cancelar" className="size-8 text-muted-foreground"><X size={16} /></Button>
@@ -10020,7 +10040,7 @@ const App = () => {
                             )}
                             {r.presupuestoItemId && (
                               <button type="button" onClick={() => handleVerPresupuestoOrigen(r)} title="Ver el concepto de Presupuesto de origen" className="block cursor-pointer border-0 bg-transparent p-0 text-left font-[inherit] text-[0.7rem] text-[#6C63D1] underline-offset-2 hover:underline">
-                                {r.observaciones === OBSERVACIONES_GASTO_DESDE_PRESUPUESTO ? '🔗 Generado desde Presupuesto' : `📅 Vinculado a Presupuesto: ${presupuestoItems.find(p => p.id === r.presupuestoItemId)?.nombre || 'concepto'}`}
+                                {r.observaciones === OBSERVACIONES_GASTO_DESDE_PRESUPUESTO ? '🔗 Generado desde Presupuesto' : `📅 Vinculado a Presupuesto: ${presupuestoItems.find(p => p.id === r.presupuestoItemId)?.nombre || 'concepto'}`}{periodoDeGasto(r) !== mesDeFecha(r.fecha) ? ` · corresponde a ${nombrePeriodo(periodoDeGasto(r))}` : ''}
                               </button>
                             )}
                             {r.observaciones && r.observaciones.startsWith(OBSERVACIONES_GASTO_LOTE_TERCERO) && (
