@@ -24,6 +24,7 @@ import AuditoriaView from './AuditoriaView';
 import PoliticasView from './PoliticasView';
 import { rolDePermisos } from './roles';
 import { buscarReciboDuplicado } from './bandeja';
+import { mesDeFecha, nombrePeriodo, periodoDeGasto, periodoPorDefecto } from './periodo';
 import { POLITICA_POR_DEFECTO, TIPOS_ANTICIPO, anticipoFueraDePlazo, avisosPolitica } from './politicas';
 import ContabilidadView, { VisorSoportes } from './ContabilidadView';
 import RevisarFotos from './components/RevisarFotos';
@@ -856,7 +857,7 @@ const App = () => {
   const deduccionVacia = { presupuestoItemId: '', tipo: 'Préstamo', valorCuota: '', saldoTotal: '', fechaInicio: new Date().toISOString().split('T')[0], observaciones: '', activo: true };
   const [newDeduccion, setNewDeduccion] = useState(deduccionVacia);
   const [editingDeduccionId, setEditingDeduccionId] = useState(null);
-  const [newPresupuestoItem, setNewPresupuestoItem] = useState({ empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-001-GF', nombre: '', valorMensual: '', diaLimitePago: '', activo: true, responsableId: '', tipo: '', formaPago: '', terceroId: '' });
+  const [newPresupuestoItem, setNewPresupuestoItem] = useState({ empresa: 'AM SPORTS GROUP SAS', ceco: 'CECO-001-GF', nombre: '', valorMensual: '', diaLimitePago: '', activo: true, responsableId: '', tipo: '', formaPago: '', terceroId: '', mesVencido: false });
   // Si tiene valor, el formulario de arriba de "Gestión de Conceptos" está editando ESTE
   // concepto (en vez de crear uno nuevo) — mismo patrón que editingDeduccionId.
   const [editingPresupuestoItemId, setEditingPresupuestoItemId] = useState(null);
@@ -1720,13 +1721,15 @@ const App = () => {
     responsableNombre: row.usuarios?.nombre || '',
     // Beneficiario del pago cuando NO es un colaborador (EPM, administración…) y cómo se paga.
     terceroId: row.tercero_id || '',
-    formaPago: row.forma_pago || ''
+    formaPago: row.forma_pago || '',
+    // Se paga a comienzos del mes siguiente (ej. seguridad social): sus pagos corresponden al mes anterior.
+    mesVencido: !!row.mes_vencido
   });
 
   const cargarPresupuestoItems = async () => {
     const { data, error } = await supabase
       .from('presupuesto_items')
-      .select('id, nombre, tipo, valor_mensual, dia_limite_pago, activo, responsable_id, tercero_id, forma_pago, empresas ( nombre ), cecos ( codigo ), usuarios ( nombre )')
+      .select('id, nombre, tipo, valor_mensual, dia_limite_pago, activo, responsable_id, tercero_id, forma_pago, mes_vencido, empresas ( nombre ), cecos ( codigo ), usuarios ( nombre )')
       .order('created_at', { ascending: true });
     if (error) {
       console.error('Error cargando presupuesto_items:', error);
@@ -1902,6 +1905,8 @@ const App = () => {
     estado: row.estado,
     observaciones: row.observaciones || '',
     presupuestoItemId: row.presupuesto_item_id,
+    // Mes al que corresponde en Presupuesto ('AAAA-MM'); vacío = el mes de la fecha (ver periodo.js).
+    periodo: row.periodo || '',
     soporteDriveLink: row.soporte_drive_link || '',
     // "Pago a Tercero" registrado directo en Finanzas (Opción B) o generado automáticamente
     // al marcar una Solicitud como Pagada (Opción C) — mismo formato de moneda/tercero_info
@@ -1922,7 +1927,7 @@ const App = () => {
     setCargandoGastos(true);
     const { data, error } = await supabase
       .from('gastos')
-      .select('id, created_at, fecha, tipo, cuenta, cuenta_salida, cuenta_destino, detalle, valor, valor_destino, valor_bruto, deduccion_aplicada, categoria, estado, observaciones, presupuesto_item_id, soporte_drive_link, responsable_id, moneda_pago, tercero_info, tercero_id, solicitud_origen_id, lote_pago_id, neutro, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
+      .select('id, created_at, fecha, periodo, tipo, cuenta, cuenta_salida, cuenta_destino, detalle, valor, valor_destino, valor_bruto, deduccion_aplicada, categoria, estado, observaciones, presupuesto_item_id, soporte_drive_link, responsable_id, moneda_pago, tercero_info, tercero_id, solicitud_origen_id, lote_pago_id, neutro, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
       .order('fecha', { ascending: false });
     if (error) {
       console.error('Error cargando gastos:', error);
@@ -4927,6 +4932,10 @@ const App = () => {
       // desplegable "Vincular a Presupuesto" — la sugerencia por texto ya NO se aplica sola al
       // guardar (antes sí, y eso además arrastraba un cambio silencioso de CECO, ver abajo).
       const presupuestoItemIdFinal = newGasto.tipo === 'Gasto' ? (newGasto.presupuestoItemId || '') : '';
+      // Mes al que corresponde en Presupuesto: el elegido, o el del concepto (mes vencido → mes anterior).
+      const periodoFinal = presupuestoItemIdFinal
+        ? (newGasto.periodo || periodoPorDefecto(newGasto.fecha, presupuestoItems.find(p => p.id === presupuestoItemIdFinal)?.mesVencido))
+        : null;
 
       // El CECO que se guarda es siempre el que la persona eligió en el formulario — nunca se
       // reemplaza en silencio por el del concepto de Presupuesto vinculado, aunque sean distintos
@@ -4951,7 +4960,8 @@ const App = () => {
         ? montoONumero0(newGasto.valorDestino)
         : null;
       if (newGasto.tipo === 'Gasto' && presupuestoItemIdFinal && newGasto.aplicarDeduccion !== false) {
-        const [anioGasto, mesGasto] = (newGasto.fecha || '').split('-').map(n => parseInt(n));
+        // Deducciones del mes al que corresponde el pago (periodo), no del mes en que se pagó.
+        const [anioGasto, mesGasto] = (periodoFinal || mesDeFecha(newGasto.fecha)).split('-').map(n => parseInt(n));
         if (anioGasto && mesGasto) {
           const totalDeduccion = deducciones
             .filter(d => d.presupuestoItemId === presupuestoItemIdFinal)
@@ -4993,6 +5003,7 @@ const App = () => {
         estado: newGasto.estado,
         observaciones: newGasto.observaciones || null,
         presupuesto_item_id: presupuestoItemIdFinal || null,
+        periodo: periodoFinal,
         moneda_pago: esPagoTerceroFinanzas ? newGasto.moneda : null,
         tercero_info: terceroInfoFinal,
         tercero_id: terceroIdFinal
@@ -5292,7 +5303,7 @@ const App = () => {
   const [editandoConceptoFinanzas, setEditandoConceptoFinanzas] = useState(null); // { tabla, id, texto, fecha, ceco, valor, valorDestino }
   const [guardandoConceptoFinanzas, setGuardandoConceptoFinanzas] = useState(false);
   const handleGuardarConceptoFinanzas = async () => {
-    const { tabla, id, texto, fecha, ceco, valor: valorTexto, valorDestino: valorDestinoTexto, tieneValorDestino, permiteNeutro, neutro, moneda, monedaOriginal, permiteVinculo, presupuestoItemId, presupuestoItemIdOriginal } = editandoConceptoFinanzas || {};
+    const { tabla, id, texto, fecha, ceco, valor: valorTexto, valorDestino: valorDestinoTexto, tieneValorDestino, permiteNeutro, neutro, moneda, monedaOriginal, permiteVinculo, presupuestoItemId, presupuestoItemIdOriginal, periodo: periodoEditado } = editandoConceptoFinanzas || {};
     // Moneda real del pago (solo Gastos): Neutro siempre queda en COP; si no, se guarda la elegida
     // en el editor, pero solo cuando cambió — para no escribir moneda_pago en registros que nunca la tuvieron.
     const monedaFinal = permiteNeutro ? (neutro ? 'COP' : moneda) : null;
@@ -5315,10 +5326,16 @@ const App = () => {
       const cambiaVinculo = !!permiteVinculo && (presupuestoItemId || '') !== (presupuestoItemIdOriginal || '');
       const conceptoVinculo = cambiaVinculo && presupuestoItemId ? presupuestoItems.find(p => p.id === presupuestoItemId) : null;
       const vinculoPatch = cambiaVinculo ? { presupuesto_item_id: presupuestoItemId || null, ...(conceptoVinculo?.responsableId ? { responsable_id: conceptoVinculo.responsableId } : {}) } : {};
+      // Periodo (mes al que corresponde en Presupuesto): el elegido en el editor o, si no se tocó,
+      // el que toca según el concepto. Sin vínculo no aplica.
+      const periodoFinal = permiteVinculo
+        ? (presupuestoItemId ? (periodoEditado || periodoPorDefecto(fecha, presupuestoItems.find(p => p.id === presupuestoItemId)?.mesVencido)) : null)
+        : undefined;
+      if (periodoFinal !== undefined) vinculoPatch.periodo = periodoFinal;
       const { data, error } = await supabase.from(tabla).update({ detalle, fecha, ceco_id: cecoId, valor, ...(tieneValorDestino ? { valor_destino: valorDestino } : {}), ...(permiteNeutro ? { neutro: !!neutro } : {}), ...(cambiaMoneda ? { moneda_pago: monedaFinal } : {}), ...vinculoPatch }).eq('id', id).select('id');
       if (error) { alert('❌ No se pudo guardar: ' + error.message); return; }
       if (!data || data.length === 0) { alert('❌ No se pudo guardar: tu rol no tiene permiso para editar este registro.'); return; }
-      const cambios = { detalle, fecha, ceco, valor, ...(tieneValorDestino ? { valorDestino } : {}), ...(permiteNeutro ? { neutro: !!neutro } : {}), ...(cambiaMoneda ? { moneda: monedaFinal } : {}), ...(cambiaVinculo ? { presupuestoItemId: presupuestoItemId || null, ...(conceptoVinculo?.responsableId ? { responsableId: conceptoVinculo.responsableId } : {}) } : {}) };
+      const cambios = { detalle, fecha, ceco, valor, ...(tieneValorDestino ? { valorDestino } : {}), ...(permiteNeutro ? { neutro: !!neutro } : {}), ...(cambiaMoneda ? { moneda: monedaFinal } : {}), ...(cambiaVinculo ? { presupuestoItemId: presupuestoItemId || null, ...(conceptoVinculo?.responsableId ? { responsableId: conceptoVinculo.responsableId } : {}) } : {}), ...(periodoFinal !== undefined ? { periodo: periodoFinal || '' } : {}) };
       if (tabla === 'ingresos') setIngresos(prev => prev.map(i => (i.id === id ? { ...i, ...cambios } : i)));
       else setGastos(prev => prev.map(g => (g.id === id ? { ...g, ...cambios } : g)));
       setEditandoConceptoFinanzas(null);
@@ -5404,8 +5421,12 @@ const App = () => {
       responsable_id: newPresupuestoItem.responsableId || null,
       tipo: newPresupuestoItem.tipo || null,
       forma_pago: newPresupuestoItem.formaPago || null,
-      tercero_id: newPresupuestoItem.terceroId || null
+      tercero_id: newPresupuestoItem.terceroId || null,
+      mes_vencido: !!newPresupuestoItem.mesVencido
     };
+    // Si cambia "mes vencido" en un concepto que ya tiene pagos, se ofrece recalcular su periodo.
+    const conceptoAntes = editingPresupuestoItemId ? presupuestoItems.find(p => p.id === editingPresupuestoItemId) : null;
+    const cambiaMesVencido = !!conceptoAntes && !!conceptoAntes.mesVencido !== !!newPresupuestoItem.mesVencido;
 
     if (editingPresupuestoItemId) {
       const { error } = await supabase.from('presupuesto_items').update(payload).eq('id', editingPresupuestoItemId);
@@ -5415,6 +5436,7 @@ const App = () => {
         return;
       }
       alert('✅ Concepto actualizado');
+      if (cambiaMesVencido) await recalcularPeriodosConcepto(editingPresupuestoItemId, !!newPresupuestoItem.mesVencido);
     } else {
       const { error } = await supabase.from('presupuesto_items').insert({ ...payload, activo: true });
       if (error) {
@@ -5426,7 +5448,25 @@ const App = () => {
     }
     await cargarPresupuestoItems();
     setEditingPresupuestoItemId(null);
-    setNewPresupuestoItem({ empresa: newPresupuestoItem.empresa, ceco: newPresupuestoItem.ceco, nombre: '', valorMensual: '', diaLimitePago: '', activo: true, responsableId: '', tipo: '', formaPago: '', terceroId: '' });
+    setNewPresupuestoItem({ empresa: newPresupuestoItem.empresa, ceco: newPresupuestoItem.ceco, nombre: '', valorMensual: '', diaLimitePago: '', activo: true, responsableId: '', tipo: '', formaPago: '', terceroId: '', mesVencido: false });
+  };
+
+  // Al marcar/desmarcar "mes vencido": los pagos ya registrados del concepto pasan al periodo que
+  // les toca (mes anterior a su fecha, o el mes de su fecha). Se muestra la lista antes de aplicar.
+  const recalcularPeriodosConcepto = async (conceptoId, mesVencido) => {
+    const pagos = gastos.filter(g => g.presupuestoItemId === conceptoId)
+      .map(g => ({ g, nuevo: periodoPorDefecto(g.fecha, mesVencido) }))
+      .filter(x => x.nuevo && x.nuevo !== periodoDeGasto(x.g));
+    if (!pagos.length) return;
+    const lista = pagos.slice(0, 12).map(({ g, nuevo }) => `• Pagado el ${g.fecha} → ${nombrePeriodo(nuevo)}`).join('\n');
+    if (!window.confirm(`Este concepto tiene ${pagos.length} pago(s) ya registrado(s). ¿Moverlos en Presupuesto al mes que les corresponde?\n\n${lista}${pagos.length > 12 ? '\n…' : ''}\n\nLa fecha del pago en Finanzas no cambia.`)) return;
+    let fallidos = 0;
+    for (const { g, nuevo } of pagos) {
+      const { data, error } = await supabase.from('gastos').update({ periodo: nuevo }).eq('id', g.id).select('id');
+      if (error || !data?.length) fallidos++;
+    }
+    await cargarGastos();
+    alert(fallidos ? `⚠️ ${pagos.length - fallidos} pago(s) movidos; ${fallidos} no se pudieron actualizar.` : `✅ ${pagos.length} pago(s) movidos al mes que les corresponde.`);
   };
 
   // Carga el concepto elegido en el formulario de arriba para editarlo (igual que
@@ -5443,13 +5483,14 @@ const App = () => {
       responsableId: item.responsableId || '',
       tipo: item.tipo || '',
       formaPago: item.formaPago || '',
-      terceroId: item.terceroId || ''
+      terceroId: item.terceroId || '',
+      mesVencido: !!item.mesVencido
     });
   };
 
   const handleCancelEditPresupuestoItem = () => {
     setEditingPresupuestoItemId(null);
-    setNewPresupuestoItem({ empresa: newPresupuestoItem.empresa, ceco: newPresupuestoItem.ceco, nombre: '', valorMensual: '', diaLimitePago: '', activo: true, responsableId: '', tipo: '', formaPago: '', terceroId: '' });
+    setNewPresupuestoItem({ empresa: newPresupuestoItem.empresa, ceco: newPresupuestoItem.ceco, nombre: '', valorMensual: '', diaLimitePago: '', activo: true, responsableId: '', tipo: '', formaPago: '', terceroId: '', mesVencido: false });
   };
 
   const handleUpdatePresupuestoItem = async (id, campo, valor) => {
@@ -5573,10 +5614,10 @@ const App = () => {
           // quedó pagado (otra persona, u otra pestaña) mientras este modal seguía abierto.
           const { data: gastosDelConcepto, error: errorLectura } = await supabase
             .from('gastos')
-            .select('id, fecha')
+            .select('id, fecha, periodo')
             .eq('presupuesto_item_id', item.id);
           if (errorLectura) throw errorLectura;
-          if ((gastosDelConcepto || []).some(g => g.fecha && g.fecha.substring(0, 7) === mesStr)) {
+          if ((gastosDelConcepto || []).some(g => periodoDeGasto(g) === mesStr)) {
             fallidos.push(`${item.nombre} (ya estaba pagado este mes)`);
             continue;
           }
@@ -5597,7 +5638,9 @@ const App = () => {
               deduccion_aplicada: item.totalDeducciones > 0 ? item.totalDeducciones : null,
               estado: 'Pagado',
               observaciones: OBSERVACIONES_GASTO_DESDE_PRESUPUESTO,
-              presupuesto_item_id: item.id
+              presupuesto_item_id: item.id,
+              // El mes que se está pagando en Presupuesto, aunque la fecha del pago sea otra.
+              periodo: mesStr
             })
             .select('id')
             .single();
@@ -5667,9 +5710,9 @@ const App = () => {
     const presPendientes = [];
     for (const it of itemsPresupuesto) {
       const mesStr = `${it.anio}-${String(it.mes).padStart(2, '0')}`;
-      const { data: gastosDelConcepto, error } = await supabase.from('gastos').select('id, fecha').eq('presupuesto_item_id', it.entidad_id);
+      const { data: gastosDelConcepto, error } = await supabase.from('gastos').select('id, fecha, periodo').eq('presupuesto_item_id', it.entidad_id);
       if (error) throw error;
-      if ((gastosDelConcepto || []).some(g => g.fecha && g.fecha.substring(0, 7) === mesStr)) saltados++;
+      if ((gastosDelConcepto || []).some(g => periodoDeGasto(g) === mesStr)) saltados++;
       else presPendientes.push(it);
     }
 
@@ -5738,6 +5781,7 @@ const App = () => {
           estado: 'Pagado',
           observaciones: OBSERVACIONES_GASTO_DESDE_PRESUPUESTO,
           presupuesto_item_id: it.entidad_id,
+          periodo: `${it.anio}-${String(it.mes).padStart(2, '0')}`,
           tercero_id: meta.terceroId || null,
           lote_pago_id: lote.id
         }).select('id').single();
@@ -7480,7 +7524,9 @@ const App = () => {
     return presupuestoItems
       .filter(p => p.activo !== false && p.empresa === empresa)
       .map(item => {
-        const gastoVinculado = gastos.find(g => g.presupuestoItemId === item.id && g.fecha && g.fecha.substring(0, 7) === mesStr);
+        // Por PERIODO (mes al que corresponde), no por la fecha del pago: la seguridad social de
+        // septiembre pagada el 5 de octubre cuenta en septiembre.
+        const gastoVinculado = gastos.find(g => g.presupuestoItemId === item.id && periodoDeGasto(g) === mesStr);
         const valorBaseEsperado = getValorEsperado(item.id, anio, mes);
         const ajustado = valorBaseEsperado !== (parseFloat(item.valorMensual) || 0);
         const deduccionesDelItem = deducciones.filter(d => d.presupuestoItemId === item.id);
@@ -9549,6 +9595,7 @@ const App = () => {
                       setNewGasto({
                         ...newGasto,
                         presupuestoItemId: nuevoId,
+                        periodo: '',
                         responsable: conceptoElegido?.responsableNombre ? conceptoElegido.responsableNombre : newGasto.responsable
                       });
                     }}>
@@ -9558,6 +9605,18 @@ const App = () => {
                     {sugeridoId && !valorSeleccionado && (
                       <p className="m-0 text-xs text-muted-foreground">💡 Por proveedor/responsable, este gasto coincide con "{candidatos[0].item.nombre}" — selecciónalo en la lista si aplica. No se vincula solo.</p>
                     )}
+                    {valorSeleccionado && (() => {
+                      // Mes al que corresponde en Presupuesto (mes vencido → el anterior a la fecha); se puede cambiar.
+                      const conceptoSel = presupuestoItems.find(p => p.id === valorSeleccionado);
+                      const periodoForm = newGasto.periodo || periodoPorDefecto(newGasto.fecha, conceptoSel?.mesVencido);
+                      return (
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                          <label htmlFor="fin-periodo" className="font-semibold">Corresponde en Presupuesto al mes</label>
+                          <Input id="fin-periodo" type="month" value={periodoForm} onChange={(e) => setNewGasto({ ...newGasto, periodo: e.target.value })} className="h-8 w-auto text-xs" />
+                          {conceptoSel?.mesVencido && <span className="text-muted-foreground">(concepto mes vencido: se paga a comienzos del mes siguiente)</span>}
+                        </div>
+                      );
+                    })()}
                     {valorSeleccionado && (() => {
                       const seleccionado = candidatos.find(c => c.item.id === valorSeleccionado);
                       return seleccionado && !seleccionado.mismoCeco ? (
@@ -9570,7 +9629,8 @@ const App = () => {
 
               {/* DEDUCCIONES DETECTADAS PARA EL CONCEPTO VINCULADO (préstamos u otros descuentos) */}
               {newGasto.tipo === 'Gasto' && newGasto.presupuestoItemId && (() => {
-                const [anioGasto, mesGasto] = (newGasto.fecha || '').split('-').map(n => parseInt(n));
+                const periodoForm = newGasto.periodo || periodoPorDefecto(newGasto.fecha, presupuestoItems.find(p => p.id === newGasto.presupuestoItemId)?.mesVencido);
+                const [anioGasto, mesGasto] = (periodoForm || '').split('-').map(n => parseInt(n));
                 if (!anioGasto || !mesGasto) return null;
                 const deduccionesItem = deducciones
                   .filter(d => d.presupuestoItemId === newGasto.presupuestoItemId)
@@ -9939,11 +9999,19 @@ const App = () => {
                                   if (!opciones.length) return null;
                                   return (
                                     <div className="w-[170px]">
-                                      <Select value={ed.presupuestoItemId} onChange={(e) => setEditandoConceptoFinanzas({ ...ed, presupuestoItemId: e.target.value })} title="Vincular a un concepto de Presupuesto (marca ese mes como pagado)" aria-label="Vincular a Presupuesto" className={cn('h-8 border-primary text-xs', ed.presupuestoItemId && 'bg-success/10')}>
+                                      <Select value={ed.presupuestoItemId} onChange={(e) => setEditandoConceptoFinanzas({ ...ed, presupuestoItemId: e.target.value, periodo: '' })} title="Vincular a un concepto de Presupuesto (marca ese mes como pagado)" aria-label="Vincular a Presupuesto" className={cn('h-8 border-primary text-xs', ed.presupuestoItemId && 'bg-success/10')}>
                                         <option value="">📅 Sin vincular</option>
                                         {opciones.map(p => <option key={p.id} value={p.id}>📅 {p.nombre}{p.ceco !== ed.ceco ? ` · ${p.ceco}` : ''}</option>)}
                                       </Select>
                                     </div>
+                                  );
+                                })()}
+                                {editandoConceptoFinanzas.permiteVinculo && editandoConceptoFinanzas.presupuestoItemId && (() => {
+                                  // Mes al que corresponde en Presupuesto (puede ser distinto del mes de la fecha del pago).
+                                  const ed = editandoConceptoFinanzas;
+                                  const valor = ed.periodo || periodoPorDefecto(ed.fecha, presupuestoItems.find(p => p.id === ed.presupuestoItemId)?.mesVencido);
+                                  return (
+                                    <Input type="month" value={valor} onChange={(e) => setEditandoConceptoFinanzas({ ...ed, periodo: e.target.value })} title="Mes al que corresponde en Presupuesto" aria-label="Mes en Presupuesto" className="h-8 w-auto border-primary text-xs" />
                                   );
                                 })()}
                                 <Input autoFocus type="text" aria-label="Concepto" value={editandoConceptoFinanzas.texto} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, texto: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') handleGuardarConceptoFinanzas(); if (e.key === 'Escape') setEditandoConceptoFinanzas(null); }} className="h-8 min-w-[140px] flex-1 border-primary text-xs" />
@@ -9954,7 +10022,7 @@ const App = () => {
                               <div className="flex items-start gap-1">
                                 <div><TextoResumido texto={r.detalle} /></div>
                                 {puedeEditarConceptoFinanzas && (
-                                  <Button variant="ghost" size="icon" onClick={() => setEditandoConceptoFinanzas({ tabla: esIngreso ? 'ingresos' : 'gastos', id: r.id, texto: r.detalle || '', fecha: r.fecha || '', ceco: r.ceco || '', valor: String((esIngreso ? r : (gastos.find(g => g.id === r.id) || r)).valor ?? ''), tieneValorDestino: esTraslado && r.valorDestino != null, permiteNeutro: !esIngreso && !esTraslado, neutro: !!r.neutro, permiteVinculo: esGasto && (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa'), empresa: r.empresa, presupuestoItemId: r.presupuestoItemId || '', presupuestoItemIdOriginal: r.presupuestoItemId || '', moneda: r.moneda || getMoneda(r.empresa), monedaOriginal: r.moneda || getMoneda(r.empresa), valorDestino: String(r.valorDestino ?? ''), opcionesCeco: esIngreso ? cecosIngreso : (esTraslado ? cecosTraslado : cecosGasto) })} title="Editar fecha, CECO, valor y concepto (solo en Finanzas)" aria-label="Editar" className="size-7 shrink-0 text-[#6C63D1]"><Pencil size={14} /></Button>
+                                  <Button variant="ghost" size="icon" onClick={() => setEditandoConceptoFinanzas({ tabla: esIngreso ? 'ingresos' : 'gastos', id: r.id, texto: r.detalle || '', fecha: r.fecha || '', ceco: r.ceco || '', valor: String((esIngreso ? r : (gastos.find(g => g.id === r.id) || r)).valor ?? ''), tieneValorDestino: esTraslado && r.valorDestino != null, permiteNeutro: !esIngreso && !esTraslado, neutro: !!r.neutro, permiteVinculo: esGasto && (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa'), empresa: r.empresa, presupuestoItemId: r.presupuestoItemId || '', presupuestoItemIdOriginal: r.presupuestoItemId || '', periodo: r.presupuestoItemId ? periodoDeGasto(r) : '', periodoOriginal: r.presupuestoItemId ? (r.periodo || '') : '', moneda: r.moneda || getMoneda(r.empresa), monedaOriginal: r.moneda || getMoneda(r.empresa), valorDestino: String(r.valorDestino ?? ''), opcionesCeco: esIngreso ? cecosIngreso : (esTraslado ? cecosTraslado : cecosGasto) })} title="Editar fecha, CECO, valor y concepto (solo en Finanzas)" aria-label="Editar" className="size-7 shrink-0 text-[#6C63D1]"><Pencil size={14} /></Button>
                                 )}
                               </div>
                             )}
@@ -9972,7 +10040,7 @@ const App = () => {
                             )}
                             {r.presupuestoItemId && (
                               <button type="button" onClick={() => handleVerPresupuestoOrigen(r)} title="Ver el concepto de Presupuesto de origen" className="block cursor-pointer border-0 bg-transparent p-0 text-left font-[inherit] text-[0.7rem] text-[#6C63D1] underline-offset-2 hover:underline">
-                                {r.observaciones === OBSERVACIONES_GASTO_DESDE_PRESUPUESTO ? '🔗 Generado desde Presupuesto' : `📅 Vinculado a Presupuesto: ${presupuestoItems.find(p => p.id === r.presupuestoItemId)?.nombre || 'concepto'}`}
+                                {r.observaciones === OBSERVACIONES_GASTO_DESDE_PRESUPUESTO ? '🔗 Generado desde Presupuesto' : `📅 Vinculado a Presupuesto: ${presupuestoItems.find(p => p.id === r.presupuestoItemId)?.nombre || 'concepto'}`}{periodoDeGasto(r) !== mesDeFecha(r.fecha) ? ` · corresponde a ${nombrePeriodo(periodoDeGasto(r))}` : ''}
                               </button>
                             )}
                             {r.observaciones && r.observaciones.startsWith(OBSERVACIONES_GASTO_LOTE_TERCERO) && (
@@ -10784,6 +10852,10 @@ const App = () => {
                             </CampoUI>
                           )}
                         </div>
+                        <label className="flex cursor-pointer items-start gap-2 text-sm">
+                          <input type="checkbox" className={cn(claseCheckbox, 'mt-0.5')} checked={!!newPresupuestoItem.mesVencido} onChange={(e) => setNewPresupuestoItem({ ...newPresupuestoItem, mesVencido: e.target.checked })} />
+                          <span><strong>Se paga mes vencido</strong> <span className="text-muted-foreground">— se paga a comienzos del mes siguiente (ej. seguridad social): el pago del 5 de octubre queda Pagado en septiembre en Presupuesto. La fecha en Finanzas sigue siendo la real.</span></span>
+                        </label>
                         <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-[2fr_1fr_auto]">
                           <CampoUI label="Nombre / Responsable / Concepto" htmlFor="pc-nombre">
                             <Input id="pc-nombre" type="text" placeholder="Nombre / Responsable / Concepto" value={newPresupuestoItem.nombre} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, nombre: e.target.value})} />
@@ -10822,9 +10894,9 @@ const App = () => {
                               <TableCell className="text-xs text-muted-foreground">{cecos.find(c => c.codigo === item.ceco)?.nombre || item.ceco}</TableCell>
                               <TableCell className="min-w-[160px]">
                                 {item.nombre}
-                                {(item.tipo || item.formaPago) && (
+                                {(item.tipo || item.formaPago || item.mesVencido) && (
                                   <div className="text-[0.7rem] text-muted-foreground">
-                                    {[item.tipo, item.formaPago, item.terceroId && `→ ${todosTerceros.find(t => t.id === item.terceroId)?.nombre || 'tercero'}`].filter(Boolean).join(' · ')}
+                                    {[item.tipo, item.formaPago, item.terceroId && `→ ${todosTerceros.find(t => t.id === item.terceroId)?.nombre || 'tercero'}`, item.mesVencido && 'Mes vencido'].filter(Boolean).join(' · ')}
                                   </div>
                                 )}
                               </TableCell>
