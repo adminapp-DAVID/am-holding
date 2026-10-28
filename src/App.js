@@ -22,6 +22,7 @@ import ExportadorPABView from './ExportadorPABView';
 import NotificacionesCampana from './NotificacionesCampana';
 import AuditoriaView from './AuditoriaView';
 import PoliticasView from './PoliticasView';
+import PapeleraView from './PapeleraView';
 import { rolDePermisos } from './roles';
 import { buscarReciboDuplicado } from './bandeja';
 import { POLITICA_POR_DEFECTO, TIPOS_ANTICIPO, anticipoFueraDePlazo, avisosPolitica } from './politicas';
@@ -3964,15 +3965,15 @@ const App = () => {
   const handlePreviewExcelSolicitud = (s) => setPreviewExcelSolicitud({ solicitud: s, ...construirExcelSolicitud(s) });
 
   // Eliminar solicitud — borra también sus soportes (metadata + archivos en Storage)
+  // Eliminar solicitud: la base la guarda en la Papelera (20261031_papelera.sql) con sus soportes,
+  // que ya no se borran aquí — se borran solo al eliminarla definitivamente desde la Papelera.
   const handleDeleteSolicitud = async (id, mensaje = '¿Eliminar solicitud?\n\nLos recibos de tu bandeja que tenía vuelven a quedar disponibles en Mi Bandeja de Soportes.') => {
     if (!window.confirm(mensaje)) return;
 
-    await eliminarSoportesDeEntidad('solicitud', id);
-
-    const { error } = await supabase.from('solicitudes').delete().eq('id', id);
-    if (error) {
+    const { data: borradas, error } = await supabase.from('solicitudes').delete().eq('id', id).select('id');
+    if (error || !borradas?.length) {
       console.error('Error eliminando solicitud:', error);
-      alert('❌ No se pudo eliminar la solicitud: ' + error.message);
+      alert('❌ No se pudo eliminar la solicitud: ' + (error?.message || 'tu rol no tiene permiso.'));
       return;
     }
 
@@ -4617,7 +4618,7 @@ const App = () => {
     || (c.responsableId === user.id && c.estado === 'Pendiente');
 
   const handleDeleteCuentaCobro = async (c) => {
-    if (!window.confirm(`¿Eliminar la cuenta de cobro${c.numero ? ` N° ${c.numero}` : ''}? También se borran sus soportes y desaparece para todos.`)) return;
+    if (!window.confirm(`¿Eliminar la cuenta de cobro${c.numero ? ` N° ${c.numero}` : ''}? Desaparece para todos.\n\nQueda 90 días en la Papelera (Administrativo) por si hay que restaurarlo.`)) return;
     const { data: rutas, error } = await supabase.rpc('eliminar_cuenta_cobro', { p_id: String(c.id) });
     if (error) {
       console.error('Error eliminando cuenta de cobro:', error);
@@ -5342,9 +5343,10 @@ const App = () => {
   const handleDeleteGasto = async (id) => {
     const origen = gastos.find(g => g.id === id)?.solicitudOrigenId || '';
     if (!window.confirm(origen
-      ? '¿Eliminar gasto?\n\nSe generó desde una Solicitud: al eliminarlo, esa Solicitud vuelve a "Pendiente" para corregirla y pagarla de nuevo.'
-      : '¿Eliminar gasto?')) return;
-    await eliminarSoportesDeEntidad('gasto', id);
+      ? '¿Eliminar gasto?\n\nSe generó desde una Solicitud: al eliminarlo, esa Solicitud vuelve a "Pendiente" para corregirla y pagarla de nuevo.\n\nQueda 90 días en la Papelera (Administrativo) por si hay que restaurarlo.'
+      : '¿Eliminar gasto?\n\nQueda 90 días en la Papelera (Administrativo) por si hay que restaurarlo.')) return;
+    // Los soportes se conservan: el gasto pasa a la Papelera (20261031_papelera.sql) y solo se
+    // borran al eliminarlo definitivamente desde allí.
     const { data, error } = await supabase.from('gastos').delete().eq('id', id).select('id');
     if (error || !data || data.length === 0) {
       console.error('Error eliminando gasto:', error);
@@ -5358,13 +5360,10 @@ const App = () => {
   const handleDeleteIngreso = async (id) => {
     const origen = ingresos.find(i => i.id === id)?.solicitudOrigenId || '';
     if (!window.confirm(origen
-      ? '¿Eliminar ingreso?\n\nSe generó desde una Solicitud: al eliminarlo, esa Solicitud vuelve a "Pendiente" para corregirla y pagarla de nuevo.'
-      : '¿Eliminar ingreso?')) return;
-    // Desde que una Legalización con diferencia en contra genera automáticamente un Ingreso
-    // que reutiliza el MISMO archivo (bucket_path) del soporte ya subido a la Solicitud (Opción
-    // C extendida), hay que usar el borrado seguro — igual que Gasto/Solicitud — para no
-    // destruir un archivo que la Solicitud todavía necesita.
-    await eliminarSoportesDeEntidad('ingreso', id);
+      ? '¿Eliminar ingreso?\n\nSe generó desde una Solicitud: al eliminarlo, esa Solicitud vuelve a "Pendiente" para corregirla y pagarla de nuevo.\n\nQueda 90 días en la Papelera (Administrativo) por si hay que restaurarlo.'
+      : '¿Eliminar ingreso?\n\nQueda 90 días en la Papelera (Administrativo) por si hay que restaurarlo.')) return;
+    // Los soportes se conservan (Papelera); el borrado seguro de archivos compartidos con la
+    // solicitud lo hace eliminar_definitivo_papelera al vaciarla.
     const { data, error } = await supabase.from('ingresos').delete().eq('id', id).select('id');
     if (error || !data || data.length === 0) {
       console.error('Error eliminando ingreso:', error);
@@ -7899,6 +7898,17 @@ const App = () => {
             solicitudes={solicitudesUsuario}
             onExcepcion={canApprove ? aplicarExcepcionPolitica : undefined}
             nombreColaborador={(s) => colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—'}
+          />
+        )}
+
+        {currentView === 'papelera' && (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
+          <PapeleraView
+            formatMoneyByMoneda={formatMoneyByMoneda}
+            onRestaurado={(tabla) => {
+              if (tabla === 'gastos' || tabla === 'solicitudes') { cargarGastos(); cargarSolicitudes(); cargarSoportesPendientes(); }
+              if (tabla === 'ingresos') { cargarIngresos(); cargarSolicitudes(); }
+              if (tabla === 'cuentas_cobro') cargarCuentasCobro();
+            }}
           />
         )}
 

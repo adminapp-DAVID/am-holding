@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   LayoutDashboard, ClipboardList, FileText, LineChart, Wallet, CalendarRange,
-  Banknote, Users, Landmark, ShieldCheck, BookOpen, BookCheck, Bell, ChevronDown, User, LogOut, Menu, X,
+  Banknote, Users, Landmark, ShieldCheck, BookOpen, BookCheck, Trash2, Bell, ChevronDown, User, LogOut, Menu, X,
 } from "lucide-react";
 import "./TopNav.css";
 
@@ -39,6 +39,8 @@ const GRUPOS = [
     { id: "auditoria", label: "Auditoría", icon: ShieldCheck, roles: ADMIN },
     // Políticas: todos las leen; el Gestor (pestaña adentro) es solo de Administrador/Coordinadora.
     { id: "politicas", label: "Políticas financieras", icon: BookCheck, roles: TODOS },
+    // Lo eliminado en Finanzas, Solicitudes y Cuentas de cobro (90 días para restaurar).
+    { id: "papelera", label: "Papelera", icon: Trash2, roles: ADMIN },
   ]},
 ];
 
