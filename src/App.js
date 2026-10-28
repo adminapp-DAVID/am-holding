@@ -1903,6 +1903,9 @@ const App = () => {
     estado: row.estado,
     observaciones: row.observaciones || '',
     presupuestoItemId: row.presupuesto_item_id,
+    // Mes de Presupuesto que pagó ('AAAA-MM'): lo guarda "Marcar pagado"/PAB cuando se paga un mes
+    // anterior con una fecha posterior. Vacío = cuenta en el mes de su fecha (ver mesPresupuestoDeGasto).
+    periodo: row.periodo || '',
     soporteDriveLink: row.soporte_drive_link || '',
     // "Pago a Tercero" registrado directo en Finanzas (Opción B) o generado automáticamente
     // al marcar una Solicitud como Pagada (Opción C) — mismo formato de moneda/tercero_info
@@ -1923,7 +1926,7 @@ const App = () => {
     setCargandoGastos(true);
     const { data, error } = await supabase
       .from('gastos')
-      .select('id, created_at, fecha, tipo, cuenta, cuenta_salida, cuenta_destino, detalle, valor, valor_destino, valor_bruto, deduccion_aplicada, categoria, estado, observaciones, presupuesto_item_id, soporte_drive_link, responsable_id, moneda_pago, tercero_info, tercero_id, solicitud_origen_id, lote_pago_id, neutro, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
+      .select('id, created_at, fecha, periodo, tipo, cuenta, cuenta_salida, cuenta_destino, detalle, valor, valor_destino, valor_bruto, deduccion_aplicada, categoria, estado, observaciones, presupuesto_item_id, soporte_drive_link, responsable_id, moneda_pago, tercero_info, tercero_id, solicitud_origen_id, lote_pago_id, neutro, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
       .order('fecha', { ascending: false });
     if (error) {
       console.error('Error cargando gastos:', error);
@@ -5572,10 +5575,10 @@ const App = () => {
           // quedó pagado (otra persona, u otra pestaña) mientras este modal seguía abierto.
           const { data: gastosDelConcepto, error: errorLectura } = await supabase
             .from('gastos')
-            .select('id, fecha')
+            .select('id, fecha, periodo')
             .eq('presupuesto_item_id', item.id);
           if (errorLectura) throw errorLectura;
-          if ((gastosDelConcepto || []).some(g => g.fecha && g.fecha.substring(0, 7) === mesStr)) {
+          if ((gastosDelConcepto || []).some(g => mesPresupuestoDeGasto(g) === mesStr)) {
             fallidos.push(`${item.nombre} (ya estaba pagado este mes)`);
             continue;
           }
@@ -5596,7 +5599,9 @@ const App = () => {
               deduccion_aplicada: item.totalDeducciones > 0 ? item.totalDeducciones : null,
               estado: 'Pagado',
               observaciones: OBSERVACIONES_GASTO_DESDE_PRESUPUESTO,
-              presupuesto_item_id: item.id
+              presupuesto_item_id: item.id,
+              // El mes de Presupuesto que se está pagando, aunque la fecha del pago sea de otro mes.
+              periodo: mesStr
             })
             .select('id')
             .single();
@@ -5666,9 +5671,9 @@ const App = () => {
     const presPendientes = [];
     for (const it of itemsPresupuesto) {
       const mesStr = `${it.anio}-${String(it.mes).padStart(2, '0')}`;
-      const { data: gastosDelConcepto, error } = await supabase.from('gastos').select('id, fecha').eq('presupuesto_item_id', it.entidad_id);
+      const { data: gastosDelConcepto, error } = await supabase.from('gastos').select('id, fecha, periodo').eq('presupuesto_item_id', it.entidad_id);
       if (error) throw error;
-      if ((gastosDelConcepto || []).some(g => g.fecha && g.fecha.substring(0, 7) === mesStr)) saltados++;
+      if ((gastosDelConcepto || []).some(g => mesPresupuestoDeGasto(g) === mesStr)) saltados++;
       else presPendientes.push(it);
     }
 
@@ -5737,6 +5742,7 @@ const App = () => {
           estado: 'Pagado',
           observaciones: OBSERVACIONES_GASTO_DESDE_PRESUPUESTO,
           presupuesto_item_id: it.entidad_id,
+          periodo: `${it.anio}-${String(it.mes).padStart(2, '0')}`,
           tercero_id: meta.terceroId || null,
           lote_pago_id: lote.id
         }).select('id').single();
@@ -7423,6 +7429,10 @@ const App = () => {
   })).filter(c => c.valor > 0);
 
   // ===== PRESUPUESTO =====
+  // Mes de Presupuesto al que pertenece un pago: el que se marcó pagado (periodo) o, si no lo trae,
+  // el de su fecha. Así un pendiente de septiembre pagado el 5 de octubre queda Pagado en septiembre,
+  // con la fecha real en Finanzas.
+  const mesPresupuestoDeGasto = (g) => g.periodo || (g.fecha || '').substring(0, 7);
   // Valor esperado de un concepto en un mes puntual: usa el ajuste manual de ese mes si existe
   // (presupuestoOverrides), o si no el valor base recurrente del concepto.
   const getValorEsperado = (presupuestoItemId, anio, mes) => {
@@ -7479,7 +7489,7 @@ const App = () => {
     return presupuestoItems
       .filter(p => p.activo !== false && p.empresa === empresa)
       .map(item => {
-        const gastoVinculado = gastos.find(g => g.presupuestoItemId === item.id && g.fecha && g.fecha.substring(0, 7) === mesStr);
+        const gastoVinculado = gastos.find(g => g.presupuestoItemId === item.id && mesPresupuestoDeGasto(g) === mesStr);
         const valorBaseEsperado = getValorEsperado(item.id, anio, mes);
         const ajustado = valorBaseEsperado !== (parseFloat(item.valorMensual) || 0);
         const deduccionesDelItem = deducciones.filter(d => d.presupuestoItemId === item.id);
