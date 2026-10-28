@@ -87,6 +87,19 @@ const EncabezadoAbreviado = ({ corto, largo }) => {
 };
 
 // Etiqueta + campo.
+// Cuántas filas se dibujan de una vez en las listas largas, y el pie "Ver más / Ver todos".
+const FILAS_POR_TANDA = 100;
+const VerMasFilasUI = ({ total, limite, setLimite }) => {
+  if (total <= limite) return null;
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-3 py-2 text-xs text-muted-foreground">
+      <span>Mostrando {limite} de {total}</span>
+      <Button size="sm" variant="outline" onClick={() => setLimite(limite + FILAS_POR_TANDA)}>Ver {Math.min(FILAS_POR_TANDA, total - limite)} más</Button>
+      {total - limite > FILAS_POR_TANDA && <Button size="sm" variant="ghost" onClick={() => setLimite(total)}>Ver todos ({total})</Button>}
+    </div>
+  );
+};
+
 // Encabezado de tabla que ordena al pulsarlo (Historial de Finanzas): muestra la flecha de la
 // dirección activa y, en las demás columnas, una flecha tenue que indica que se puede ordenar.
 const CabeceraOrdenUI = ({ campo, orden, onOrdenar, className, alinear = 'start', children }) => {
@@ -703,6 +716,11 @@ const App = () => {
   // Orden del Historial de Finanzas al pulsar una columna: { campo, direccion } (null = el orden
   // de siempre, del más reciente creado al más antiguo).
   const [ordenFinanzas, setOrdenFinanzas] = useState(null);
+  // Historial de Finanzas y lista de Solicitudes: se dibujan por tandas (FILAS_POR_TANDA) — con
+  // miles de registros, dibujarlos todos hacía que cada tecla en un formulario de la misma
+  // pantalla volviera a procesar miles de filas, y el navegador se quedaba sin memoria.
+  const [limiteFinanzas, setLimiteFinanzas] = useState(FILAS_POR_TANDA);
+  const [limiteSolicitudes, setLimiteSolicitudes] = useState(FILAS_POR_TANDA);
   const [busquedaFinanzas, setBusquedaFinanzas] = useState('');
   const [filtroFinanzasEmpresa, setFiltroFinanzasEmpresa] = useState('Todas');
   const [filtroFinanzasCeco, setFiltroFinanzasCeco] = useState('Todos');
@@ -8861,7 +8879,7 @@ const App = () => {
                 <TableBody>
                     {solicitudesFiltradas.length === 0 ? (
                       <TableRow className="hover:bg-transparent"><TableCell colSpan={canApprove ? 11 : 10} className="py-8 text-center text-muted-foreground">Sin solicitudes para estos filtros.</TableCell></TableRow>
-                    ) : solicitudesFiltradas.map(s => {
+                    ) : solicitudesFiltradas.slice(0, limiteSolicitudes).map(s => {
                       // Legalización con anticipo vinculado: base para las 2 columnas nuevas y para
                       // marcar el anticipo original como "ya legalizado" (solo visual, no toca s.estado).
                       // Nota: la búsqueda del vínculo sigue mirando TODAS las solicitudes del usuario
@@ -9022,6 +9040,7 @@ const App = () => {
                     })}
                 </TableBody>
               </Table>
+              <VerMasFilasUI total={solicitudesFiltradas.length} limite={limiteSolicitudes} setLimite={setLimiteSolicitudes} />
               </CardContent>
             </Card>
           </div>
@@ -9844,7 +9863,7 @@ const App = () => {
                 <TableBody>
                     {registrosFinanzas.length === 0 ? (
                       <TableRow className="hover:bg-transparent"><TableCell colSpan={8} className="py-8 text-center text-muted-foreground">Sin registros para este filtro.</TableCell></TableRow>
-                    ) : ordenarRegistrosFinanzas(registrosFinanzas).map(r => {
+                    ) : ordenarRegistrosFinanzas(registrosFinanzas).slice(0, limiteFinanzas).map(r => {
                       const esGasto = r.tipo === 'Gasto';
                       const esTraslado = r.tipo === 'Traslado';
                       const esIngreso = r.tipo === 'Ingreso';
@@ -10027,6 +10046,7 @@ const App = () => {
                     })}
                 </TableBody>
               </Table>
+              <VerMasFilasUI total={registrosFinanzas.length} limite={limiteFinanzas} setLimite={setLimiteFinanzas} />
               </CardContent>
             </Card>
           </div>
