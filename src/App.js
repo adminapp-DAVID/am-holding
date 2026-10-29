@@ -754,6 +754,8 @@ const App = () => {
   // Al usarlos, quedan marcados "usado" y ligados a la solicitud que los consumió (nunca se
   // borran solos) — tabla public.soportes_pendientes.
   const [soportesPendientes, setSoportesPendientes] = useState([]);
+  // Mi Bandeja: orden por columna (igual que el Historial de Finanzas). null = por fecha, más reciente primero.
+  const [ordenBandeja, setOrdenBandeja] = useState(null);
   // Recibos de la bandeja ya usados en una solicitud (sección "📤 Enviados"): se siguen viendo
   // con sus archivos mientras la solicitud no esté pagada.
   const [soportesEnviados, setSoportesEnviados] = useState([]);
@@ -2452,6 +2454,26 @@ const App = () => {
       setPendienteEditData(prev => ({ ...prev, archivoNuevo: { nombre: file.name, tipo, tamaño: file.size, data: event.target.result } }));
     };
     reader.readAsDataURL(file);
+  };
+
+  // Orden de Mi Bandeja al pulsar una columna (fecha y valor: de mayor a menor primero; textos: A-Z).
+  const alternarOrdenBandeja = (campo) => setOrdenBandeja(o => {
+    const natural = ['fecha', 'valor'].includes(campo) ? 'desc' : 'asc';
+    if (!o || o.campo !== campo) return { campo, direccion: natural };
+    if (o.direccion === natural) return { campo, direccion: natural === 'asc' ? 'desc' : 'asc' };
+    return null;
+  });
+  const ordenarBandeja = (lista) => {
+    if (!ordenBandeja) return lista;
+    const { campo, direccion } = ordenBandeja;
+    const valor = (x) => (campo === 'valor' ? (parsearMonto(x.valor) || 0)
+      : campo === 'fecha' ? (x.fecha || '')
+        : String(x[campo] || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase());
+    return [...lista].sort((a, b) => {
+      const va = valor(a); const vb = valor(b);
+      const r = va < vb ? -1 : va > vb ? 1 : 0;
+      return direccion === 'asc' ? r : -r;
+    });
   };
 
   const toggleSeleccionPendiente = (id) => {
@@ -8311,20 +8333,44 @@ const App = () => {
                           <Button size="sm" variant={bandejaSoloUltimo ? 'default' : 'outline'} onClick={() => setBandejaSoloUltimo(true)} aria-pressed={bandejaSoloUltimo}>Ver solo el último</Button>
                         </div>
                       </div>
-                      <Table className="text-xs">
+                      {(() => {
+                        // Suma de lo seleccionado, para saber cuánto va a sumar la solicitud.
+                        const seleccionados = soportesPendientes.filter(x => seleccionPendientes.includes(x.id));
+                        const total = seleccionados.reduce((sum, x) => sum + (parsearMonto(x.valor) || 0), 0);
+                        return (
+                          <div className={cn('flex flex-wrap items-center justify-between gap-2 rounded-lg border border-solid px-3 py-2 text-sm', seleccionados.length ? 'border-primary bg-primary/10' : 'border-border bg-background')}>
+                            <span>
+                              <strong>{seleccionados.length}</strong> seleccionado{seleccionados.length === 1 ? '' : 's'}
+                              <span className="mx-2 text-muted-foreground">·</span>
+                              Total: <strong className="text-success">{formatMoneyByMoneda(total, newSolicitud.moneda)}</strong>
+                            </span>
+                            {seleccionados.length > 0 && <Button size="sm" variant="ghost" onClick={() => setSeleccionPendientes([])}>Quitar selección</Button>}
+                          </div>
+                        );
+                      })()}
+                      <Table fija className="text-xs">
                         <TableHeader>
                           <TableRow className="hover:bg-transparent">
-                            <TableHead></TableHead>
-                            <TableHead>Fecha</TableHead>
-                            <TableHead>Pagado a</TableHead>
-                            <TableHead>Concepto</TableHead>
-                            <TableHead className="text-right">Valor</TableHead>
+                            <TableHead className="w-px text-center">
+                              {(() => {
+                                const ids = (bandejaSoloUltimo ? soportesPendientes.slice(0, 1) : soportesPendientes).map(x => x.id);
+                                const todos = ids.length > 0 && ids.every(id => seleccionPendientes.includes(id));
+                                return (
+                                  <input type="checkbox" aria-label="Seleccionar todos" title={todos ? 'Quitar todos' : 'Seleccionar todos'} className={claseCheckbox} checked={todos}
+                                    onChange={() => setSeleccionPendientes(todos ? seleccionPendientes.filter(id => !ids.includes(id)) : [...new Set([...seleccionPendientes, ...ids])])} />
+                                );
+                              })()}
+                            </TableHead>
+                            <CabeceraOrdenUI orden={ordenBandeja} onOrdenar={alternarOrdenBandeja} campo="fecha">Fecha</CabeceraOrdenUI>
+                            <CabeceraOrdenUI orden={ordenBandeja} onOrdenar={alternarOrdenBandeja} campo="proveedor">Pagado a</CabeceraOrdenUI>
+                            <CabeceraOrdenUI orden={ordenBandeja} onOrdenar={alternarOrdenBandeja} campo="descripcion">Concepto</CabeceraOrdenUI>
+                            <CabeceraOrdenUI orden={ordenBandeja} onOrdenar={alternarOrdenBandeja} campo="valor" className="text-right" alinear="end">Valor</CabeceraOrdenUI>
                             <TableHead>Archivo</TableHead>
                             <TableHead></TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {(bandejaSoloUltimo ? soportesPendientes.slice(0, 1) : soportesPendientes).map(item => {
+                            {ordenarBandeja(bandejaSoloUltimo ? soportesPendientes.slice(0, 1) : soportesPendientes).map(item => {
                               const enEdicion = editandoPendienteId === item.id;
                               if (enEdicion) {
                                 return (
