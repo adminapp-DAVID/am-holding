@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   LayoutDashboard, ClipboardList, FileText, LineChart, Wallet, CalendarRange,
   Banknote, Users, Landmark, ShieldCheck, BookOpen, BookCheck, Trash2, Sparkles, Bell, ChevronDown, User, LogOut, Menu, X,
@@ -39,7 +39,7 @@ const GRUPOS = [
     { id: "datosBancarios", label: "Datos bancarios", icon: Landmark, roles: ADMIN },
   ]},
   { label: "Asistente", items: [
-    { id: "asistente", label: "Asistente", icon: Sparkles, roles: ROLES_ASISTENTE },
+    { id: "asistente", label: "Asistente", icon: Sparkles, roles: ROLES_ASISTENTE, iconoEnBarra: true },
   ]},
   { label: "Administrativo", items: [
     { id: "auditoria", label: "Auditoría", icon: ShieldCheck, roles: ADMIN },
@@ -93,6 +93,7 @@ export default function TopNav({
         <nav className="tn-groups">
           {grupos.map(g => g.items.length === 1 ? (
             <button key={g.label} className={`tn-group ${grupoActivo === g.label ? "on" : ""}`} onClick={() => go(g.items[0].id)}>
+              {g.items[0].iconoEnBarra && React.createElement(g.items[0].icon, { size: 15, className: "tn-icono-barra" })}
               {g.items[0].label === g.label ? g.label : g.items[0].label}
             </button>
           ) : (

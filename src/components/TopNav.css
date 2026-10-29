@@ -25,6 +25,7 @@
 .tn-group.on { background: var(--tn-active-bg); color: var(--tn-active-tx); font-weight: 500; }
 .tn-group svg { transition: transform .15s; }
 .tn-group svg.rot { transform: rotate(180deg); }
+.tn-group .tn-icono-barra { color: #B8923D; }
 
 .tn-dd { position: relative; }
 .tn-menu {
