@@ -3566,6 +3566,9 @@ const App = () => {
   // solo resume) las solicitudes propias, no las de toda la empresa.
   // Administrador y Coordinadora gestionan todas las solicitudes pero no crean las suyas.
   const gestionaSolicitudes = user?.rol === 'Administrador' || user?.rol === 'Coordinadora Administrativa';
+  // Gerente Financiero: conserva los permisos de Coordinadora (gestiona todas) y además presenta
+  // las suyas, con Mi Bandeja de Soportes y "Nueva Solicitud".
+  const presentaSolicitudes = !gestionaSolicitudes || user?.rolNombre === 'Gerente Financiero';
   const soloPropias = ['Colaborador', 'Responsable', 'Gerente'].includes(user?.rol);
   const solicitudesUsuario = soloPropias
     ? solicitudes.filter(s => s.responsableId === user.id)
@@ -8291,7 +8294,7 @@ const App = () => {
               {/* Administrador y Coordinadora no crean solicitudes, solo las gestionan: no ven la
                   Bandeja ni "Nueva Solicitud". El formulario solo se les muestra al editar una
                   (✏️ en la tabla), porque la edición reutiliza ese mismo formulario. */}
-              {!isReadOnly && !gestionaSolicitudes && (
+              {!isReadOnly && presentaSolicitudes && (
                 <Card className="gap-4 px-0 py-6 sm:py-7">
                   <CardHeader className="sm:px-7">
                     <CardTitle className="text-lg">📥 Mi Bandeja de Soportes</CardTitle>
@@ -8511,7 +8514,7 @@ const App = () => {
                 </Card>
               )}
 
-              {(!gestionaSolicitudes || editingSolicitudId) && (
+              {(presentaSolicitudes || editingSolicitudId) && (
               <Card id="form-nueva-solicitud" className={cn('gap-4 px-0 py-6 sm:py-7', editingSolicitudId && 'border-2 border-[#6C63D1]')}>
                 <CardHeader className="sm:px-7">
                   <CardTitle className={cn('text-lg', editingSolicitudId && 'text-[#6C63D1]')}>{editingSolicitudId ? '✏️ Editando Solicitud' : 'Nueva Solicitud'}</CardTitle>
