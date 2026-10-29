@@ -1,9 +1,13 @@
-// Edge Function "asistente" — Asistente AM Holding (fase 1: SOLO LECTURA).
+// Edge Function "asistente" — Asistente AM Holding.
 //
 // La app (src/AsistenteView.jsx) envía la conversación; esta función le pregunta a Claude, que
 // consulta el sistema con herramientas de solo lectura. Las consultas usan el JWT del usuario
 // que pregunta, así que RLS aplica igual que en la app: el asistente nunca ve más de lo que ve
-// esa persona. No escribe, no borra y no toca bancos.
+// esa persona. No toca bancos.
+//
+// Fase 2 (acciones): esta función NUNCA escribe. Con proponer_accion solo valida y arma una
+// propuesta; la app la muestra con Confirmar/Cancelar y, si el usuario confirma, la ejecuta con
+// la misma lógica de los botones (ejecutarAccionAsistente en App.js). Queda en Auditoría.
 //
 // Despliegue (una vez): Supabase → Edge Functions → Secrets: ANTHROPIC_API_KEY (no pegarla en
 // el chat ni en el código). Luego desplegar esta función con el nombre "asistente".
@@ -15,6 +19,17 @@ const MODELO = 'claude-opus-5-5';
 // Roles (de permisos) que pueden usar el asistente — mismo criterio que ROLES_ASISTENTE en
 // src/components/TopNav.jsx.
 const ROLES_ASISTENTE = ['Administrador', 'Coordinadora Administrativa', 'Gerente'];
+// Roles que pueden pedir acciones (mismos que canApprove en App.js).
+const ROLES_ACCIONES = ['Administrador', 'Coordinadora Administrativa'];
+// Cuentas de cada empresa — mismo listado que cuentasPorEmpresa en App.js.
+const CUENTAS_POR_EMPRESA: Record<string, string[]> = {
+  'AM SPORTS GROUP SAS': ['CUENTA BANCOLOMBIA', 'CUENTA BBVA'],
+  'PRO INVESTMENTS GLOBAL SAS': ['CUENTA BANCOLOMBIA'],
+  'PRONOVA CAPITAL SAS': ['CUENTA BANCOLOMBIA'],
+  'FOR SEVEN MEDIA SAS': ['CUENTA BANCOLOMBIA'],
+  'ARKO': ['JPMORGAN'],
+  'CUBO': ['BANCOLOMBIA', 'ITAU', 'BTG', 'BBVA'],
+};
 const ROLES_EQUIVALENTES: Record<string, string> = { 'Gerente Financiero': 'Coordinadora Administrativa' };
 const MAX_FILAS_CONSULTA = 5000;   // filas que se traen de la base por consulta
 const MAX_FILAS_A_CLAUDE = 150;    // filas que se le muestran a Claude (el resto queda para exportar)
@@ -163,6 +178,35 @@ function agrupar(filas: Record<string, unknown>[], por: string[], sumar: string[
 }
 
 // ── Herramientas que ve Claude ──────────────────────────────────────────────────────────────
+const herramientaAccion: Anthropic.Tool = {
+  name: 'proponer_accion',
+  description: 'Propone una acción para que el usuario la confirme con un botón en pantalla. NO la ejecuta: nada cambia hasta que el usuario presione Confirmar. Antes de proponer, identifica los registros exactos con consultar_datos (ids). Tipos: aprobar_solicitudes (Pendiente → Aprobado), devolver_solicitudes (Pendiente/Aprobado → Devuelto, motivo obligatorio), aprobar_cuentas_cobro (Pendiente → Aprobado), registrar_movimiento (un Gasto o Ingreso en Finanzas, sin soportes).',
+  input_schema: {
+    type: 'object',
+    properties: {
+      tipo: { type: 'string', enum: ['aprobar_solicitudes', 'devolver_solicitudes', 'aprobar_cuentas_cobro', 'registrar_movimiento'] },
+      ids: { type: 'array', items: { type: 'string' }, description: 'ids de solicitudes o cuentas de cobro (no aplica a registrar_movimiento).' },
+      motivo: { type: 'string', description: 'Motivo de la devolución (lo verá el colaborador).' },
+      movimiento: {
+        type: 'object',
+        properties: {
+          tipo: { type: 'string', enum: ['Gasto', 'Ingreso'] },
+          fecha: { type: 'string', description: 'AAAA-MM-DD' },
+          empresa: { type: 'string', enum: Object.keys(CUENTAS_POR_EMPRESA) },
+          cuenta: { type: 'string', description: `Cuenta de la empresa: ${Object.entries(CUENTAS_POR_EMPRESA).map(([e, c]) => `${e}: ${c.join(' / ')}`).join('; ')}` },
+          ceco: { type: 'string', description: 'Código del CECO (ej. CECO-001-GF). Consúltalo en la tabla cecos.' },
+          detalle: { type: 'string' },
+          valor: { type: 'number' },
+          estado: { type: 'string', enum: ['Pendiente', 'Pagado'] },
+          observaciones: { type: 'string' },
+        },
+        required: ['tipo', 'fecha', 'empresa', 'cuenta', 'ceco', 'detalle', 'valor', 'estado'],
+      },
+    },
+    required: ['tipo'],
+  },
+};
+
 const tools: Anthropic.Tool[] = [
   {
     name: 'consultar_datos',
@@ -218,12 +262,14 @@ const tools: Anthropic.Tool[] = [
 
 const hoyBogota = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
 
-const sistema = (nombre: string, rol: string) => `Eres el Asistente de AM Holding, dentro de la app de gestión financiera de la holding (empresas: AM SPORTS GROUP SAS, PRO INVESTMENTS GLOBAL SAS, PRONOVA CAPITAL SAS, FOR SEVEN MEDIA SAS y ARKO). Hablas con ${nombre} (rol ${rol}). Responde siempre en español de Colombia, claro y conciso.
+const sistema = (nombre: string, rol: string, puedeActuar: boolean) => `Eres el Asistente de AM Holding, dentro de la app de gestión financiera de la holding (empresas: AM SPORTS GROUP SAS, PRO INVESTMENTS GLOBAL SAS, PRONOVA CAPITAL SAS, FOR SEVEN MEDIA SAS y ARKO). Hablas con ${nombre} (rol ${rol}). Responde siempre en español de Colombia, claro y conciso.
 
 Reglas:
 - Toda cifra sale del sistema: consulta con consultar_datos antes de responder. Nunca inventes datos. Si algo no aparece o no tienes acceso, dilo.
 - Para totales usa agrupar_por/sumar (sumas exactas). Para listados y resúmenes llama mostrar_tabla (el usuario podrá exportarlos a Excel o PDF); en el texto da la conclusión, no repitas la tabla.
-- Eres de SOLO LECTURA: no puedes crear, aprobar, pagar, editar ni borrar nada. Si te lo piden, explica que esa acción se hace en la app (o llegará en una fase posterior).
+${puedeActuar
+  ? `- Acciones: solo puedes PROPONER con proponer_accion (aprobar o devolver solicitudes, aprobar cuentas de cobro, registrar un gasto o ingreso). El usuario verá un botón Confirmar/Cancelar; nunca digas que ya quedó hecho. Si falta un dato obligatorio (cuenta, CECO, valor, fecha, motivo de devolución, estado), pregúntalo antes de proponer; no lo inventes. Pagar, editar, eliminar, traslados y pagos a tercero no se pueden: se hacen en la app.`
+  : `- Con tu rol el asistente es de solo consulta: no puede aprobar, devolver, registrar, pagar, editar ni borrar. Si te lo piden, explica que eso lo hacen Administrador o Coordinadora.`}
 - No tienes acceso a cuentas bancarias, contraseñas ni portales bancarios.
 - Dinero: COP con separador de miles ($1.234.567); ARKO maneja USD (US$). No redondees los valores del sistema.
 - Fechas en formato AAAA-MM-DD en los filtros. Hoy es ${hoyBogota()} (Bogotá). "Este mes", "el mes pasado", etc. se calculan desde hoy.
@@ -236,6 +282,92 @@ Notas del negocio:
 - Estados de solicitudes: Pendiente, Aprobado, Pagado, Devuelto, Legalizado (y otros que veas en los datos).
 - empresa, responsable y ceco son nombres; para filtrar por persona o empresa usa el operador "contiene".
 - Si no conoces los valores posibles de una columna, consúltalos con agrupar_por esa columna.`;
+
+// Valida una acción pedida por Claude y arma la propuesta que la app muestra para confirmar.
+// Solo lee (con RLS); la escritura la hace la app al confirmar.
+const ACCION_SOLICITUDES: Record<string, { estados: string[]; titulo: string }> = {
+  aprobar_solicitudes: { estados: ['Pendiente'], titulo: 'Aprobar solicitudes' },
+  devolver_solicitudes: { estados: ['Pendiente', 'Aprobado'], titulo: 'Devolver solicitudes' },
+};
+async function prepararAccion(sb: SupabaseClient, input: Record<string, unknown>) {
+  const tipo = String(input.tipo || '');
+  const ids = Array.isArray(input.ids) ? [...new Set(input.ids.map(String))].slice(0, 50) : [];
+  const id = crypto.randomUUID();
+
+  if (ACCION_SOLICITUDES[tipo]) {
+    const { estados, titulo } = ACCION_SOLICITUDES[tipo];
+    const motivo = String(input.motivo || '').trim();
+    if (tipo === 'devolver_solicitudes' && !motivo) throw new Error('Falta el motivo de la devolución: pregúntaselo al usuario.');
+    if (!ids.length) throw new Error('Faltan los ids de las solicitudes.');
+    const { data, error } = await sb.from('solicitudes')
+      .select('id, fecha, tipo, valor, total_calculado, estado, moneda_pago, detalle, empresa:empresas(nombre), responsable:usuarios!responsable_id(nombre)')
+      .in('id', ids);
+    if (error) throw new Error(error.message);
+    const filas = (data || []) as unknown as Record<string, any>[];
+    const validas = filas.filter(f => estados.includes(f.estado));
+    const descartadas = filas.filter(f => !estados.includes(f.estado)).map(f => `${f.id} está en ${f.estado}`);
+    const noEncontradas = ids.filter(i => !filas.some(f => String(f.id) === i));
+    if (!validas.length) throw new Error(`Ninguna solicitud se puede ${tipo === 'aprobar_solicitudes' ? 'aprobar' : 'devolver'}. ${[...descartadas, ...noEncontradas.map(i => `${i} no existe o no tienes acceso`)].join('; ')}`);
+    // Igual que la tabla de Solicitudes: los tipos con ítems usan total_calculado; los de valor único, valor.
+    const valor = (f: Record<string, any>) => Number(f.total_calculado) > 0 && f.tipo !== 'Pago a Tercero' ? Number(f.total_calculado) : Number(f.valor) || 0;
+    return {
+      id, tipo, titulo, estado: 'pendiente',
+      resumen: `${titulo}: ${validas.length}${tipo === 'devolver_solicitudes' ? ` · Motivo: ${motivo}` : ''}`,
+      columnas: ['Fecha', 'Colaborador', 'Tipo', 'Valor', 'Estado actual'],
+      filas: validas.map(f => [f.fecha, f.responsable?.nombre || '', f.tipo, valor(f), f.estado]),
+      columnaDinero: 3,
+      avisos: [...descartadas, ...noEncontradas.map(i => `${i}: no existe o no tienes acceso`)],
+      datos: { ids: validas.map(f => f.id), motivo: motivo || null },
+    };
+  }
+
+  if (tipo === 'aprobar_cuentas_cobro') {
+    if (!ids.length) throw new Error('Faltan los ids de las cuentas de cobro.');
+    const { data, error } = await sb.from('cuentas_cobro')
+      .select('id, fecha, numero, mes, anio, monto, estado, empresa:empresas(nombre), responsable:usuarios!responsable_id(nombre)').in('id', ids);
+    if (error) throw new Error(error.message);
+    const filas = (data || []) as unknown as Record<string, any>[];
+    const validas = filas.filter(f => f.estado === 'Pendiente');
+    if (!validas.length) throw new Error('Ninguna de esas cuentas de cobro está Pendiente (o no tienes acceso).');
+    return {
+      id, tipo, titulo: 'Aprobar cuentas de cobro', estado: 'pendiente',
+      resumen: `Aprobar ${validas.length} cuenta(s) de cobro`,
+      columnas: ['N°', 'Prestador', 'Empresa', 'Periodo', 'Monto'],
+      filas: validas.map(f => [f.numero ?? '', f.responsable?.nombre || '', f.empresa?.nombre || '', `${f.mes ?? ''} ${f.anio ?? ''}`.trim(), Number(f.monto) || 0]),
+      columnaDinero: 4,
+      avisos: filas.filter(f => f.estado !== 'Pendiente').map(f => `N° ${f.numero ?? f.id} está en ${f.estado}`),
+      datos: { ids: validas.map(f => f.id) },
+    };
+  }
+
+  if (tipo === 'registrar_movimiento') {
+    const m = (input.movimiento || {}) as Record<string, unknown>;
+    const mov = {
+      tipo: String(m.tipo || ''), fecha: String(m.fecha || ''), empresa: String(m.empresa || ''), cuenta: String(m.cuenta || ''),
+      ceco: String(m.ceco || ''), detalle: String(m.detalle || '').trim(), valor: Number(m.valor), estado: String(m.estado || ''),
+      observaciones: String(m.observaciones || '').trim(),
+    };
+    if (!['Gasto', 'Ingreso'].includes(mov.tipo)) throw new Error('Solo se puede registrar un Gasto o un Ingreso.');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(mov.fecha) || Number.isNaN(Date.parse(mov.fecha))) throw new Error('Fecha inválida (AAAA-MM-DD).');
+    if (!CUENTAS_POR_EMPRESA[mov.empresa]) throw new Error(`Empresa inválida. Opciones: ${Object.keys(CUENTAS_POR_EMPRESA).join(', ')}`);
+    if (!CUENTAS_POR_EMPRESA[mov.empresa].includes(mov.cuenta)) throw new Error(`Cuenta inválida para ${mov.empresa}. Opciones: ${CUENTAS_POR_EMPRESA[mov.empresa].join(', ')}`);
+    if (!mov.detalle) throw new Error('Falta el detalle/concepto.');
+    if (!(mov.valor > 0)) throw new Error('El valor debe ser mayor a cero.');
+    if (!['Pendiente', 'Pagado'].includes(mov.estado)) throw new Error('Estado inválido: Pendiente o Pagado.');
+    const { data: ceco } = await sb.from('cecos').select('codigo, nombre, activo').eq('codigo', mov.ceco).maybeSingle();
+    if (!ceco || ceco.activo === false) throw new Error(`El CECO ${mov.ceco} no existe o está inactivo. Consulta la tabla cecos.`);
+    return {
+      id, tipo, titulo: `Registrar ${mov.tipo.toLowerCase()} en Finanzas`, estado: 'pendiente',
+      resumen: `${mov.tipo} de ${mov.valor} — ${mov.detalle} (${mov.empresa})`,
+      columnas: ['Fecha', 'Empresa', 'Cuenta', 'CECO', 'Detalle', 'Valor', 'Estado'],
+      filas: [[mov.fecha, mov.empresa, mov.cuenta, `${ceco.codigo} · ${ceco.nombre}`, mov.detalle, mov.valor, mov.estado]],
+      columnaDinero: 5, moneda: mov.empresa === 'ARKO' ? 'USD' : 'COP',
+      avisos: ['Se registra sin soportes: puedes adjuntarlos luego desde Finanzas.'],
+      datos: { movimiento: mov },
+    };
+  }
+  throw new Error(`Tipo de acción no permitido: ${tipo}`);
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -260,12 +392,18 @@ Deno.serve(async (req) => {
       .slice(-20)
       .map((m: { rol: 'user' | 'assistant'; texto: string }) => ({ role: m.rol, content: m.texto.slice(0, 8000) }));
     if (!historial.length || historial[historial.length - 1].role !== 'user') return json({ error: 'Falta la pregunta.' }, 400);
-    while (historial[0]?.role !== 'user') historial.shift();
+    while (historial.length && historial[0].role !== 'user') historial.shift();
+    // Une mensajes seguidos del mismo rol (p. ej. la nota "[Sistema] Confirmé…" + la pregunta).
+    for (let i = historial.length - 1; i > 0; i--) {
+      if (historial[i].role === historial[i - 1].role) { historial[i - 1].content += '\n\n' + historial[i].content; historial.splice(i, 1); }
+    }
 
     const client = new Anthropic({ apiKey });
     const messages: Anthropic.MessageParam[] = historial;
     const consultas = new Map<string, Record<string, unknown>[]>();
     const tablas: unknown[] = [];
+    const acciones: unknown[] = [];
+    const puedeActuar = ROLES_ACCIONES.includes(rol);
     const uso = { entrada: 0, salida: 0 };
     let texto = '';
 
@@ -275,8 +413,8 @@ Deno.serve(async (req) => {
         max_tokens: 16000,
         thinking: { type: 'adaptive' },
         // Caché de herramientas + instrucciones (iguales en cada vuelta de la misma pregunta).
-        system: [{ type: 'text', text: sistema(yo.nombre, yo.rol), cache_control: { type: 'ephemeral' } }],
-        tools,
+        system: [{ type: 'text', text: sistema(yo.nombre, yo.rol, puedeActuar), cache_control: { type: 'ephemeral' } }],
+        tools: puedeActuar ? [...tools, herramientaAccion] : tools,
         messages,
       });
       uso.entrada += resp.usage.input_tokens + (resp.usage.cache_read_input_tokens || 0) + (resp.usage.cache_creation_input_tokens || 0);
@@ -297,7 +435,7 @@ Deno.serve(async (req) => {
       messages.push({ role: 'user', content: resultados });
     }
 
-    return json({ texto: texto || 'No pude completar la respuesta. Intenta con una pregunta más concreta.', tablas, uso });
+    return json({ texto: texto || 'No pude completar la respuesta. Intenta con una pregunta más concreta.', tablas, acciones, uso });
 
     async function ejecutar(nombre: string, input: Record<string, unknown>) {
       if (nombre === 'consultar_datos') {
@@ -327,6 +465,11 @@ Deno.serve(async (req) => {
         const grafico = g && columnas.includes(String(g.etiqueta)) && columnas.includes(String(g.valor)) ? { etiqueta: g.etiqueta, valor: g.valor } : null;
         tablas.push({ titulo, columnas, filas, columnasDinero: dinero.filter(c => columnas.includes(c)), grafico });
         return { ok: true, filas_mostradas: filas.length };
+      }
+      if (nombre === 'proponer_accion' && puedeActuar) {
+        const propuesta = await prepararAccion(sb, input);
+        acciones.push(propuesta);
+        return { ok: true, mostrada_al_usuario: true, resumen: propuesta.resumen, nota: 'Aún NO se ha hecho: el usuario debe presionar Confirmar.' };
       }
       throw new Error(`Herramienta desconocida: ${nombre}`);
     }

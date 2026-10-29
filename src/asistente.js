@@ -60,3 +60,11 @@ export const nombreArchivo = (titulo, ext) => {
 export const textoPlano = (md) => String(md || '')
   .replace(/\*\*(.+?)\*\*/g, '$1').replace(/__(.+?)__/g, '$1')
   .replace(/^#{1,6}\s*/gm, '').replace(/`/g, '');
+
+// Texto para leer en voz alta: sin markdown, emojis ni símbolos que el lector deletrea.
+export const textoParaVoz = (md) => textoPlano(md)
+  .replace(/[\p{Extended_Pictographic}️]/gu, '')
+  .replace(/^\s*[-*•]\s+/gm, '')
+  .replace(/[|#>_~]/g, ' ')
+  .replace(/[ \t]+/g, ' ')
+  .trim();

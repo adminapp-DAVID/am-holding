@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { etiquetaColumna, monedaDeFila, textoCelda, datosGrafico, filasExcel, nombreArchivo, textoPlano } from './asistente';
+import { etiquetaColumna, monedaDeFila, textoCelda, datosGrafico, filasExcel, nombreArchivo, textoPlano, textoParaVoz } from './asistente';
 
 const tabla = {
   titulo: 'Gastos octubre',
@@ -43,5 +43,9 @@ describe('asistente', () => {
   it('nombre de archivo y texto plano', () => {
     expect(nombreArchivo('Gastos de octubre · PRONOVA', 'xlsx')).toBe('Gastos_de_octubre_PRONOVA.xlsx');
     expect(textoPlano('## Resumen\n**Total**: `$1`')).toBe('Resumen\nTotal: $1');
+  });
+
+  it('texto para voz sin emojis ni viñetas', () => {
+    expect(textoParaVoz('✅ **Listo**\n- Uno | dos')).toBe('Listo\nUno dos');
   });
 });

@@ -3093,16 +3093,18 @@ const App = () => {
       ...(nuevoEstado === 'Devuelto' ? { motivoDevolucion: patch.motivo_devolucion || '' } : {})
     } : s));
 
-    const { error } = await supabase
+    // .select('id'): si RLS bloquea el cambio, update devuelve error null con 0 filas.
+    const { data: actualizadas, error } = await supabase
       .from('solicitudes')
       .update(patch)
-      .eq('id', id);
+      .eq('id', id)
+      .select('id');
 
-    if (error) {
-      console.error('Error actualizando estado:', error);
-      alert('❌ No se pudo actualizar el estado: ' + error.message);
+    if (error || !actualizadas?.length) {
+      console.error('Error actualizando estado:', error || 'sin permiso (0 filas)');
+      alert('❌ No se pudo actualizar el estado: ' + (error?.message || 'no tienes permiso sobre esta solicitud'));
       setSolicitudes(anteriores);
-      return;
+      return false;
     }
 
     // Opción C (arquitectura Terceros/Finanzas aprobada, extendida a Anticipo/Reembolso/
@@ -3125,6 +3127,55 @@ const App = () => {
         }
       }
     }
+    return true;
+  };
+
+  // Asistente (fase 2): ejecuta una acción que el usuario CONFIRMÓ en el chat (propuesta por la
+  // Edge Function asistente, que no escribe nada). Usa la misma lógica de los botones, revisa
+  // el estado actual antes de cada cambio y queda en Auditoría por los triggers de cada tabla.
+  // Devuelve { ok, mensaje } para mostrarlo en el chat.
+  const ejecutarAccionAsistente = async (accion) => {
+    if (!canApprove) return { ok: false, mensaje: 'Tu rol no puede hacer esta acción.' };
+    const { tipo, datos = {} } = accion;
+    if (tipo === 'aprobar_solicitudes' || tipo === 'devolver_solicitudes') {
+      const { data: actuales, error } = await supabase.from('solicitudes').select('id, estado').in('id', datos.ids || []);
+      if (error) return { ok: false, mensaje: error.message };
+      const permitidos = tipo === 'aprobar_solicitudes' ? ['Pendiente'] : ['Pendiente', 'Aprobado'];
+      let hechas = 0;
+      const omitidas = [];
+      for (const s of actuales || []) {
+        if (!permitidos.includes(s.estado)) { omitidas.push(`una ya estaba en ${s.estado}`); continue; }
+        const ok = tipo === 'aprobar_solicitudes'
+          ? await handleChangeEstado(s.id, 'Aprobado')
+          : await handleChangeEstado(s.id, 'Devuelto', { motivoDevolucion: datos.motivo });
+        if (ok) hechas++;
+      }
+      await cargarSolicitudes();
+      const verbo = tipo === 'aprobar_solicitudes' ? 'aprobada(s)' : 'devuelta(s)';
+      return { ok: hechas > 0, mensaje: `${hechas} solicitud(es) ${verbo}.${omitidas.length ? ` Omitidas: ${omitidas.join(', ')}.` : ''}` };
+    }
+    if (tipo === 'aprobar_cuentas_cobro') {
+      const { data, error } = await supabase.from('cuentas_cobro').update({ estado: 'Aprobado' })
+        .in('id', datos.ids || []).eq('estado', 'Pendiente').select('id');
+      await cargarCuentasCobro();
+      if (error) return { ok: false, mensaje: error.message };
+      return { ok: data.length > 0, mensaje: data.length ? `${data.length} cuenta(s) de cobro aprobada(s).` : 'No se aprobó ninguna (ya no estaban Pendiente o no tienes permiso).' };
+    }
+    if (tipo === 'registrar_movimiento') {
+      const m = datos.movimiento || {};
+      const [empresaId, cecoId] = await Promise.all([resolverEmpresaId(m.empresa), resolverCecoId(m.ceco)]);
+      if (!empresaId || !cecoId) return { ok: false, mensaje: 'No se encontró la empresa o el CECO.' };
+      const tabla = m.tipo === 'Ingreso' ? 'ingresos' : 'gastos';
+      const { data, error } = await supabase.from(tabla).insert({
+        fecha: m.fecha, tipo: m.tipo, empresa_id: empresaId, responsable_id: null, ceco_id: cecoId,
+        cuenta: m.cuenta, detalle: m.detalle, valor: Number(m.valor), estado: m.estado,
+        observaciones: [m.observaciones, 'Registrado desde el Asistente.'].filter(Boolean).join(' '),
+      }).select('id').single();
+      if (error) return { ok: false, mensaje: error.message };
+      if (tabla === 'ingresos') await cargarIngresos(); else await cargarGastos();
+      return { ok: !!data, mensaje: `${m.tipo} registrado en Finanzas.` };
+    }
+    return { ok: false, mensaje: 'Acción no reconocida.' };
   };
 
   // Determina qué movimiento de Finanzas corresponde generar automáticamente al marcar una
@@ -7939,7 +7990,7 @@ const App = () => {
         )}
 
         {currentView === 'asistente' && ['Administrador', 'Coordinadora Administrativa', 'Gerente'].includes(user.rol) && (
-          <AsistenteView user={user} formatMoneyByMoneda={formatMoneyByMoneda} />
+          <AsistenteView user={user} formatMoneyByMoneda={formatMoneyByMoneda} onEjecutarAccion={canApprove ? ejecutarAccionAsistente : undefined} />
         )}
 
         {currentView === 'auditoria' && (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
