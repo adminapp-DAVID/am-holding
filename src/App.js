@@ -23,6 +23,7 @@ import NotificacionesCampana from './NotificacionesCampana';
 import AuditoriaView from './AuditoriaView';
 import PoliticasView from './PoliticasView';
 import PapeleraView from './PapeleraView';
+import AsistenteView from './AsistenteView';
 import { rolDePermisos } from './roles';
 import { buscarReciboDuplicado } from './bandeja';
 import { POLITICA_POR_DEFECTO, TIPOS_ANTICIPO, anticipoFueraDePlazo, avisosPolitica } from './politicas';
@@ -7932,6 +7933,10 @@ const App = () => {
               if (tabla === 'cuentas_cobro') cargarCuentasCobro();
             }}
           />
+        )}
+
+        {currentView === 'asistente' && ['Administrador', 'Coordinadora Administrativa', 'Gerente'].includes(user.rol) && (
+          <AsistenteView user={user} formatMoneyByMoneda={formatMoneyByMoneda} />
         )}
 
         {currentView === 'auditoria' && (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (

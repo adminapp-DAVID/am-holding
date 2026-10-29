@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   LayoutDashboard, ClipboardList, FileText, LineChart, Wallet, CalendarRange,
-  Banknote, Users, Landmark, ShieldCheck, BookOpen, BookCheck, Trash2, Bell, ChevronDown, User, LogOut, Menu, X,
+  Banknote, Users, Landmark, ShieldCheck, BookOpen, BookCheck, Trash2, Sparkles, Bell, ChevronDown, User, LogOut, Menu, X,
 } from "lucide-react";
 import "./TopNav.css";
 
@@ -13,6 +13,9 @@ import "./TopNav.css";
 const ADMIN = ["Administrador", "Coordinadora Administrativa"];
 const TODOS = [...ADMIN, "Contadora", "Gerente", "Responsable", "Colaborador"];
 const ROLES_FINANZAS = [...ADMIN, "Gerente"];
+// Asistente (fase 1, solo lectura): Administrador, Coordinadora (incluye Gerente Financiero) y
+// Gerente — misma lista que ROLES_ASISTENTE en supabase/functions/asistente/index.ts.
+const ROLES_ASISTENTE = [...ADMIN, "Gerente"];
 
 // `id` = valor de currentView en App.js.
 const GRUPOS = [
@@ -34,6 +37,9 @@ const GRUPOS = [
   { label: "Equipo", items: [
     { id: "responsables", label: "Colaboradores", icon: Users, roles: ADMIN },
     { id: "datosBancarios", label: "Datos bancarios", icon: Landmark, roles: ADMIN },
+  ]},
+  { label: "Asistente", items: [
+    { id: "asistente", label: "Asistente", icon: Sparkles, roles: ROLES_ASISTENTE },
   ]},
   { label: "Administrativo", items: [
     { id: "auditoria", label: "Auditoría", icon: ShieldCheck, roles: ADMIN },
