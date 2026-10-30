@@ -431,7 +431,7 @@ const App = () => {
     (cuentaDestino && cuentaDestino.includes(': ')) ? cuentaDestino.split(': ')[0] : empresaOrigen;
 
   // Data - DEBE ir primero
-  const rolesSensibles = ['Administrador', 'Contadora', 'Coordinadora Administrativa', 'Gerente Financiero'];
+  const rolesSensibles = ['Administrador', 'Gerente Administrativo', 'Contadora', 'Coordinadora Administrativa', 'Gerente Financiero'];
 
   const empresas = ['AM SPORTS GROUP SAS', 'PRO INVESTMENTS GLOBAL SAS', 'PRONOVA CAPITAL SAS', 'FOR SEVEN MEDIA SAS', 'ARKO'];
   const estadosSolicitud = ['Pendiente', 'Aprobado', 'Devuelto', 'Pagado', 'Legalizado'];
@@ -9200,7 +9200,7 @@ const App = () => {
             ...responsables.map(r => ({ ...r, rol: 'Colaborador', origen: 'responsables' })),
             ...usuariosAdmin.map(u => ({ ...u, origen: 'admin' }))
           ];
-          const rolIcono = { 'Colaborador': '👥', 'Gerente': '📈', 'Gerente Financiero': '💼', 'Coordinadora Administrativa': '🗂️', 'Contadora': '🧮', 'Administrador': '🔑' };
+          const rolIcono = { 'Colaborador': '👥', 'Gerente': '📈', 'Gerente Financiero': '💼', 'Gerente Administrativo': '🏛️', 'Coordinadora Administrativa': '🗂️', 'Contadora': '🧮', 'Administrador': '🔑' };
           const seccion = (titulo, contenido, extra) => (
             <section className="flex flex-col gap-3">
               <h3 className="m-0 border-0 border-b border-solid border-border pb-2 text-sm font-bold">{titulo}</h3>
