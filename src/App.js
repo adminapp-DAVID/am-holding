@@ -6691,14 +6691,36 @@ const App = () => {
           return;
         }
 
+        // Fechas de Excel: se toma el día local redondeado (+12 h) para que una fecha que llega
+        // como 23:59:59 del día anterior, o en otra zona horaria, no se corra un día.
         const formatearFecha = (valor) => {
-          if (valor instanceof Date) return valor.toISOString().split('T')[0];
+          if (valor instanceof Date && !isNaN(valor)) {
+            const d = new Date(valor.getTime() + 12 * 3600 * 1000);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          }
           return String(valor || '').trim();
         };
+        // Link del soporte: si la celda es un hipervínculo con otro texto ("Ver soporte"), se usa el destino real.
+        const rangoHoja = XLSX.utils.decode_range(hoja['!ref']);
+        const colSoporte = (() => {
+          for (let c = rangoHoja.s.c; c <= rangoHoja.e.c; c++) {
+            if (String(hoja[XLSX.utils.encode_cell({ r: rangoHoja.s.r, c })]?.v || '').trim() === 'Soporte (link)') return c;
+          }
+          return -1;
+        })();
+        const linkDeFila = (fila, texto) => {
+          // __rowNum__: fila real de la hoja (sheet_to_json se salta las filas en blanco).
+          const celda = colSoporte >= 0 ? hoja[XLSX.utils.encode_cell({ r: fila.__rowNum__, c: colSoporte })] : null;
+          return String(celda?.l?.Target || texto || '').trim();
+        };
+        // Responsables: se reconocen sin importar mayúsculas, tildes ni espacios ("SERGIO MEJIA" = "Sergio Mejía").
+        const normalizarNombre = (n) => String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
+        const personaPorNombre = new Map(personasFinanzas.map(r => [normalizarNombre(r.nombre), r]));
+        const responsablesDesconocidos = new Set();
 
         const errores = [];
         const filasValidas = filas.map((fila, idx) => {
-          const numFila = idx + 2; // +2: la fila 1 de Excel es el encabezado
+          const numFila = (fila.__rowNum__ ?? idx + 1) + 1; // fila real en Excel (1 = encabezado)
           const movimiento = String(fila['Movimiento'] || '').trim();
           const movimientoNorm = movimiento.charAt(0).toUpperCase() + movimiento.slice(1).toLowerCase();
           const fecha = formatearFecha(fila['Fecha']);
@@ -6725,14 +6747,17 @@ const App = () => {
             errores.push(`Fila ${numFila}: falta "Cuenta"`);
           }
 
-          const responsableNombre = String(fila['Responsable'] || '').trim();
-          if (responsableNombre && !personasFinanzas.some(r => r.nombre === responsableNombre)) {
-            errores.push(`Fila ${numFila}: el Responsable "${responsableNombre}" no existe en el sistema — déjalo vacío o corrige el nombre exacto`);
+          const responsableOriginal = String(fila['Responsable'] || '').replace(/\s+/g, ' ').trim();
+          const persona = responsableOriginal ? personaPorNombre.get(normalizarNombre(responsableOriginal)) : null;
+          if (responsableOriginal && !persona) responsablesDesconocidos.add(responsableOriginal);
+          const responsableNombre = persona?.nombre || '';
+          if (fecha && !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+            errores.push(`Fila ${numFila}: la Fecha debe ir como AAAA-MM-DD (llegó "${fecha}")`);
           }
           // Soporte histórico que vive en Drive: se guarda el link tal cual (el botón 📎 del
           // historial lo abre). Solo https — cualquier otra cosa (p. ej. "javascript:") se
           // rechaza, porque ese valor termina en un window.open.
-          const soporteLink = String(fila['Soporte (link)'] || '').trim();
+          const soporteLink = linkDeFila(fila, fila['Soporte (link)']);
           if (soporteLink && !/^https:\/\/\S+$/i.test(soporteLink)) {
             errores.push(`Fila ${numFila}: "Soporte (link)" debe ser un link que empiece por https:// (llegó "${soporteLink.slice(0, 60)}")`);
           }
@@ -6751,10 +6776,17 @@ const App = () => {
             valorDestino: fila['Valor Destino'] ? parsearMonto(fila['Valor Destino']) : null,
             categoria: String(fila['Categoria'] || '').trim() || null,
             estado: String(fila['Estado'] || '').trim() || 'Pendiente',
-            observaciones: String(fila['Observaciones'] || '').trim() || null,
+            // Responsable que no existe en el sistema: queda vacío y su nombre se conserva en Observaciones.
+            observaciones: [String(fila['Observaciones'] || '').trim(), responsableOriginal && !persona ? `Responsable en el archivo: ${responsableOriginal}` : '']
+              .filter(Boolean).join(' · ') || null,
             soporteLink: soporteLink || null
           };
         });
+
+        if (errores.length === 0 && responsablesDesconocidos.size > 0) {
+          const lista = [...responsablesDesconocidos].sort();
+          if (!window.confirm(`⚠️ ${lista.length} responsable(s) del archivo no existen en el sistema:\n\n${lista.slice(0, 20).join('\n')}${lista.length > 20 ? `\n… y ${lista.length - 20} más.` : ''}\n\nAceptar = importar dejando el Responsable vacío en esas filas (el nombre queda en Observaciones).\nCancelar = no importar nada.`)) return;
+        }
 
         if (errores.length > 0) {
           alert(`❌ No se importó nada — corrige estos ${errores.length} problema(s) en el archivo y vuelve a intentar:\n\n${errores.slice(0, 25).join('\n')}${errores.length > 25 ? `\n… y ${errores.length - 25} más.` : ''}`);
@@ -9991,7 +10023,6 @@ const App = () => {
                       const esEntradaTraslado = r._ladoTraslado === 'entrada';
                       const claseValor = esPagoTercero ? 'text-destructive' : (esIngreso || esEntradaTraslado ? 'text-success' : (esSalidaTraslado ? 'text-destructive' : (esTraslado ? 'text-primary' : 'text-destructive')));
                       const iconoTipo = esPagoTercero ? '🤝' : (esGasto ? '💸' : (esTraslado ? '🔄' : '💰'));
-                      const verSoportesFn = esIngreso ? handleVerSoportesIngreso : handleVerSoportesGasto;
                       const deleteFn = esIngreso ? handleDeleteIngreso : handleDeleteGasto;
                       // Nombre/foto del colaborador: se resuelven por colaboradores_publico (id), no por
                       // personasFinanzas/responsableNombre — esos dependen de leer la fila de la OTRA
@@ -10121,11 +10152,11 @@ const App = () => {
                                 </Button>
                               </>
                             )}
-                            {/* Registros históricos con soporte en Drive: se abre Drive como siempre. Los
-                                demás abren el visor de documentos (soportes + PDF/Excel de la
-                                solicitud de origen o la ficha del Pago a Tercero). */}
+                            {/* Registros históricos con soporte en Drive: el visor de documentos lo muestra
+                                adentro (vista previa de Drive). Los demás abren el mismo visor con
+                                sus soportes + PDF/Excel de la solicitud de origen o la ficha del Pago a Tercero. */}
                             {r.soporteDriveLink ? (
-                              <Button variant="ghost" size="sm" onClick={() => verSoportesFn(r)} className="text-success" title="Ver soporte en Drive"><Paperclip size={14} /> Drive</Button>
+                              <Button variant="ghost" size="sm" onClick={() => setVisorMovimiento(r)} className="text-success" title="Ver soporte (Google Drive)"><Paperclip size={14} /> Drive</Button>
                             ) : (r.cantidadSoportes > 0 || r.solicitudOrigenId || esPagoTercero || r.tipo === 'Traslado') ? (
                               <Button variant="ghost" size="sm" onClick={() => setVisorMovimiento(r)} className="text-success" title="Ver documentos (soportes y documentos del sistema)" aria-label="Ver documentos"><FolderOpen size={14} /> {r.cantidadSoportes || ''}</Button>
                             ) : (
