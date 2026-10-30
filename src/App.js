@@ -2570,10 +2570,12 @@ const App = () => {
     setCargandoSoportesPendientes(true);
     try {
       const archivosDescargados = [];
+      const sinArchivo = [];
       for (const item of seleccionados) {
         const { data, error } = await supabase.storage.from('soportes').download(item.bucketPath);
         if (error || !data) {
           console.error('Error descargando recibo de la bandeja:', item, error);
+          sinArchivo.push(`${item.fecha} — ${item.descripcion || item.proveedor || 'recibo'}`);
           continue;
         }
         const dataUrl = await new Promise((resolve, reject) => {
@@ -2593,7 +2595,8 @@ const App = () => {
       }));
       setPendientesEnUso(seleccionados.map(s => s.id));
       setSeleccionPendientes([]);
-      alert(`✅ Se cargaron ${seleccionados.length} recibo(s) en el formulario de Nueva Solicitud, debajo. Revisa y completa el Concepto antes de guardar.`);
+      alert(`✅ Se cargaron ${seleccionados.length} recibo(s) en el formulario de Nueva Solicitud, debajo. Revisa y completa el Concepto antes de guardar.`
+        + (sinArchivo.length ? `\n\n⚠️ No se pudo leer el archivo de ${sinArchivo.length} recibo(s); revísalos en tu bandeja:\n• ${sinArchivo.join('\n• ')}` : ''));
     } finally {
       setCargandoSoportesPendientes(false);
     }
@@ -2760,6 +2763,17 @@ const App = () => {
     if ((newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso' || newSolicitud.tipo === 'Legalización T. Pro') && newSolicitud.documentos.length === 0) {
       alert('Agrega al menos un documento');
       return;
+    }
+
+    // Legalización / Reembolso / T. Pro: sin soportes no se pueden revisar ni pagar (llegaban
+    // ítems digitados sin archivos y se devolvían). En edición cuenta lo que ya tiene subido.
+    if (TIPOS_CON_ITEMS.includes(newSolicitud.tipo)) {
+      const yaSubidos = editingSolicitudId ? (solicitudes.find(x => x.id === editingSolicitudId)?.cantidadSoportes || 0) : 0;
+      const nuevos = editingSolicitudId ? soportesAdicionalesEdicion.length : soportesLegalizacionTemp.length;
+      if (yaSubidos + nuevos === 0) {
+        alert(`Adjunta los soportes de la ${newSolicitud.tipo} antes de enviarla: súbelos aquí o márcalos en tu Bandeja de Soportes y usa "Usar seleccionados". Sin soportes no se puede revisar ni pagar.`);
+        return;
+      }
     }
 
     // Cada Ítem del Gasto también necesita su "Por concepto de".
@@ -2967,6 +2981,26 @@ const App = () => {
       // empresa) y ese PDF único se sube al bucket "soportes" (una sola fila en public.soportes
       // por solicitud).
       if (!editingSolicitudId && soportesLegalizacionTemp.length > 0) {
+        // Plan B: si el PDF consolidado no se puede armar o subir (p. ej. muy pesado), los
+        // soportes quedan sueltos — los de la Bandeja apuntando a su archivo ya subido, el resto
+        // subido uno por uno. Así una solicitud nunca queda sin soportes.
+        const subirSueltos = async () => {
+          let ok = 0;
+          for (const soporte of soportesLegalizacionTemp) {
+            const deBandeja = pendientesEnUso.includes(soporte.id) ? soportesPendientes.find(p => p.id === soporte.id) : null;
+            if (deBandeja?.bucketPath) {
+              const { error: errorFila } = await supabase.from('soportes').insert({
+                bucket_path: deBandeja.bucketPath, nombre_original: deBandeja.nombre || soporte.nombre,
+                tamano_kb: deBandeja.tamano || Math.round((soporte.tamaño || 0) / 1024),
+                entidad_tipo: 'solicitud', entidad_id: solicitudId, subido_por: user.id,
+              });
+              if (!errorFila) { ok++; continue; }
+              console.error('Error ligando recibo de la bandeja a la solicitud:', errorFila);
+            }
+            if (await subirSoporteEntidad(soporte, 'solicitud', solicitudId)) ok++;
+          }
+          return ok;
+        };
         try {
           const soportePDF = await mergeSoportesToPDF(soportesLegalizacionTemp, {
             empresa: empresaNombre,
@@ -2974,13 +3008,16 @@ const App = () => {
             responsableNombre: user.nombre,
             fecha: newSolicitud.fecha
           });
-          await subirSoporteEntidad(soportePDF, 'solicitud', solicitudId);
-
-          // Los soportes que no se pudieron unir al PDF (ej. una foto en un formato que pdf-lib
-          // no soporta) NUNCA se pierden: se suben sueltos, cada uno como su propia fila en
-          // public.soportes de esta misma solicitud, para que sigan visibles en "Ver Soportes"
-          // aunque no queden dentro del PDF consolidado.
-          if (soportePDF.omitidos && soportePDF.omitidos.length > 0) {
+          if (!(await subirSoporteEntidad(soportePDF, 'solicitud', solicitudId))) {
+            const ok = await subirSueltos();
+            alert(ok === soportesLegalizacionTemp.length
+              ? `ℹ️ El PDF consolidado no se pudo subir, pero los ${ok} soportes quedaron guardados sueltos en la solicitud.`
+              : `⚠️ Solo ${ok} de ${soportesLegalizacionTemp.length} soportes quedaron en la solicitud. Edítala y adjunta los que falten.`);
+          } else if (soportePDF.omitidos && soportePDF.omitidos.length > 0) {
+            // Los soportes que no se pudieron unir al PDF (ej. una foto en un formato que pdf-lib
+            // no soporta) NUNCA se pierden: se suben sueltos, cada uno como su propia fila en
+            // public.soportes de esta misma solicitud, para que sigan visibles en "Ver Soportes"
+            // aunque no queden dentro del PDF consolidado.
             for (const soporteOmitido of soportePDF.omitidos) {
               await subirSoporteEntidad(soporteOmitido, 'solicitud', solicitudId);
             }
@@ -2988,7 +3025,10 @@ const App = () => {
           }
         } catch (mergeError) {
           console.error('Error uniendo soportes a PDF:', mergeError);
-          alert('⚠️ La solicitud se guardó, pero hubo un error uniendo los soportes en un solo PDF.');
+          const ok = await subirSueltos();
+          alert(ok === soportesLegalizacionTemp.length
+            ? `ℹ️ No se pudo armar el PDF consolidado, pero los ${ok} soportes quedaron guardados sueltos en la solicitud.`
+            : `⚠️ La solicitud se guardó, pero solo ${ok} de ${soportesLegalizacionTemp.length} soportes quedaron adjuntos. Edítala y adjunta los que falten.`);
         }
       }
 
