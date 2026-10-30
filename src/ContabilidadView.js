@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { guardarSoporteGirado, paginasPdf } from './girarSoportes';
+import { vistaPreviaDrive } from './drive';
 import {
   AGRUPACIONES, CAMPOS_ORDEN, FILTRO_CONTABILIDAD, MESES, agruparFilas, filasContabilidad, filtrarFilas, ordenarFilas,
   tipoArchivo, totalesPorMoneda,
@@ -130,8 +131,12 @@ export function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excel
         try { sistema = await sistemaRef.current(fila); } catch (e) { console.error('Documentos del sistema:', e); setError('No se pudo generar un documento: ' + e.message); }
       }
       if (!vivo) return;
+      // Registro histórico con soporte en Google Drive: se muestra aquí mismo (iframe de Drive).
+      const linkDrive = fila.soporteDriveLink || fila.registro?.soporteDriveLink || '';
+      const drive = linkDrive ? [{ id: 'drive-link', nombre_original: 'Soporte en Google Drive', tamano_kb: null, drive: { url: linkDrive, vista: vistaPreviaDrive(linkDrive)?.vista || null } }] : [];
       setArchivos([
         ...sistema.map(d => ({ tamano_kb: null, ...d, sistema: true })),
+        ...drive,
         ...(excel ? [{ id: 'excel-solicitud', nombre_original: excel.nombreArchivo, tamano_kb: null, deSolicitud: true, excel }] : []),
         ...(data || []).map(r => ({ ...r, deSolicitud: false })),
         ...(deSol || []).filter(r => !propias.has(r.bucket_path)).map(r => ({ ...r, deSolicitud: true })),
@@ -225,6 +230,7 @@ export function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excel
   };
 
   const descargar = async (a) => {
+    if (a.drive) { window.open(a.drive.url, '_blank', 'noopener'); return; }
     try {
       const { url } = await cargarBlob(a);
       const link = document.createElement('a');
@@ -235,6 +241,7 @@ export function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excel
   };
 
   const abrirPestana = async (a) => {
+    if (a.drive) { window.open(a.drive.url, '_blank', 'noopener'); return; }
     try { window.open((await cargarBlob(a)).url, '_blank', 'noopener'); } catch (e) { setError(e.message); }
   };
 
@@ -245,6 +252,7 @@ export function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excel
       const zip = new JSZip();
       const usados = new Set();
       for (const a of archivos) {
+        if (a.drive) continue; // vive en Drive: no se puede empacar en el ZIP
         const { blob } = await cargarBlob(a);
         let nombre = limpiarNombre(a.nombre_original) || 'soporte';
         while (usados.has(nombre)) nombre = `copia_${nombre}`;
@@ -329,7 +337,7 @@ export function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excel
                   <IconoArchivo nombre={a.nombre_original} size={18} className="shrink-0" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold">{a.nombre_original}</span>
-                    <span className="block text-xs text-muted-foreground">{a.excel ? (a.excel.etiqueta || 'Excel de la solicitud') : a.generar ? 'Generado por el sistema' : `${tamano(a.tamano_kb)}${a.deSolicitud ? ' · de la solicitud' : ''}`}</span>
+                    <span className="block text-xs text-muted-foreground">{a.drive ? 'Link de Drive' : a.excel ? (a.excel.etiqueta || 'Excel de la solicitud') : a.generar ? 'Generado por el sistema' : `${tamano(a.tamano_kb)}${a.deSolicitud ? ' · de la solicitud' : ''}`}</span>
                   </span>
                 </button>
               ))}
@@ -373,8 +381,8 @@ export function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excel
                     <Button size="icon" variant="outline" onClick={() => setZoom(z => Math.min(4, z + 0.5))} disabled={zoom >= 4} aria-label="Acercar"><ZoomIn size={16} /></Button>
                   </>
                 )}
-                {!actual.excel && <Button size="sm" variant="outline" onClick={() => abrirPestana(actual)} title="Abrir en una pestaña nueva"><ExternalLink size={14} /> Abrir</Button>}
-                <Button size="sm" onClick={() => descargar(actual)}><Download size={14} /> Descargar</Button>
+                {!actual.excel && <Button size="sm" variant="outline" onClick={() => abrirPestana(actual)} title="Abrir en una pestaña nueva"><ExternalLink size={14} /> {actual.drive ? 'Abrir en Drive' : 'Abrir'}</Button>}
+                {!actual.drive && <Button size="sm" onClick={() => descargar(actual)}><Download size={14} /> Descargar</Button>}
                 {onEliminar && !actual.sistema && !actual.excel && actual.bucket_path && (
                   <Button size="icon" variant="outline" className="text-destructive" disabled={eliminando} onClick={eliminarActual} title="Eliminar este soporte" aria-label="Eliminar este soporte">
                     {eliminando ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
@@ -386,6 +394,19 @@ export function VisorSoportes({ fila, onCerrar, formatoValor, EmpresaLogo, excel
               {error && <p className="absolute left-4 top-3 m-0 rounded-md bg-destructive/10 px-3 py-1.5 text-sm text-destructive">❌ {error}</p>}
               {!actual || grupoVacio ? (
                 <div className="flex flex-col items-center gap-2 text-muted-foreground"><FolderOpen size={40} /><span className="text-sm">{archivos === null ? 'Cargando documentos…' : 'Sin soportes para mostrar'}</span></div>
+              ) : actual.drive ? (
+                actual.drive.vista ? (
+                  <div className="flex h-full min-h-[50vh] w-full flex-col gap-2">
+                    <iframe title="Soporte en Google Drive" src={actual.drive.vista} allow="autoplay" className="min-h-0 w-full flex-1 rounded-md border border-solid border-border bg-card" />
+                    <p className="m-0 text-center text-xs text-muted-foreground">Si no se ve, el archivo no está compartido contigo en Drive: ábrelo con "Abrir en Drive" o pide acceso.</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-3 text-center text-muted-foreground">
+                    <ExternalLink size={40} />
+                    <span className="text-sm">Este enlace no se puede mostrar aquí.</span>
+                    <Button onClick={() => abrirPestana(actual)}><ExternalLink size={16} /> Abrir enlace</Button>
+                  </div>
+                )
               ) : actual.excel ? (
                 <TablaExcel rows={actual.excel.rows} moneda={actual.excel.moneda} monedaFila={actual.excel.monedaFila} formatMoneyByMoneda={formatMoneyByMoneda} />
               ) : cargandoArchivo && !urls[actual.id] ? (
@@ -447,10 +468,8 @@ const ContabilidadView = ({
   const ordenarPor = (campo) => setOrden(o => (o.campo === campo ? { campo, direccion: o.direccion === 'asc' ? 'desc' : 'asc' } : { campo, direccion: campo === 'fecha' || campo === 'valor' ? 'desc' : 'asc' }));
   const alternarGrupo = (clave) => setCerrados(prev => { const n = new Set(prev); if (n.has(clave)) n.delete(clave); else n.add(clave); return n; });
 
-  const abrir = (x) => {
-    if (!x.soportes && x.soporteDriveLink) { window.open(x.soporteDriveLink, '_blank', 'noopener'); return; }
-    setVisor(x);
-  };
+  // Los soportes en Google Drive (registros históricos) también se ven dentro del visor.
+  const abrir = (x) => setVisor(x);
 
   const exportarLista = () => {
     const encabezados = ['Fecha', 'Empresa', 'Cuenta', 'Tipo', 'Concepto', 'CECO', 'Valor', 'Moneda', 'Soportes'];
