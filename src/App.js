@@ -6995,9 +6995,10 @@ const App = () => {
       ];
     }),
     ...ingresosUsuario.map(i => ({ ...i, tipo: 'Ingreso', _origen: 'ingreso' })),
-  // Del más reciente CREADO al más antiguo (fecha y hora de creación); los registros viejos sin
-  // created_at quedan al final, ordenados por fecha del movimiento.
-  ].sort((a, b) => (new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) || (new Date(b.fecha) - new Date(a.fecha)) || ((b.id || 0) - (a.id || 0)));
+  // Por defecto: de la FECHA del movimiento más reciente a la más antigua y, dentro del mismo día,
+  // por hora de registro (created_at) — así lo importado con fechas viejas no se cuela arriba.
+  ].sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || ''))
+    || (new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) || ((b.id || 0) - (a.id || 0)));
 
   // "1.500.000" / "1500000" / "70,88" → número (formato colombiano: punto de miles, coma
   // decimal). Vacío o inválido → null (= sin límite).
@@ -7037,7 +7038,7 @@ const App = () => {
       const vb = valorOrdenFinanzas(b, campo);
       if (va < vb) return -signo;
       if (va > vb) return signo;
-      return (b.fecha || '').localeCompare(a.fecha || '');
+      return (b.fecha || '').localeCompare(a.fecha || '') || (new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     });
   };
 
