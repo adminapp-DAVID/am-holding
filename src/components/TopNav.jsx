@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   LayoutDashboard, ClipboardList, FileText, LineChart, Wallet, CalendarRange,
-  Banknote, Users, Landmark, ShieldCheck, BookOpen, BookCheck, Trash2, Sparkles, Bell, ChevronDown, User, LogOut, Menu, X,
+  Banknote, Users, Landmark, ShieldCheck, BookOpen, BookCheck, Trash2, Sparkles, Calculator, Bell, ChevronDown, User, LogOut, Menu, X,
 } from "lucide-react";
 import "./TopNav.css";
 
@@ -25,6 +25,8 @@ const GRUPOS = [
   { label: "Operación", items: [
     { id: "solicitudes", label: "Solicitudes", icon: ClipboardList, roles: TODOS },
     { id: "cuentasCobro", label: "Cuentas de cobro", icon: FileText, roles: TODOS },
+    // Liquidaciones: Admin/Coordinadora las gestionan; cada colaborador ve solo las suyas (RLS).
+    { id: "liquidaciones", label: "Liquidaciones", icon: Calculator, roles: TODOS },
   ]},
   { label: "Finanzas", items: [
     { id: "dashboardFinanciero", label: "Dashboard financiero", icon: LineChart, roles: ROLES_FINANZAS },

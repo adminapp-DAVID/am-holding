@@ -160,7 +160,8 @@ const TIPOS_SOLICITUD_PAB = { Reembolso: 'proveedores', Anticipo: 'proveedores',
 // exportarlo (no aprobado, ya exportado, datos bancarios incompletos, moneda…).
 export const construirCandidatosPAB = ({
   empresa, config, anio, mes, fechaAplicacion,
-  presupuestoDetalle = [], solicitudes = [], usuarios = [], terceros = [], lotePorClave = {}, getMoneda
+  presupuestoDetalle = [], solicitudes = [], usuarios = [], terceros = [], lotePorClave = {}, getMoneda,
+  liquidacionPorClave = {} // conceptos en una liquidación vigente: se pagan desde Liquidaciones
 }) => {
   const tipoPagoDe = (grupo) => Number(config?.[`tipo_pago_${grupo}`]) || ({ nomina: 225, proveedores: 220, terceros: 238 }[grupo]);
   const candidatos = [];
@@ -168,6 +169,7 @@ export const construirCandidatosPAB = ({
     const { fila, problemas } = construirFilaPAB({ beneficiario: c.beneficiario, valor: c.valor, referencia: c.referencia, fechaAplicacion });
     const bloqueos = [...(c.bloqueos || [])];
     if (lotePorClave[c.clave]) bloqueos.unshift(`ya exportado en el lote #${lotePorClave[c.clave]}`);
+    if (liquidacionPorClave[c.clave]) bloqueos.unshift(`está en la liquidación #${liquidacionPorClave[c.clave]}`);
     // No va por PAB: basta con el motivo (cómo se paga); no tiene sentido pedir datos bancarios.
     if (c.noPAB) { candidatos.push({ ...c, fila, bloqueos }); return; }
     if (!c.beneficiario) bloqueos.push(c.origen === 'Presupuesto' ? 'sin colaborador vinculado: asígnalo en Presupuesto → Gestión de Conceptos' : 'sin beneficiario vinculado');

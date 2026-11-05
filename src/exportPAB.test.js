@@ -101,6 +101,8 @@ describe('candidatos', () => {
     expect(por('presupuesto:p1:2026-10').bloqueos).toEqual([]);
     expect(por('presupuesto:p2:2026-10').bloqueos[0]).toBe('Sin cuenta de cobro del mes');
     expect(por('solicitud:s1').bloqueos[0]).toBe('ya exportado en el lote #7');
+    const conLiquidacion = construirCandidatosPAB({ ...base, presupuestoDetalle, solicitudes, liquidacionPorClave: { 'presupuesto:p1:2026-10': 12 } });
+    expect(conLiquidacion.find(c => c.clave === 'presupuesto:p1:2026-10').bloqueos[0]).toBe('está en la liquidación #12');
     expect(por('solicitud:s2').bloqueos).toEqual(expect.arrayContaining(['sin tipo de documento', 'sin banco']));
     expect(por('solicitud:s3').bloqueos).toEqual([]);
     expect(por('solicitud:s4').bloqueos[0]).toMatch(/USD/);
