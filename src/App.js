@@ -24,6 +24,8 @@ import AuditoriaView from './AuditoriaView';
 import PoliticasView from './PoliticasView';
 import PapeleraView from './PapeleraView';
 import AsistenteView from './AsistenteView';
+import LiquidacionesView from './LiquidacionesView';
+import { solicitudesLiquidables, anticiposVencidos, clavePresupuesto, estadoDestinoSolicitud, estadoOrigenSolicitud } from './liquidaciones';
 import { rolDePermisos } from './roles';
 import { buscarReciboDuplicado } from './bandeja';
 import { POLITICA_POR_DEFECTO, TIPOS_ANTICIPO, anticipoFueraDePlazo, avisosPolitica } from './politicas';
@@ -2241,6 +2243,10 @@ const App = () => {
     if (currentView === 'presupuesto') { cargarTodosTerceros(); cargarPresupuestoItems(); cargarPresupuestoAnual(); cargarPresupuestoOverrides(); cargarPresupuestoAprobaciones(); cargarCuentasCobro(); }
     if (currentView === 'responsables') { cargarUsuarios(); cargarColaboradoresPublico(); }
     if (currentView === 'datosBancarios' || currentView === 'auditoria') { cargarUsuarios(); cargarTodosTerceros(); }
+    // Liquidaciones: quien las arma necesita todo lo pendiente (solicitudes, presupuesto, deducciones, pagos ya hechos).
+    const gestionaLiquidaciones = ['Administrador', 'Coordinadora Administrativa'].includes(user?.rol);
+    if ((currentView === 'liquidaciones' || currentView === 'pagosPAB') && gestionaLiquidaciones) cargarClavesLiquidaciones();
+    if (currentView === 'liquidaciones' && gestionaLiquidaciones) { cargarSolicitudes(); cargarPresupuestoItems(); cargarPresupuestoOverrides(); cargarDeducciones(); cargarGastos(); cargarCuentasCobro(); cargarLotesPago(); cargarColaboradoresPublico(); }
     if (currentView === 'politicas') { cargarPoliticaFinanciera(); cargarSolicitudes(); }
     if (currentView === 'pagosPAB') { cargarUsuarios(); cargarTodosTerceros(); cargarSolicitudes(); cargarCuentasCobro(); cargarPresupuestoItems(); cargarPresupuestoOverrides(); cargarPresupuestoAprobaciones(); cargarLotesPago(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5741,6 +5747,139 @@ const App = () => {
   };
 
   // ============================================================
+  // LIQUIDACIONES (LiquidacionesView.jsx + 20261105_liquidaciones.sql)
+  // ============================================================
+  // Claves (mismo formato que los lotes PAB) de los conceptos que ya están en una liquidación vigente:
+  // ni otra liquidación ni un lote PAB los puede volver a tomar.
+  const [liquidacionPorClave, setLiquidacionPorClave] = useState({});
+  const cargarClavesLiquidaciones = async () => {
+    const { data, error } = await supabase.from('liquidacion_items')
+      .select('entidad_clave, liquidaciones ( numero, estado )').eq('activo', true).eq('pagado', false);
+    if (error) { setLiquidacionPorClave({}); return; } // sin la tabla (SQL sin correr) no se bloquea nada
+    const mapa = {};
+    (data || []).filter(i => i.liquidaciones && i.liquidaciones.estado !== 'Anulada')
+      .forEach(i => { mapa[i.entidad_clave] = i.liquidaciones.numero; });
+    setLiquidacionPorClave(mapa);
+  };
+
+  // Lo pendiente de un colaborador para liquidar en una empresa y mes: solicitudes (reembolsos,
+  // legalizaciones, anticipos, comisiones), sus conceptos de Presupuesto (honorarios / nómina con sus
+  // deducciones del mes) y los anticipos vencidos sin legalizar (opcionales, como descuento).
+  const construirPropuestaLiquidacion = (responsableId, empresa, anio, mes) => {
+    const ocupadas = {};
+    Object.entries(lotePorClave).forEach(([k, n]) => { ocupadas[k] = `ya está en el lote PAB #${n}`; });
+    Object.entries(liquidacionPorClave).forEach(([k, n]) => { ocupadas[k] = `ya está en la liquidación #${n}`; });
+    const { incluibles, excluidas } = solicitudesLiquidables({
+      solicitudes, responsableId, empresa, monedaEmpresa: getMoneda(empresa), clavesOcupadas: ocupadas,
+    });
+    const mesStr = `${anio}-${String(mes).padStart(2, '0')}`;
+    const presupuesto = presupuestoItems
+      .filter(p => p.activo !== false && p.empresa === empresa && String(p.responsableId) === String(responsableId))
+      .filter(p => !gastos.some(g => g.presupuestoItemId === p.id && g.fecha && g.fecha.substring(0, 7) === mesStr))
+      .map(item => {
+        const clave = clavePresupuesto(item.id, anio, mes);
+        const bruto = getValorEsperado(item.id, anio, mes);
+        const cuotas = deducciones.filter(d => d.presupuestoItemId === item.id)
+          .map(d => ({ tipo: d.tipo, cuota: getCuotaAplicada(d, anio, mes), observaciones: d.observaciones || '' }))
+          .filter(c => c.cuota > 0);
+        const totalDeducciones = Math.round(cuotas.reduce((t, c) => t + c.cuota, 0) * 100) / 100;
+        const requisito = requisitoCuentaCobro(item, anio, mes);
+        const bloqueo = ocupadas[clave] || (!requisito.ok ? requisito.motivo : '') || (bruto - totalDeducciones <= 0 ? 'sin valor a pagar este mes' : '');
+        return { item, clave, bruto, cuotas, totalDeducciones, neto: Math.round((bruto - totalDeducciones) * 100) / 100, bloqueo };
+      });
+    const anticipos = anticiposVencidos({ solicitudes, responsableId, hoy: fechaHoyLocal() })
+      .filter(a => !liquidacionPorClave[`ajuste:anticipo-${a.id}`] && (!a.empresa || a.empresa === empresa));
+    return { solicitudes: incluibles, excluidas, presupuesto, anticipos };
+  };
+
+  // Paga una liquidación Aprobada: un movimiento en Finanzas por concepto, con la lógica de siempre
+  // (solicitudes vía handleChangeEstado; presupuesto con bruto − deducciones; ajustes como gasto o
+  // ingreso) y el comprobante enlazado a cada uno. Re-ejecutable: lo ya pagado se salta.
+  const pagarLiquidacion = async (liq, items, { cuenta, fecha, comprobante, cecos = {} }) => {
+    if (!canApprove) return { ok: false, mensaje: 'Tu rol no puede pagar liquidaciones.' };
+    const { data: actual, error: errorLiq } = await supabase.from('liquidaciones').select('estado').eq('id', liq.id).single();
+    if (errorLiq) return { ok: false, mensaje: errorLiq.message };
+    if (actual.estado !== 'Aprobada') return { ok: false, mensaje: `La liquidación está en "${actual.estado}", no en Aprobada.` };
+    const empresaNombre = liq.empresas?.nombre || '';
+    const empresaPago = { id: liq.empresa_id, nombre: empresaNombre };
+    const observacion = `Liquidación #${liq.numero} (${String(liq.mes).padStart(2, '0')}/${liq.anio}).`;
+    let rutaComprobante = null;
+    const enlazarComprobante = async (entidadTipo, entidadId) => {
+      if (!rutaComprobante) {
+        rutaComprobante = await subirSoporteEntidad(comprobante, entidadTipo, entidadId);
+        if (!rutaComprobante) throw new Error('No se pudo subir el comprobante');
+        return;
+      }
+      const { error } = await supabase.from('soportes').insert({
+        bucket_path: rutaComprobante, nombre_original: comprobante.nombre,
+        tamano_kb: Math.round(dataUrlToUint8Array(comprobante.data).length / 1024),
+        entidad_tipo: entidadTipo, entidad_id: entidadId, subido_por: user.id
+      });
+      if (error) throw error;
+    };
+    const marcarItem = (id, cambios) => supabase.from('liquidacion_items').update(cambios).eq('id', id).select('id');
+    const fallidos = [];
+    let pagados = 0;
+    for (const it of items.filter(i => i.activo !== false && !i.pagado)) {
+      try {
+        if (it.entidad_tipo === 'solicitud') {
+          const solicitud = solicitudes.find(s => String(s.id) === String(it.entidad_id));
+          if (!solicitud) throw new Error('la solicitud no está cargada (pulsa 🔄 Actualizar datos)');
+          const { data: sol, error } = await supabase.from('solicitudes').select('estado').eq('id', solicitud.id).single();
+          if (error) throw error;
+          if (sol.estado !== estadoOrigenSolicitud(solicitud)) throw new Error(`está en "${sol.estado}", no en ${estadoOrigenSolicitud(solicitud)}`);
+          await enlazarComprobante('solicitud', solicitud.id);
+          const ok = await handleChangeEstado(solicitud.id, estadoDestinoSolicitud(solicitud), { cuentaPago: cuenta, cecoCodigo: cecos[it.id], fechaPago: fecha, empresaPago, detalle: null });
+          if (!ok) throw new Error('no se pudo cambiar el estado de la solicitud');
+        } else if (it.entidad_tipo === 'presupuesto') {
+          const concepto = presupuestoItems.find(p => String(p.id) === String(it.entidad_id));
+          const mesPago = fecha.substring(0, 7);
+          const { data: yaPagados, error: errorLectura } = await supabase.from('gastos').select('id, fecha').eq('presupuesto_item_id', it.entidad_id);
+          if (errorLectura) throw errorLectura;
+          if ((yaPagados || []).some(g => g.fecha && g.fecha.substring(0, 7) === mesPago)) throw new Error('ese concepto ya tiene un pago en el mes de la fecha de pago');
+          const { data: nuevoGasto, error } = await supabase.from('gastos').insert({
+            fecha, tipo: 'Gasto', empresa_id: liq.empresa_id, responsable_id: liq.responsable_id,
+            ceco_id: await resolverCecoId(it.ceco || concepto?.ceco), cuenta,
+            detalle: concepto?.nombre || it.concepto, valor: Number(it.valor),
+            valor_bruto: it.valor_bruto != null ? Number(it.valor_bruto) : Number(it.valor),
+            deduccion_aplicada: Number(it.deducciones) > 0 ? Number(it.deducciones) : null,
+            estado: 'Pagado', observaciones: `${OBSERVACIONES_GASTO_DESDE_PRESUPUESTO} ${observacion}`,
+            presupuesto_item_id: it.entidad_id, tercero_id: concepto?.terceroId || null
+          }).select('id').single();
+          if (error) throw error;
+          await enlazarComprobante('gasto', nuevoGasto.id);
+        } else {
+          // Ajuste: a favor → Gasto; descuento → Ingreso (el colaborador "devuelve" ese valor).
+          const tabla = Number(it.signo) === -1 ? 'ingresos' : 'gastos';
+          const { data: mov, error } = await supabase.from(tabla).insert({
+            fecha, tipo: tabla === 'ingresos' ? 'Ingreso' : 'Gasto', empresa_id: liq.empresa_id, responsable_id: liq.responsable_id,
+            ceco_id: await resolverCecoId(it.ceco), cuenta, detalle: it.concepto, valor: Number(it.valor),
+            estado: 'Pagado', observaciones: observacion
+          }).select('id').single();
+          if (error) throw error;
+          await enlazarComprobante(tabla === 'ingresos' ? 'ingreso' : 'gasto', mov.id);
+        }
+        await marcarItem(it.id, { pagado: true, error: null });
+        pagados++;
+      } catch (e) {
+        console.error('Error pagando concepto de la liquidación:', it, e);
+        const mensaje = e.message || 'error inesperado';
+        await marcarItem(it.id, { error: mensaje });
+        fallidos.push(`${it.concepto}: ${mensaje}`);
+      }
+    }
+    await Promise.all([cargarSolicitudes(), cargarGastos(), cargarIngresos(), cargarClavesLiquidaciones()]);
+    if (fallidos.length) {
+      return { ok: false, mensaje: `${pagados} concepto(s) registrados. No se pudieron registrar: ${fallidos.join(' · ')}. Corrige y vuelve a pagar: lo ya registrado no se repite.` };
+    }
+    const { data: cerrada, error: errorCierre } = await supabase.from('liquidaciones').update({
+      estado: 'Pagada', cuenta, fecha_pago: fecha, comprobante_path: rutaComprobante, pagado_por: user.id, pagado_at: new Date().toISOString()
+    }).eq('id', liq.id).select('id');
+    if (errorCierre || !cerrada?.length) return { ok: false, mensaje: `Todo quedó en Finanzas, pero no se pudo cerrar la liquidación: ${errorCierre?.message || 'sin permiso'}` };
+    return { ok: true, mensaje: `Liquidación #${liq.numero} pagada: ${pagados} movimiento(s) registrados en Finanzas.` };
+  };
+
+  // ============================================================
   // LOTE PAB PAGADO (pantalla 💸 Pagos PAB → ✅): registra en Finanzas cada pago del lote con
   // los MISMOS pasos de siempre — Solicitudes: "Pagado" vía handleChangeEstado (genera su
   // Gasto); Presupuesto: el mismo Gasto que crea "Marcar Pagado". Soportes: Bancolombia da uno
@@ -8062,6 +8201,23 @@ const App = () => {
           />
         )}
 
+        {currentView === 'liquidaciones' && (
+          <LiquidacionesView
+            user={user}
+            puedeGestionar={!!canApprove}
+            colaboradores={colaboradoresPublico}
+            empresas={empresas}
+            resolverEmpresaId={resolverEmpresaId}
+            getMoneda={getMoneda}
+            formatMoneyByMoneda={formatMoneyByMoneda}
+            cuentasPorEmpresa={cuentasPorEmpresa}
+            cecos={cecosDB.filter(c => c.activo !== false).sort((a, b) => a.codigo.localeCompare(b.codigo))}
+            construirPropuesta={construirPropuestaLiquidacion}
+            onPagar={pagarLiquidacion}
+            onCambio={cargarClavesLiquidaciones}
+          />
+        )}
+
         {currentView === 'asistente' && ['Administrador', 'Coordinadora Administrativa', 'Gerente'].includes(user.rol) && (
           <AsistenteView user={user} formatMoneyByMoneda={formatMoneyByMoneda} onEjecutarAccion={canApprove ? ejecutarAccionAsistente : undefined} />
         )}
@@ -8082,6 +8238,7 @@ const App = () => {
             terceros={todosTerceros}
             lotes={lotesPago}
             lotePorClave={lotePorClave}
+            liquidacionPorClave={liquidacionPorClave}
             onRecargarLotes={cargarLotesPago}
             onRecargarSolicitudes={cargarSolicitudes}
             onRegistrarPagoLote={registrarPagoLotePAB}

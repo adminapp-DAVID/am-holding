@@ -61,7 +61,7 @@ const cargarPlantilla = async () => {
 
 const ExportadorPABView = ({
   user, empresas, solicitudes, presupuestoDetalle, filtroPresupuesto, setFiltroPresupuesto,
-  usuarios, terceros, lotes, lotePorClave, onRecargarLotes, onRecargarDatos, onRecargarSolicitudes, onRegistrarPagoLote, cecosGasto, getMoneda, formatCOP
+  usuarios, terceros, lotes, lotePorClave, liquidacionPorClave, onRecargarLotes, onRecargarDatos, onRecargarSolicitudes, onRegistrarPagoLote, cecosGasto, getMoneda, formatCOP
 }) => {
   const esAdmin = user?.rol === 'Administrador';
   const [configs, setConfigs] = useState([]);
@@ -96,8 +96,8 @@ const ExportadorPABView = ({
 
   const candidatos = useMemo(() => construirCandidatosPAB({
     empresa, config, anio: filtroPresupuesto.anio, mes: filtroPresupuesto.mes, fechaAplicacion,
-    presupuestoDetalle, solicitudes, usuarios, terceros, lotePorClave, getMoneda
-  }), [empresa, config, filtroPresupuesto.anio, filtroPresupuesto.mes, fechaAplicacion, presupuestoDetalle, solicitudes, usuarios, terceros, lotePorClave, getMoneda]);
+    presupuestoDetalle, solicitudes, usuarios, terceros, lotePorClave, getMoneda, liquidacionPorClave
+  }), [empresa, config, filtroPresupuesto.anio, filtroPresupuesto.mes, fechaAplicacion, presupuestoDetalle, solicitudes, usuarios, terceros, lotePorClave, getMoneda, liquidacionPorClave]);
 
   const exportables = candidatos.filter(c => c.bloqueos.length === 0);
   const bloqueados = candidatos.filter(c => c.bloqueos.length > 0);
