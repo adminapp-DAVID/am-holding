@@ -35,7 +35,7 @@ import RevisarFotos from './components/RevisarFotos';
 import { esImagen, prepararArchivos } from './archivos';
 import { guardarSoporteGirado } from './girarSoportes';
 import TopNav from './components/TopNav';
-import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, RotateCw, FileDown, Eye, Plus, Check, X, Pencil, Search, Loader2, FileSpreadsheet, Upload, FilePlus2, Pause, Play, LayoutDashboard, FileText, Banknote, DollarSign, Clock, Undo2, CheckCircle2, Building2, Users, ClipboardList, Archive, TrendingUp, TrendingDown, Scale, BarChart3, Trophy, FolderOpen, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, RotateCw, FileDown, Eye, Plus, Check, X, Pencil, Search, Loader2, FileSpreadsheet, Upload, FilePlus2, Pause, Play, LayoutDashboard, FileText, Banknote, DollarSign, Clock, Undo2, CheckCircle2, Building2, Users, ClipboardList, Archive, TrendingUp, TrendingDown, Scale, BarChart3, Trophy, FolderOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,6 +48,9 @@ import { Badge, badgeVariants, estadoBadge } from '@/components/ui/badge';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { CODIGO_BANCO_EXTERIOR, inferirCodigoBanco, limpiarNumeroCuenta, limpiarDocumento } from './datosBancarios';
 import { parsearMonto, montoONumero0, confirmarMontos } from './montos';
+import { cuotaEnMes, saldoPendienteEnMes, aplicacionDBToLocal, resumenDeduccion, ordenarPor, alternarOrden, validarAplicacionManual } from './deducciones';
+import DeduccionHistorial from './DeduccionHistorial';
+import CabeceraOrdenUI from './components/CabeceraOrden';
 
 // Logo por empresa. Para sumar ARKO, sube el archivo a src/assets/logos/,
 // agrega su import arriba y una línea aquí con el nombre exacto de la empresa.
@@ -114,23 +117,6 @@ const VerMasFilasUI = ({ total, limite, setLimite }) => {
       <Button size="sm" variant="outline" onClick={() => setLimite(limite + FILAS_POR_TANDA)}>Ver {Math.min(FILAS_POR_TANDA, total - limite)} más</Button>
       {total - limite > FILAS_POR_TANDA && <Button size="sm" variant="ghost" onClick={() => setLimite(total)}>Ver todos ({total})</Button>}
     </div>
-  );
-};
-
-// Encabezado de tabla que ordena al pulsarlo (Historial de Finanzas): muestra la flecha de la
-// dirección activa y, en las demás columnas, una flecha tenue que indica que se puede ordenar.
-const CabeceraOrdenUI = ({ campo, orden, onOrdenar, className, alinear = 'start', children }) => {
-  const activa = orden?.campo === campo;
-  const Icono = !activa ? ArrowUpDown : orden.direccion === 'asc' ? ArrowUp : ArrowDown;
-  return (
-    <TableHead className={className} aria-sort={activa ? (orden.direccion === 'asc' ? 'ascending' : 'descending') : 'none'}>
-      <button type="button" onClick={() => onOrdenar(campo)} title={activa ? (orden.direccion === 'asc' ? 'Ascendente (clic para cambiar)' : 'Descendente (clic para cambiar)') : 'Ordenar por esta columna'}
-        className={cn('inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-[inherit] text-[length:inherit] uppercase text-inherit hover:text-foreground',
-          alinear === 'end' && 'w-full justify-end', alinear === 'center' && 'w-full justify-center', activa && 'text-foreground')}>
-        {children}
-        <Icono size={12} className={cn('shrink-0', !activa && 'opacity-40')} />
-      </button>
-    </TableHead>
   );
 };
 
@@ -265,41 +251,6 @@ const getPresupuestoCandidatos = (empresa, ceco, responsable, detalle, items) =>
   });
 
   return conScore;
-};
-
-// DEDUCCIONES — cuánto de una deducción (préstamo u otro descuento) aplica en un mes puntual, calculado
-// siempre a partir de fechaInicio/valorCuota/saldoTotal (nunca se guarda un historial de "ya se aplicó
-// este mes"): así el valor es siempre consistente sin importar cuándo se consulte, y no hay riesgo de
-// duplicar o saltarse una cuota. mesesTranscurridos = 0 en el mes de fechaInicio (primera cuota).
-const mesesTranscurridos = (fechaInicio, anio, mes) => {
-  if (!fechaInicio) return -1;
-  const inicio = new Date(fechaInicio + 'T00:00:00');
-  return (anio - inicio.getFullYear()) * 12 + (mes - (inicio.getMonth() + 1));
-};
-
-// Cuánto se descuenta ESE mes específico. Para 'Préstamo' deja de aplicar automáticamente en cuanto el
-// saldo llega a 0 (la última cuota puede ser menor si el saldo restante es menor que la cuota fija).
-const getCuotaAplicada = (deduccion, anio, mes) => {
-  if (deduccion.activo === false) return 0;
-  const transcurridos = mesesTranscurridos(deduccion.fechaInicio, anio, mes);
-  if (transcurridos < 0) return 0;
-  const cuota = parseFloat(deduccion.valorCuota) || 0;
-  if (deduccion.tipo === 'Préstamo') {
-    const saldoAntesDeEsteMe = (parseFloat(deduccion.saldoTotal) || 0) - cuota * transcurridos;
-    if (saldoAntesDeEsteMe <= 0) return 0;
-    return Math.min(cuota, saldoAntesDeEsteMe);
-  }
-  return cuota; // 'Otro' — recurrente todos los meses mientras esté activo
-};
-
-// Saldo que le queda al préstamo DESPUÉS de aplicar la cuota de ese mes (null si no es un préstamo).
-const getSaldoPendienteEnMes = (deduccion, anio, mes) => {
-  if (deduccion.tipo !== 'Préstamo') return null;
-  const transcurridos = mesesTranscurridos(deduccion.fechaInicio, anio, mes);
-  if (transcurridos < 0) return parseFloat(deduccion.saldoTotal) || 0;
-  const cuota = parseFloat(deduccion.valorCuota) || 0;
-  const saldoDespues = (parseFloat(deduccion.saldoTotal) || 0) - cuota * (transcurridos + 1);
-  return Math.max(0, saldoDespues);
 };
 
 // CUENTAS DE COBRO — utilidades para el PDF automático (formato "Prestación de Servicios Profesionales").
@@ -876,10 +827,16 @@ const App = () => {
   // pantalla del exportador para marcar en Solicitudes/Presupuesto qué ya se exportó al banco.
   const [lotesPago, setLotesPago] = useState([]);
   // Deducciones (préstamos u otros descuentos) aplicadas al valor mensual de un concepto de Nómina/Prestación
-  // de Servicio. 'Préstamo' calcula su propio saldo pendiente mes a mes (sin tabla de historial, de forma
-  // determinística a partir de fechaInicio/valorCuota/saldoTotal — ver mesesTranscurridos/getCuotaAplicada
-  // más abajo); 'Otro' es un descuento recurrente fijo que se aplica todos los meses mientras esté activo.
+  // de Servicio. 'Préstamo' descuenta su cuota hasta que el saldo REAL (saldo − lo descontado según
+  // deduccion_aplicaciones) llega a 0; 'Otro' / 'Seguridad Social' se descuentan todos los meses mientras esté activo.
   const [deducciones, setDeducciones] = useState([]);
+  // Historial REAL de lo descontado (deduccion_aplicaciones). null = aún no cargado o sin el SQL
+  // (20261106_deduccion_aplicaciones.sql): entonces se usa el cálculo por calendario (src/deducciones.js).
+  const [aplicacionesDeduccion, setAplicacionesDeduccion] = useState(null);
+  const [ordenDeducciones, setOrdenDeducciones] = usePersistente('deducciones:orden', null);
+  const [deduccionAbierta, setDeduccionAbierta] = useState(null);
+  const getCuotaAplicada = (deduccion, anio, mes) => cuotaEnMes(deduccion, anio, mes, aplicacionesDeduccion);
+  const getSaldoPendienteEnMes = (deduccion, anio, mes) => saldoPendienteEnMes(deduccion, anio, mes, aplicacionesDeduccion);
   const [cargandoPresupuesto, setCargandoPresupuesto] = useState(true);
   const deduccionVacia = { presupuestoItemId: '', tipo: 'Préstamo', valorCuota: '', saldoTotal: '', fechaInicio: new Date().toISOString().split('T')[0], observaciones: '', activo: true };
   const [newDeduccion, setNewDeduccion] = useState(deduccionVacia);
@@ -1856,6 +1813,21 @@ const App = () => {
       return;
     }
     setDeducciones((data || []).map(deduccionDBToLocal));
+    await cargarAplicacionesDeduccion();
+  };
+
+  const cargarAplicacionesDeduccion = async () => {
+    const { data, error } = await supabase
+      .from('deduccion_aplicaciones')
+      .select('id, deduccion_id, anio, mes, valor, tipo, gasto_id, fecha, observaciones, created_at')
+      .order('fecha', { ascending: true });
+    if (error) {
+      // Sin la tabla (SQL aún sin correr) o sin permiso: cálculo por calendario.
+      console.warn('Historial de deducciones no disponible:', error.message);
+      setAplicacionesDeduccion(null);
+      return;
+    }
+    setAplicacionesDeduccion((data || []).map(aplicacionDBToLocal));
   };
 
   const cargarPresupuesto = async () => {
@@ -2187,6 +2159,7 @@ const App = () => {
       setPresupuestoAnual([]);
       setPresupuestoOverrides([]);
       setDeducciones([]);
+      setAplicacionesDeduccion(null);
       setSoportesPendientes([]);
       setSoportesEnviados([]);
       setCecosDB([]);
@@ -2209,7 +2182,8 @@ const App = () => {
       .channel('am-holding-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'solicitudes' }, () => cargarSolicitudes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cuentas_cobro' }, () => cargarCuentasCobro())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos' }, () => cargarGastos())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos' }, () => { cargarGastos(); cargarAplicacionesDeduccion(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'deduccion_aplicaciones' }, () => cargarAplicacionesDeduccion())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ingresos' }, () => cargarIngresos())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'presupuesto_items' }, () => cargarPresupuestoItems())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'presupuesto_anual' }, () => cargarPresupuestoAnual())
@@ -6632,8 +6606,41 @@ const App = () => {
     }
   };
 
+  // Abono extra / Condonación / Ajuste: queda en el historial y baja el saldo real del préstamo.
+  // (El dinero del abono, si lo hubo, se registra en Finanzas como siempre.)
+  const handleRegistrarAplicacionDeduccion = async (deduccion, { tipo, valor, fecha, observaciones }) => {
+    const monto = parsearMonto(valor);
+    const motivo = validarAplicacionManual({ tipo, valor: monto, fecha }, deduccion, aplicacionesDeduccion || []);
+    if (motivo) { alert(motivo); return false; }
+    if (tipo === 'Condonación' && !String(observaciones || '').trim()) { alert('Escribe el motivo de la condonación'); return false; }
+    const [anio, mes] = fecha.split('-').map(Number);
+    const { data, error } = await supabase.from('deduccion_aplicaciones')
+      .insert({ deduccion_id: deduccion.id, anio, mes, valor: monto, tipo, fecha, observaciones: String(observaciones || '').trim() || null, creado_por: user.id })
+      .select('id');
+    if (error || !data?.length) {
+      console.error('Error registrando aplicación de deducción:', error);
+      alert('❌ No se pudo registrar' + (error ? ': ' + error.message : ' (sin permiso)'));
+      return false;
+    }
+    await cargarAplicacionesDeduccion();
+    return true;
+  };
+
+  const handleEliminarAplicacionDeduccion = async (aplicacion) => {
+    if (!window.confirm(`¿Eliminar este ${aplicacion.tipo.toLowerCase()} del historial?`)) return;
+    const { data, error } = await supabase.from('deduccion_aplicaciones').delete().eq('id', aplicacion.id).select('id');
+    if (error || !data?.length) {
+      alert('❌ No se pudo eliminar' + (error ? ': ' + error.message : ' (sin permiso)'));
+      return;
+    }
+    await cargarAplicacionesDeduccion();
+  };
+
   const handleDeleteDeduccion = async (id) => {
-    if (!window.confirm('¿Eliminar esta deducción?')) return;
+    const conHistorial = (aplicacionesDeduccion || []).some(a => String(a.deduccionId) === String(id));
+    if (!window.confirm(conHistorial
+      ? '¿Eliminar esta deducción? También se borra su historial de descuentos. Si ya terminó, mejor desactívala (⏸).'
+      : '¿Eliminar esta deducción?')) return;
     const { error } = await supabase.from('deducciones').delete().eq('id', id);
     if (error) {
       console.error('Error eliminando deducción:', error);
@@ -11178,33 +11185,79 @@ const App = () => {
                       </div>
                     )}
 
+                    {(() => {
+                      const hoyDed = (() => { const [a, m] = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }).split('-').map(Number); return { anio: a, mes: m }; })();
+                      const etiquetaMes = (x) => x ? `${String(x.mes).padStart(2, '0')}/${x.anio}` : '—';
+                      const filasDed = deduccionesEmpresa.map(d => {
+                        const item = presupuestoItems.find(p => p.id === d.presupuestoItemId);
+                        const resumen = resumenDeduccion(d, aplicacionesDeduccion || [], hoyDed);
+                        const saldoPendiente = getSaldoPendienteEnMes(d, filtroPresupuesto.anio, filtroPresupuesto.mes);
+                        const pagado = d.tipo === 'Préstamo' && (aplicacionesDeduccion ? resumen.pagado : saldoPendiente === 0);
+                        const estado = d.activo === false ? 'Inactiva' : pagado ? 'Pagado' : 'Activa';
+                        return { d, nombre: item?.nombre || '(concepto eliminado)', resumen, saldoPendiente, pagado, estado };
+                      });
+                      const valorOrden = (f, campo) => {
+                        switch (campo) {
+                          case 'nombre': return f.nombre;
+                          case 'tipo': return f.d.tipo;
+                          case 'cuota': return parseFloat(f.d.valorCuota) || 0;
+                          case 'saldoTotal': return f.d.tipo === 'Préstamo' ? (parseFloat(f.d.saldoTotal) || 0) : -1;
+                          case 'descontado': return f.resumen.totalDescontado;
+                          case 'cuotas': return f.resumen.cuotasHechas;
+                          case 'saldo': return f.saldoPendiente ?? -1;
+                          case 'faltan': return f.resumen.cuotasFaltantes ?? -1;
+                          case 'fin': return f.resumen.finEstimado ? f.resumen.finEstimado.anio * 12 + f.resumen.finEstimado.mes : -1;
+                          case 'inicio': return f.d.fechaInicio || '';
+                          default: return f.estado;
+                        }
+                      };
+                      const ordenar = (campo) => setOrdenDeducciones(o => alternarOrden(o, campo, ['nombre', 'tipo', 'estado', 'inicio'].includes(campo) ? 'asc' : 'desc'));
+                      const conHistorial = Array.isArray(aplicacionesDeduccion);
+                      const columnas = 9 + (conHistorial ? 2 : 0) + (puedeEditarPresupuesto ? 1 : 0);
+                      const fmt = (v) => formatMoney(v, filtroPresupuesto.empresa);
+                      return (
                     <Table>
                       <TableHeader>
                         <TableRow className="hover:bg-transparent">
-                          <TableHead>Persona / Concepto</TableHead>
-                          <TableHead>Tipo</TableHead>
-                          <TableHead className="text-right">Cuota Mensual</TableHead>
-                          <TableHead className="text-right">Saldo Total</TableHead>
-                          <TableHead className="text-right">Saldo Pendiente ({filtroPresupuesto.mes}/{filtroPresupuesto.anio})</TableHead>
-                          <TableHead className="text-center">Estado</TableHead>
+                          <TableHead className="w-px" />
+                          <CabeceraOrdenUI orden={ordenDeducciones} onOrdenar={ordenar} campo="nombre">Persona / Concepto</CabeceraOrdenUI>
+                          <CabeceraOrdenUI orden={ordenDeducciones} onOrdenar={ordenar} campo="tipo">Tipo</CabeceraOrdenUI>
+                          <CabeceraOrdenUI orden={ordenDeducciones} onOrdenar={ordenar} campo="inicio">Inicio</CabeceraOrdenUI>
+                          <CabeceraOrdenUI orden={ordenDeducciones} onOrdenar={ordenar} campo="cuota" className="text-right" alinear="end">Cuota Mensual</CabeceraOrdenUI>
+                          <CabeceraOrdenUI orden={ordenDeducciones} onOrdenar={ordenar} campo="saldoTotal" className="text-right" alinear="end">Saldo Total</CabeceraOrdenUI>
+                          <CabeceraOrdenUI orden={ordenDeducciones} onOrdenar={ordenar} campo="descontado" className="text-right" alinear="end">Descontado</CabeceraOrdenUI>
+                          <CabeceraOrdenUI orden={ordenDeducciones} onOrdenar={ordenar} campo="cuotas" className="text-center" alinear="center">Cuotas</CabeceraOrdenUI>
+                          <CabeceraOrdenUI orden={ordenDeducciones} onOrdenar={ordenar} campo="saldo" className="text-right" alinear="end">Saldo Pendiente ({filtroPresupuesto.mes}/{filtroPresupuesto.anio})</CabeceraOrdenUI>
+                          {conHistorial && <CabeceraOrdenUI orden={ordenDeducciones} onOrdenar={ordenar} campo="faltan" className="text-center" alinear="center">Faltan</CabeceraOrdenUI>}
+                          {conHistorial && <CabeceraOrdenUI orden={ordenDeducciones} onOrdenar={ordenar} campo="fin" className="text-center" alinear="center">Termina</CabeceraOrdenUI>}
+                          <CabeceraOrdenUI orden={ordenDeducciones} onOrdenar={ordenar} campo="estado" className="text-center" alinear="center">Estado</CabeceraOrdenUI>
                           {puedeEditarPresupuesto && <TableHead className="text-center">Acción</TableHead>}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                          {deduccionesEmpresa.length === 0 ? (
-                            <TableRow className="hover:bg-transparent"><TableCell colSpan={puedeEditarPresupuesto ? 7 : 6} className="py-8 text-center text-muted-foreground">Sin deducciones cargadas para {filtroPresupuesto.empresa}.</TableCell></TableRow>
-                          ) : deduccionesEmpresa.map(d => {
-                            const item = presupuestoItems.find(p => p.id === d.presupuestoItemId);
-                            const saldoPendiente = getSaldoPendienteEnMes(d, filtroPresupuesto.anio, filtroPresupuesto.mes);
-                            const transcurridos = mesesTranscurridos(d.fechaInicio, filtroPresupuesto.anio, filtroPresupuesto.mes);
-                            const pagado = d.tipo === 'Préstamo' && transcurridos >= 0 && saldoPendiente === 0;
+                          {filasDed.length === 0 ? (
+                            <TableRow className="hover:bg-transparent"><TableCell colSpan={columnas} className="py-8 text-center text-muted-foreground">Sin deducciones cargadas para {filtroPresupuesto.empresa}.</TableCell></TableRow>
+                          ) : ordenarPor(filasDed, ordenDeducciones, valorOrden).map(({ d, nombre, resumen, saldoPendiente, pagado }) => {
+                            const abierta = deduccionAbierta === d.id;
+                            const esPrestamo = d.tipo === 'Préstamo';
                             return (
-                              <TableRow key={d.id} className={cn(d.activo === false && 'opacity-50')}>
-                                <TableCell>{item?.nombre || '(concepto eliminado)'}</TableCell>
+                              <React.Fragment key={d.id}>
+                              <TableRow className={cn(d.activo === false && 'opacity-50')}>
+                                <TableCell className="w-px">
+                                  <Button variant="ghost" size="icon" onClick={() => setDeduccionAbierta(abierta ? null : d.id)} title={abierta ? 'Ocultar historial' : 'Ver historial'} aria-label={abierta ? 'Ocultar historial' : 'Ver historial'} aria-expanded={abierta}>
+                                    {abierta ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                  </Button>
+                                </TableCell>
+                                <TableCell>{nombre}</TableCell>
                                 <TableCell className="text-xs text-muted-foreground">{d.tipo}</TableCell>
-                                <TableCell className="whitespace-nowrap text-right">{formatMoney(d.valorCuota, filtroPresupuesto.empresa)}</TableCell>
-                                <TableCell className="whitespace-nowrap text-right text-muted-foreground">{d.tipo === 'Préstamo' ? formatMoney(d.saldoTotal, filtroPresupuesto.empresa) : '-'}</TableCell>
-                                <TableCell className={cn('whitespace-nowrap text-right font-bold', pagado && 'text-success')}>{d.tipo === 'Préstamo' ? formatMoney(saldoPendiente, filtroPresupuesto.empresa) : '-'}</TableCell>
+                                <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{d.fechaInicio || '—'}</TableCell>
+                                <TableCell className="whitespace-nowrap text-right">{fmt(d.valorCuota)}</TableCell>
+                                <TableCell className="whitespace-nowrap text-right text-muted-foreground">{esPrestamo ? fmt(d.saldoTotal) : '-'}</TableCell>
+                                <TableCell className="whitespace-nowrap text-right">{conHistorial ? fmt(resumen.totalDescontado) : '—'}</TableCell>
+                                <TableCell className="whitespace-nowrap text-center">{conHistorial ? `${resumen.cuotasHechas}${esPrestamo && resumen.cuotasTotales ? ` de ${resumen.cuotasTotales}` : ''}` : '—'}</TableCell>
+                                <TableCell className={cn('whitespace-nowrap text-right font-bold', pagado && 'text-success')}>{esPrestamo ? fmt(saldoPendiente) : '-'}</TableCell>
+                                {conHistorial && <TableCell className="whitespace-nowrap text-center">{esPrestamo ? resumen.cuotasFaltantes : '-'}</TableCell>}
+                                {conHistorial && <TableCell className="whitespace-nowrap text-center text-xs">{esPrestamo && !pagado ? etiquetaMes(resumen.finEstimado) : '-'}</TableCell>}
                                 <TableCell className="text-center">
                                   {d.activo === false ? (
                                     <Badge variant="muted">Inactiva</Badge>
@@ -11224,10 +11277,30 @@ const App = () => {
                                   </TableCell>
                                 )}
                               </TableRow>
+                              {abierta && (
+                                <TableRow className="hover:bg-transparent">
+                                  <TableCell colSpan={columnas} className="bg-muted/30">
+                                    <DeduccionHistorial
+                                      deduccion={d}
+                                      nombre={nombre}
+                                      aplicaciones={aplicacionesDeduccion}
+                                      mesesConPago={new Set(gastos.filter(g => g.presupuestoItemId === d.presupuestoItemId && g.fecha).map(g => `${parseInt(g.fecha.slice(0, 4), 10)}-${parseInt(g.fecha.slice(5, 7), 10)}`))}
+                                      hoy={hoyDed}
+                                      formatMoney={fmt}
+                                      puedeEditar={puedeEditarPresupuesto}
+                                      onRegistrar={handleRegistrarAplicacionDeduccion}
+                                      onEliminar={handleEliminarAplicacionDeduccion}
+                                    />
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                              </React.Fragment>
                             );
                           })}
                       </TableBody>
                     </Table>
+                      );
+                    })()}
                   </div>
                   );
                 })()}
