@@ -3690,7 +3690,8 @@ const App = () => {
   // Gerente Financiero: conserva los permisos de Coordinadora (gestiona todas) y además presenta
   // las suyas, con Mi Bandeja de Soportes y "Nueva Solicitud".
   const presentaSolicitudes = !gestionaSolicitudes || user?.rolNombre === 'Gerente Financiero';
-  const solicitudesConPestanas = !isReadOnly && presentaSolicitudes;
+  // OJO: isReadOnly se declara mucho más abajo; usarla aquí rompía el arranque de la app (TDZ).
+  const solicitudesConPestanas = user?.rol !== 'Contadora' && presentaSolicitudes;
   const verPestanaSolicitudes = (p) => !solicitudesConPestanas || pestanaSolicitudes === p;
   const soloPropias = ['Colaborador', 'Responsable', 'Gerente'].includes(user?.rol);
   const solicitudesUsuario = soloPropias
