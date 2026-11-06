@@ -369,6 +369,18 @@ async function prepararAccion(sb: SupabaseClient, input: Record<string, unknown>
   throw new Error(`Tipo de acción no permitido: ${tipo}`);
 }
 
+// Motivo real del rechazo de la API de Claude, en español (antes solo se mostraba el código).
+function mensajeErrorIA(e: InstanceType<typeof Anthropic.APIError>) {
+  // deno-lint-ignore no-explicit-any
+  const detalle = String((e.error as any)?.error?.message || e.message || '');
+  if (/credit balance/i.test(detalle)) return 'La cuenta de Anthropic no tiene saldo. Recárgala en console.anthropic.com → Settings → Billing.';
+  if (/prompt is too long|too many tokens|context/i.test(detalle)) return 'La consulta trajo demasiados datos. Acota el período o pide un resumen (por ejemplo, totales por mes).';
+  if (e.status === 401) return 'La clave ANTHROPIC_API_KEY no es válida o fue revocada. Revísala en los secretos de Supabase.';
+  if (e.status === 429) return 'Hay muchas consultas al mismo tiempo. Espera un minuto y vuelve a intentar.';
+  if (e.status === 529 || e.status === 503) return 'El servicio de IA está saturado en este momento. Intenta de nuevo en unos minutos.';
+  return `Error del servicio de IA (${e.status}): ${detalle.slice(0, 300)}`;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json({ error: 'Método no permitido' }, 405);
@@ -475,7 +487,7 @@ Deno.serve(async (req) => {
     }
   } catch (e) {
     console.error('asistente:', e);
-    const msg = e instanceof Anthropic.APIError ? `Error del servicio de IA (${e.status}).` : (e instanceof Error ? e.message : 'Error inesperado');
+    const msg = e instanceof Anthropic.APIError ? mensajeErrorIA(e) : (e instanceof Error ? e.message : 'Error inesperado');
     return json({ error: msg }, 500);
   }
 });
