@@ -25,6 +25,7 @@ import PoliticasView from './PoliticasView';
 import PapeleraView from './PapeleraView';
 import AsistenteView from './AsistenteView';
 import LiquidacionesView from './LiquidacionesView';
+import { itemsAnticipo, validarItemsAnticipo, itemsParaGuardar, filasExcelAnticipo } from './anticipos';
 import { solicitudesLiquidables, anticiposVencidos, clavePresupuesto, estadoDestinoSolicitud, estadoOrigenSolicitud } from './liquidaciones';
 import { rolDePermisos } from './roles';
 import { buscarReciboDuplicado } from './bandeja';
@@ -2665,7 +2666,7 @@ const App = () => {
       anticipoIds: s.anticipoIds || [],
       detalle: s.detalle || '',
       empresa: s.empresa || '',
-      documentos: s.documentos || [],
+      documentos: s.tipo === 'Anticipo' ? itemsAnticipo(s) : (s.documentos || []),
       moneda: monedaDeSolicitud(s),
       tipoAnticipo: s.tipoAnticipo || 'General',
       fechaRequerida: s.fechaRequerida || '',
@@ -2759,12 +2760,18 @@ const App = () => {
       return;
     }
 
-    if (esTipoValorUnico(newSolicitud.tipo) && !newSolicitud.valor) {
+    // Anticipo: formulario propio por conceptos (concepto + valor + cotización opcional); el valor es la suma.
+    if (newSolicitud.tipo === 'Anticipo') {
+      const errorItems = validarItemsAnticipo(newSolicitud.documentos);
+      if (errorItems) { alert(errorItems); return; }
+    }
+
+    if (esTipoValorUnico(newSolicitud.tipo) && newSolicitud.tipo !== 'Anticipo' && !newSolicitud.valor) {
       alert(newSolicitud.tipo === 'Comisión' ? 'Ingresa el valor de la comisión' : 'Ingresa valor solicitado');
       return;
     }
 
-    if (esTipoValorUnico(newSolicitud.tipo) && parsearMonto(newSolicitud.valor) <= 0) {
+    if (esTipoValorUnico(newSolicitud.tipo) && newSolicitud.tipo !== 'Anticipo' && parsearMonto(newSolicitud.valor) <= 0) {
       alert(newSolicitud.tipo === 'Comisión' ? 'El valor de la comisión debe ser mayor a cero' : 'El valor solicitado debe ser mayor a cero');
       return;
     }
@@ -2932,10 +2939,13 @@ const App = () => {
         : 'Pendiente';
       const camposSolicitud = {
         fecha: newSolicitud.fecha,
-        valor: (esTipoValorUnico(newSolicitud.tipo) || newSolicitud.tipo === 'Pago a Tercero') ? (parsearMonto(newSolicitud.valor) || 0) : 0,
+        valor: newSolicitud.tipo === 'Anticipo' ? totalCalculado
+          : (esTipoValorUnico(newSolicitud.tipo) || newSolicitud.tipo === 'Pago a Tercero') ? (parsearMonto(newSolicitud.valor) || 0) : 0,
         total_calculado: totalCalculado,
         detalle: newSolicitud.detalle.trim(),
-        documentos: newSolicitud.documentos.map(d => ({ ...d, valor: montoONumero0(d.valor) })),
+        documentos: newSolicitud.tipo === 'Anticipo'
+          ? itemsParaGuardar(newSolicitud.documentos)
+          : newSolicitud.documentos.map(d => ({ ...d, valor: montoONumero0(d.valor) })),
         // anticipo_id (singular, columna vieja) se sigue llenando con el primero elegido, solo
         // por compatibilidad con cualquier reporte/consulta externa que todavía la use.
         anticipo_id: anticiposVinculados.length > 0 ? anticiposVinculados[0].id : null,
@@ -2985,6 +2995,17 @@ const App = () => {
           return;
         }
         solicitudId = inserted.id;
+      }
+
+      // Anticipo: las cotizaciones previas de cada concepto (opcionales) quedan como soportes sueltos.
+      if (newSolicitud.tipo === 'Anticipo') {
+        for (const it of newSolicitud.documentos.filter(d => d.cotizacionArchivo)) {
+          const a = it.cotizacionArchivo;
+          const concepto = (it.descripcion || 'concepto').trim().replace(/\s+/g, '_').slice(0, 40);
+          if (!(await subirSoporteEntidad({ ...a, nombre: `Cotizacion_${concepto}_${a.nombre}` }, 'solicitud', solicitudId))) {
+            alert(`⚠️ La solicitud se guardó, pero no se pudo subir la cotización de "${it.descripcion}". Edítala y adjúntala de nuevo.`);
+          }
+        }
       }
 
       // Soportes agregados durante una EDICIÓN (ej. los recibos de los ítems nuevos, o algo que
@@ -3793,6 +3814,25 @@ const App = () => {
       doc.text(`Concepto: ${s.detalle}`, pageWidth / 2, yPos);
       yPos += 12;
 
+      if (s.tipo === 'Anticipo') {
+        doc.text(`Tipo de anticipo: ${s.tipoAnticipo || 'General'}${s.fechaRequerida ? ` · Se requiere el ${s.fechaRequerida}` : ''}`, 20, yPos);
+        yPos += 8;
+        const items = itemsAnticipo(s);
+        if (items.length > 0) {
+          doc.setFontSize(11);
+          doc.text('CONCEPTOS DEL ANTICIPO', 20, yPos);
+          yPos += 6;
+          doc.autoTable({
+            startY: yPos,
+            head: [['N°', 'Concepto', 'Valor', 'Cotización previa']],
+            body: items.map((i, n) => [n + 1, i.descripcion, formatMoneyByMoneda(i.valor, monedaDeSolicitud(s)), i.cotizacionNombre ? `Sí — ${i.cotizacionNombre}` : 'No']),
+            margin: 20,
+            theme: 'grid'
+          });
+          yPos = doc.lastAutoTable.finalY + 6;
+        }
+      }
+
       if (!esTipoValorUnico(s.tipo)) {
         if (s.documentos && s.documentos.length > 0) {
           doc.setFontSize(11);
@@ -3992,6 +4032,13 @@ const App = () => {
     const datosCuenta = responsable && responsable.numeroCuenta
       ? `FAVOR CONSIGNAR A LA CUENTA ${(responsable.tipoCuentaBancaria || '').toUpperCase()} ${(responsable.banco || '').toUpperCase()} N° ${responsable.numeroCuenta} A NOMBRE ${(responsable.titularCuenta || s.responsableNombre || '').toUpperCase()} CC ${responsable.cedula || ''}`
       : '';
+    if (s.tipo === 'Anticipo') {
+      const { rows: filasAnticipo } = filasExcelAnticipo(s, {
+        empresa: empresaSolicitudTexto(s), nit: NIT_EMPRESAS[s.empresa] || '', cedula: responsable?.cedula || '',
+        datosCuenta, revisadoPor, aprobadoPor, hoy: fechaHoyLocal(),
+      });
+      return { rows: filasAnticipo, moneda, nombreArchivo: `Anticipo_${s.responsableNombre}_${s.fecha}.xlsx` };
+    }
     const parrafo = `SE PRESENTA ${accionTexto} DEL SEÑOR(A) ${(s.responsableNombre || '').toUpperCase()} CC ${responsable?.cedula || ''} POR CONCEPTO ${conceptoResumen}. SE ADJUNTA DETALLES. ${datosCuenta}`.replace(/\s+/g, ' ').trim();
 
     const rows = [];
@@ -4042,7 +4089,7 @@ const App = () => {
   // Contabilidad: el Excel de la solicitud de origen de un movimiento (Legalización / Reembolso /
   // Legalización T. Pro) se muestra como un soporte más. Si la solicitud no está cargada (rol que
   // solo carga las suyas) se lee de la base.
-  const TIPOS_CON_EXCEL_SOLICITUD = ['Legalización', 'Reembolso', 'Legalización T. Pro'];
+  const TIPOS_CON_EXCEL_SOLICITUD = ['Legalización', 'Reembolso', 'Legalización T. Pro', 'Anticipo'];
   // Documentos que genera el sistema para el visor de una solicitud: su PDF (todas) y su Excel
   // (Legalización / Reembolso / Legalización T. Pro con ítems). Se arman al abrir, con los datos
   // actuales; descargarlos es opcional.
@@ -4051,7 +4098,7 @@ const App = () => {
       id: 'pdf-sistema', nombre_original: nombrePDFSolicitud(s),
       generar: async () => (s.tipo === 'Pago a Tercero' ? construirPDFDePagoTercero(s) : await construirPDFSolicitud(s)).output('blob'),
     }];
-    if (TIPOS_CON_EXCEL_SOLICITUD.includes(s.tipo) && s.documentos?.length > 0) {
+    if (TIPOS_CON_EXCEL_SOLICITUD.includes(s.tipo) && (s.tipo === 'Anticipo' ? itemsAnticipo(s).length > 0 : s.documentos?.length > 0)) {
       const excel = { ...construirExcelSolicitud(s), tipo: s.tipo };
       docs.push({ id: 'excel-sistema', nombre_original: excel.nombreArchivo, excel });
     }
@@ -8825,7 +8872,7 @@ const App = () => {
                     setNewSolicitud({
                       ...newSolicitud,
                       tipo: nuevoTipo,
-                      documentos: conservaItems ? newSolicitud.documentos : [],
+                      documentos: conservaItems ? newSolicitud.documentos : (nuevoTipo === 'Anticipo' ? [{ descripcion: '', valor: '', cotizacionNombre: '', cotizacionArchivo: null }] : []),
                       ...(nuevoTipo !== 'Legalización' ? { anticipoIds: [], valorAnticipoOriginal: '' } : {}),
                     });
                   }}>
@@ -8853,7 +8900,7 @@ const App = () => {
                       </Select>
                     </CampoUI>
                   )}
-                  {esTipoValorUnico(newSolicitud.tipo) && (
+                  {esTipoValorUnico(newSolicitud.tipo) && newSolicitud.tipo !== 'Anticipo' && (
                     <CampoUI label={`${newSolicitud.tipo === 'Comisión' ? 'Valor de la Comisión' : 'Valor Solicitado'} (${newSolicitud.moneda})`} htmlFor="sol-valor">
                       <InputMoneda id="sol-valor" placeholder={`${newSolicitud.tipo === 'Comisión' ? 'Valor de la Comisión' : 'Valor Solicitado'} (${newSolicitud.moneda})`} value={newSolicitud.valor} onChange={(e) => setNewSolicitud({...newSolicitud, valor: e.target.value})} />
                     </CampoUI>
@@ -9018,6 +9065,54 @@ const App = () => {
                     />
                   </>
                 )}
+
+                {/* ANTICIPO — formulario propio: conceptos (concepto + valor + cotización previa opcional).
+                    El valor del anticipo es la suma; PDF y Excel salen de esta lista. */}
+                {newSolicitud.tipo === 'Anticipo' && (() => {
+                  const cambiarItem = (idx, cambios) => setNewSolicitud(prev => ({ ...prev, documentos: prev.documentos.map((d, i) => (i === idx ? { ...d, ...cambios } : d)) }));
+                  const agregarItem = () => setNewSolicitud(prev => ({ ...prev, documentos: [{ descripcion: '', valor: '', cotizacionNombre: '', cotizacionArchivo: null }, ...prev.documentos] }));
+                  const leerCotizacion = (idx, file) => {
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (ev) => cambiarItem(idx, { cotizacionArchivo: { id: Date.now(), nombre: file.name, tipo: file.type, tamaño: file.size, data: ev.target.result } });
+                    reader.readAsDataURL(file);
+                  };
+                  return (
+                    <div className="flex flex-col gap-3 rounded-lg border border-solid border-border bg-background p-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="m-0 text-base font-bold">Conceptos del anticipo</h3>
+                        <Button size="sm" onClick={agregarItem}><Plus size={14} /> Agregar</Button>
+                      </div>
+                      {newSolicitud.documentos.length === 0 && <p className="m-0 text-sm text-muted-foreground">Agrega cada concepto para el que pides el anticipo (hotel, transporte, viáticos…). Si tienes una cotización previa, adjúntala en ese concepto.</p>}
+                      {newSolicitud.documentos.map((doc, idx) => (
+                        <div key={idx} className="grid grid-cols-1 items-center gap-3 rounded-lg border border-solid border-border bg-card p-3 sm:grid-cols-[1.8fr_1fr_1.4fr_auto]">
+                          <Input type="text" aria-label="Concepto" placeholder="Concepto *" value={doc.descripcion || ''} onChange={(e) => cambiarItem(idx, { descripcion: e.target.value })} aria-invalid={(doc.descripcion || '').trim() ? undefined : true} />
+                          <InputMoneda aria-label="Valor" placeholder={`Valor (${newSolicitud.moneda}) *`} value={doc.valor} onChange={(e) => cambiarItem(idx, { valor: e.target.value })} />
+                          <div className="flex min-w-0 items-center gap-2 text-xs">
+                            {doc.cotizacionArchivo || doc.cotizacionNombre ? (
+                              <>
+                                <Paperclip size={14} className="shrink-0 text-success" />
+                                <span className="min-w-0 flex-1 truncate" title={doc.cotizacionArchivo?.nombre || doc.cotizacionNombre}>{doc.cotizacionArchivo?.nombre || doc.cotizacionNombre}</span>
+                                <Button variant="ghost" size="icon" className="size-7 text-destructive" title="Quitar cotización" aria-label="Quitar cotización" onClick={() => cambiarItem(idx, { cotizacionArchivo: null, cotizacionNombre: '' })}><X size={14} /></Button>
+                              </>
+                            ) : (
+                              <label className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'cursor-pointer')} title="Opcional: cuando aplica una cotización previa">
+                                <Upload size={14} /> Cotización (opcional)
+                                <input type="file" accept="application/pdf,image/*" className="hidden" onChange={(e) => { leerCotizacion(idx, e.target.files[0]); e.target.value = ''; }} />
+                              </label>
+                            )}
+                          </div>
+                          <Button variant="outline" size="icon" onClick={() => handleDeleteDocumento(idx)} className="text-destructive" title="Quitar concepto" aria-label="Quitar concepto"><Trash2 size={16} /></Button>
+                        </div>
+                      ))}
+                      {newSolicitud.documentos.length > 0 && (
+                        <p className="m-0 text-right text-sm font-bold">
+                          Total del anticipo: {formatMoneyByMoneda(newSolicitud.documentos.reduce((sum, d) => sum + (parsearMonto(d.valor) || 0), 0), monedaDeSolicitud(newSolicitud))}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {(newSolicitud.tipo === 'Legalización' || newSolicitud.tipo === 'Reembolso' || newSolicitud.tipo === 'Legalización T. Pro') && (
                   <>
@@ -12072,7 +12167,7 @@ const App = () => {
                     <Button variant="outline" onClick={() => handleVerSoportesSolicitud(so)}><Paperclip size={14} /> Ver soportes</Button>
                     {/* Mismo Excel del botón de Solicitudes (Legalización / Reembolso): no es un soporte
                         guardado, se arma al momento con los datos actuales de la solicitud. */}
-                    {['Legalización', 'Reembolso', 'Legalización T. Pro'].includes(so.tipo) && (
+                    {['Legalización', 'Reembolso', 'Legalización T. Pro', 'Anticipo'].includes(so.tipo) && (
                       <Button variant="outline" onClick={() => handlePreviewExcelSolicitud(so)} className="text-success" title="Ver el Excel sin descargarlo"><Search size={14} /> Ver Excel</Button>
                     )}
                     <div className="flex-1" />
