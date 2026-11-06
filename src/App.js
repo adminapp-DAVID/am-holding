@@ -93,6 +93,18 @@ const EncabezadoAbreviado = ({ corto, largo }) => {
 // Etiqueta + campo.
 // Cuántas filas se dibujan de una vez en las listas largas, y el pie "Ver más / Ver todos".
 const FILAS_POR_TANDA = 100;
+
+// Estado que se recuerda en este navegador (localStorage): pestaña, secciones abiertas… Si no se
+// puede leer o escribir (modo privado), funciona igual con el valor inicial.
+const usePersistente = (clave, inicial) => {
+  const [valor, setValor] = useState(() => {
+    try { const v = localStorage.getItem(clave); return v === null ? inicial : JSON.parse(v); } catch { return inicial; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(clave, JSON.stringify(valor)); } catch { /* sin almacenamiento */ }
+  }, [clave, valor]);
+  return [valor, setValor];
+};
 const VerMasFilasUI = ({ total, limite, setLimite }) => {
   if (total <= limite) return null;
   return (
@@ -765,10 +777,13 @@ const App = () => {
   const [verEnviadosPagados, setVerEnviadosPagados] = useState(false);
   // Solicitudes: "Enviados en solicitudes" va al final y arranca contraído; cada solicitud también
   // se despliega aparte. "Ver solo la última" en Enviados y en Mis Solicitudes.
-  const [enviadosVisible, setEnviadosVisible] = useState(false);
+  // Quien presenta solicitudes las ve en pestañas (Bandeja | Nueva | Mis solicitudes | Enviados); se
+  // recuerda la última pestaña y lo que dejó abierto en este navegador.
+  const [pestanaSolicitudes, setPestanaSolicitudes] = usePersistente('solicitudes:pestana', 'mis');
+  const [enviadosVisible, setEnviadosVisible] = usePersistente('solicitudes:enviadosVisible', false);
   const [enviadosAbiertos, setEnviadosAbiertos] = useState(() => new Set());
-  const [enviadosSoloUltima, setEnviadosSoloUltima] = useState(false);
-  const [solicitudesSoloUltima, setSolicitudesSoloUltima] = useState(false);
+  const [enviadosSoloUltima, setEnviadosSoloUltima] = usePersistente('solicitudes:enviadosSoloUltima', false);
+  const [solicitudesSoloUltima, setSolicitudesSoloUltima] = usePersistente('solicitudes:soloUltima', false);
   const [cargandoSoportesPendientes, setCargandoSoportesPendientes] = useState(true);
   const [seleccionPendientes, setSeleccionPendientes] = useState([]);
   // Toggle "Ver todos" / "Ver solo el último" en Mi Bandeja de Soportes — para no tener que
@@ -2607,7 +2622,8 @@ const App = () => {
       }));
       setPendientesEnUso(seleccionados.map(s => s.id));
       setSeleccionPendientes([]);
-      alert(`✅ Se cargaron ${seleccionados.length} recibo(s) en el formulario de Nueva Solicitud, debajo. Revisa y completa el Concepto antes de guardar.`
+      setPestanaSolicitudes('nueva');
+      alert(`✅ Se cargaron ${seleccionados.length} recibo(s) en el formulario de Nueva Solicitud. Revisa y completa el Concepto antes de guardar.`
         + (sinArchivo.length ? `\n\n⚠️ No se pudo leer el archivo de ${sinArchivo.length} recibo(s); revísalos en tu bandeja:\n• ${sinArchivo.join('\n• ')}` : ''));
     } finally {
       setCargandoSoportesPendientes(false);
@@ -2666,12 +2682,14 @@ const App = () => {
       actualizarTercero: false
     });
     setSoportesAdicionalesEdicion([]);
+    setPestanaSolicitudes('nueva');
     setTimeout(() => {
       document.getElementById('form-nueva-solicitud')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 0);
   };
 
   const handleCancelarEdicionSolicitud = () => {
+    if (editingSolicitudId || pestanaSolicitudes === 'nueva') setPestanaSolicitudes('mis');
     setEditingSolicitudId(null);
     setSoportesAdicionalesEdicion([]);
     setSoportesLegalizacionTemp([]);
@@ -3672,6 +3690,8 @@ const App = () => {
   // Gerente Financiero: conserva los permisos de Coordinadora (gestiona todas) y además presenta
   // las suyas, con Mi Bandeja de Soportes y "Nueva Solicitud".
   const presentaSolicitudes = !gestionaSolicitudes || user?.rolNombre === 'Gerente Financiero';
+  const solicitudesConPestanas = !isReadOnly && presentaSolicitudes;
+  const verPestanaSolicitudes = (p) => !solicitudesConPestanas || pestanaSolicitudes === p;
   const soloPropias = ['Colaborador', 'Responsable', 'Gerente'].includes(user?.rol);
   const solicitudesUsuario = soloPropias
     ? solicitudes.filter(s => s.responsableId === user.id)
@@ -8578,10 +8598,33 @@ const App = () => {
           // Etapa 3 del sistema de diseño: Solicitudes migrado a los componentes de
           // src/components/ui/ (misma lógica, handlers y permisos que antes; solo cambia la presentación).
           <div className="flex flex-col gap-6">
+              {/* Pestañas (solo quien presenta solicitudes): una sección a la vez, con contadores. */}
+              {solicitudesConPestanas && (() => {
+                const enviadosAbiertas = new Set(soportesEnviados.map(r => r.solicitudId)
+                  .filter(id => { const sol = solicitudes.find(x => x.id === id); return sol && !['Pagado', 'Legalizado'].includes(sol.estado); })).size;
+                const pestanas = [
+                  ['bandeja', `📥 Bandeja (${soportesPendientes.length})`],
+                  ['nueva', editingSolicitudId ? '✏️ Editando solicitud' : '➕ Nueva solicitud'],
+                  ['mis', `📋 ${soloPropias ? 'Mis solicitudes' : 'Solicitudes'} (${solicitudesFiltradas.length})`],
+                  ['enviados', `📤 Enviados (${enviadosAbiertas})`],
+                ];
+                return (
+                  <div role="tablist" className="flex flex-wrap gap-1 rounded-lg bg-muted p-1">
+                    {pestanas.map(([id, etiqueta]) => (
+                      <button key={id} type="button" role="tab" aria-selected={pestanaSolicitudes === id} onClick={() => setPestanaSolicitudes(id)}
+                        className={cn('flex-[1_1_160px] cursor-pointer whitespace-nowrap rounded-md border-0 px-3 py-2 font-[inherit] text-sm font-semibold',
+                          pestanaSolicitudes === id ? 'bg-card text-foreground shadow-sm' : 'bg-transparent text-muted-foreground hover:text-foreground')}>
+                        {etiqueta}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+
               {/* Administrador y Coordinadora no crean solicitudes, solo las gestionan: no ven la
                   Bandeja ni "Nueva Solicitud". El formulario solo se les muestra al editar una
                   (✏️ en la tabla), porque la edición reutiliza ese mismo formulario. */}
-              {!isReadOnly && presentaSolicitudes && (
+              {!isReadOnly && presentaSolicitudes && verPestanaSolicitudes('bandeja') && (
                 <Card className="gap-4 px-0 py-6 sm:py-7">
                   <CardHeader className="sm:px-7">
                     <CardTitle className="text-lg">📥 Mi Bandeja de Soportes</CardTitle>
@@ -8735,7 +8778,7 @@ const App = () => {
                 </Card>
               )}
 
-              {(presentaSolicitudes || editingSolicitudId) && (
+              {(presentaSolicitudes || editingSolicitudId) && verPestanaSolicitudes('nueva') && (
               <Card id="form-nueva-solicitud" className={cn('gap-4 px-0 py-6 sm:py-7', editingSolicitudId && 'border-2 border-[#6C63D1]')}>
                 <CardHeader className="sm:px-7">
                   <CardTitle className={cn('text-lg', editingSolicitudId && 'text-[#6C63D1]')}>{editingSolicitudId ? '✏️ Editando Solicitud' : 'Nueva Solicitud'}</CardTitle>
@@ -9071,6 +9114,7 @@ const App = () => {
               </Card>
               )}
 
+            {verPestanaSolicitudes('mis') && (
             <Card className="gap-4 px-0 py-6 sm:py-7">
               <CardHeader className="sm:px-7">
                 <div className="flex flex-wrap items-center gap-2">
@@ -9082,6 +9126,30 @@ const App = () => {
                 </div>
               </CardHeader>
               <CardContent className="flex flex-col gap-4 sm:px-7">
+
+              {/* Resumen por estado: al tocar uno se filtra la tabla (otra vez = quita el filtro). */}
+              {(() => {
+                const cuenta = (estado) => solicitudesUsuario.filter(s => s.estado === estado).length;
+                const chips = [
+                  ['Pendiente', 'pendientes', 'warning'], ['Devuelto', 'devueltas', 'orange'], ['Aprobado', 'por pagar', 'info'],
+                  ['Pagado', 'pagadas', 'success'], ['Legalizado', 'legalizadas', 'purple'],
+                ].map(([estado, texto, variante]) => ({ estado, texto, variante, n: cuenta(estado) })).filter(c => c.n > 0);
+                if (!chips.length) return null;
+                return (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {chips.map(c => (
+                      <button key={c.estado} type="button" aria-pressed={filtroSolicitudesEstado === c.estado}
+                        onClick={() => setFiltroSolicitudesEstado(filtroSolicitudesEstado === c.estado ? 'Todos' : c.estado)}
+                        className={cn(badgeVariants({ variant: c.variante }), 'cursor-pointer px-3 py-1 text-xs', filtroSolicitudesEstado === c.estado && 'ring-2 ring-primary')}>
+                        <b>{c.n}</b>&nbsp;{c.texto}
+                      </button>
+                    ))}
+                    {filtroSolicitudesEstado !== 'Todos' && (
+                      <button type="button" onClick={() => setFiltroSolicitudesEstado('Todos')} className="cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-xs text-muted-foreground underline">Ver todas</button>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* FILTROS: buscador de texto libre + Tipo/Estado/(Empresa) + rango de fechas.
                   Empresa solo se ofrece a los roles que de por sí ven varias empresas a la vez —
@@ -9332,8 +9400,9 @@ const App = () => {
               {!solicitudesSoloUltima && <VerMasFilasUI total={solicitudesFiltradas.length} limite={limiteSolicitudes} setLimite={setLimiteSolicitudes} />}
               </CardContent>
             </Card>
+            )}
 
-              {!isReadOnly && presentaSolicitudes && (
+              {!isReadOnly && presentaSolicitudes && verPestanaSolicitudes('enviados') && (
                 <>
                   {/* 📤 Enviados: recibos ya usados en una solicitud, agrupados por solicitud. Se ven con
                       sus archivos; si la solicitud no se ha pagado se puede editar (ítems / tipo) o
@@ -9347,21 +9416,27 @@ const App = () => {
                     const cerrada = (g) => ['Pagado', 'Legalizado'].includes(g.solicitud.estado);
                     const visibles = grupos.filter(g => verEnviadosPagados || !cerrada(g));
                     const ocultos = grupos.length - visibles.length;
-                    if (!grupos.length) return null;
+                    if (!grupos.length) {
+                      return solicitudesConPestanas ? (
+                        <Card className="px-0 py-6"><CardContent className="sm:px-7"><p className="m-0 text-sm text-muted-foreground">Todavía no has enviado recibos de tu bandeja en una solicitud.</p></CardContent></Card>
+                      ) : null;
+                    }
                     // Más reciente primero; "Ver solo la última" deja solo la solicitud más nueva.
                     const ordenados = [...visibles].sort((a, b) => String(b.solicitud.createdAt || b.solicitud.fecha || '').localeCompare(String(a.solicitud.createdAt || a.solicitud.fecha || '')));
                     const mostrados = enviadosSoloUltima ? ordenados.slice(0, 1) : ordenados;
+                    // En pestañas la sección ya está a la vista; sin pestañas se despliega con la flecha.
+                    const enviadosAbierto = solicitudesConPestanas || enviadosVisible;
                     const alternarGrupo = (id) => setEnviadosAbiertos(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
                     return (
                       <Card className="gap-4 px-0 py-6 sm:py-7">
                         <CardHeader className="sm:px-7">
                           <div className="flex flex-wrap items-center gap-2">
-                            <button type="button" onClick={() => setEnviadosVisible(v => !v)} aria-expanded={enviadosVisible}
-                              className="flex flex-1 cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left font-[inherit]">
-                              {enviadosVisible ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                            <button type="button" onClick={() => setEnviadosVisible(v => !v)} aria-expanded={enviadosAbierto} disabled={solicitudesConPestanas}
+                              className="flex flex-1 cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left font-[inherit] text-foreground disabled:cursor-default">
+                              {!solicitudesConPestanas && (enviadosAbierto ? <ChevronDown size={18} /> : <ChevronRight size={18} />)}
                               <CardTitle className="text-lg">📤 Enviados en solicitudes ({visibles.length})</CardTitle>
                             </button>
-                            {enviadosVisible && (
+                            {enviadosAbierto && (
                               <>
                                 <Button size="sm" variant={!enviadosSoloUltima ? 'default' : 'outline'} onClick={() => setEnviadosSoloUltima(false)} aria-pressed={!enviadosSoloUltima}>Ver todas</Button>
                                 <Button size="sm" variant={enviadosSoloUltima ? 'default' : 'outline'} onClick={() => setEnviadosSoloUltima(true)} aria-pressed={enviadosSoloUltima}>Ver solo la última</Button>
@@ -9374,7 +9449,7 @@ const App = () => {
                             )}
                           </div>
                         </CardHeader>
-                        {enviadosVisible && (
+                        {enviadosAbierto && (
                         <CardContent className="flex flex-col gap-3 sm:px-7">
                         {visibles.length === 0 && <p className="m-0 text-xs text-muted-foreground">Todo lo que enviaste ya está pagado.</p>}
                         {mostrados.map(({ solicitud: sol, recibos }) => (
