@@ -763,6 +763,12 @@ const App = () => {
   // con sus archivos mientras la solicitud no esté pagada.
   const [soportesEnviados, setSoportesEnviados] = useState([]);
   const [verEnviadosPagados, setVerEnviadosPagados] = useState(false);
+  // Solicitudes: "Enviados en solicitudes" va al final y arranca contraído; cada solicitud también
+  // se despliega aparte. "Ver solo la última" en Enviados y en Mis Solicitudes.
+  const [enviadosVisible, setEnviadosVisible] = useState(false);
+  const [enviadosAbiertos, setEnviadosAbiertos] = useState(() => new Set());
+  const [enviadosSoloUltima, setEnviadosSoloUltima] = useState(false);
+  const [solicitudesSoloUltima, setSolicitudesSoloUltima] = useState(false);
   const [cargandoSoportesPendientes, setCargandoSoportesPendientes] = useState(true);
   const [seleccionPendientes, setSeleccionPendientes] = useState([]);
   // Toggle "Ver todos" / "Ver solo el último" en Mi Bandeja de Soportes — para no tener que
@@ -8725,72 +8731,6 @@ const App = () => {
                     </>
                   )}
 
-                  {/* 📤 Enviados: recibos ya usados en una solicitud, agrupados por solicitud. Se ven con
-                      sus archivos; si la solicitud no se ha pagado se puede editar (ítems / tipo) o
-                      retirarla, y sus recibos vuelven a la bandeja para presentarlos de nuevo. */}
-                  {(() => {
-                    const grupos = Object.values(soportesEnviados.reduce((acc, r) => {
-                      (acc[r.solicitudId] = acc[r.solicitudId] || { solicitudId: r.solicitudId, recibos: [] }).recibos.push(r);
-                      return acc;
-                    }, {})).map(g => ({ ...g, solicitud: solicitudes.find(x => x.id === g.solicitudId) }))
-                      .filter(g => g.solicitud);
-                    const cerrada = (g) => ['Pagado', 'Legalizado'].includes(g.solicitud.estado);
-                    const visibles = grupos.filter(g => verEnviadosPagados || !cerrada(g));
-                    const ocultos = grupos.length - visibles.length;
-                    if (!grupos.length) return null;
-                    return (
-                      <div className="flex flex-col gap-3 border-0 border-t border-solid border-border pt-4">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <h4 className="m-0 text-sm font-bold">📤 Enviados en solicitudes</h4>
-                          {(ocultos > 0 || verEnviadosPagados) && (
-                            <Button size="sm" variant="outline" onClick={() => setVerEnviadosPagados(v => !v)}>
-                              {verEnviadosPagados ? 'Ocultar los pagados' : `Ver también los pagados (${ocultos})`}
-                            </Button>
-                          )}
-                        </div>
-                        {visibles.length === 0 && <p className="m-0 text-xs text-muted-foreground">Todo lo que enviaste ya está pagado.</p>}
-                        {visibles.map(({ solicitud: sol, recibos }) => (
-                          <div key={sol.id} className="rounded-lg border border-solid border-border bg-background p-3">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge variant="purple">Enviado a {sol.tipo}</Badge>
-                              <Badge variant={estadoBadge(sol.estado)}>{sol.estado}</Badge>
-                              <span className="text-xs text-muted-foreground">{sol.fecha}{sol.detalle ? ` · ${sol.detalle}` : ''}</span>
-                              <span className="ml-auto text-xs font-bold text-success">{formatMoneyByMoneda(sol.totalCalculado || 0, monedaDeSolicitud(sol))}</span>
-                            </div>
-                            {sol.estado === 'Devuelto' && sol.motivoDevolucion && <p className="m-0 mt-1.5 text-xs text-[#C4622D]">Motivo de devolución: {sol.motivoDevolucion}</p>}
-                            <ul className="m-0 mt-2 flex list-none flex-col gap-1 p-0">
-                              {recibos.map(r => (
-                                <li key={r.id} className="flex flex-wrap items-center gap-2 text-xs">
-                                  <Button variant="ghost" size="icon" onClick={() => handlePreviewSoporte(r)} disabled={cargandoPreviewSoporte} title="Ver archivo" aria-label="Ver archivo" className="size-7"><Eye size={14} /></Button>
-                                  <span className="text-muted-foreground">{r.fecha}</span>
-                                  <span>{r.proveedor || '—'}</span>
-                                  <span className="text-muted-foreground">{r.descripcion}</span>
-                                  {cerrada({ solicitud: sol }) && (
-                                    <Badge variant="success" className="text-[0.6rem]" title="Este recibo ya se pagó: no lo vuelvas a montar">
-                                      ✅ Pagado{sol.aprobadoAt ? ` ${new Date(sol.aprobadoAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'America/Bogota' })}` : ''}
-                                    </Badge>
-                                  )}
-                                  <span className="ml-auto font-semibold">{formatMoneyByMoneda(r.valor, monedaDeSolicitud(sol))}</span>
-                                </li>
-                              ))}
-                            </ul>
-                            {!cerrada({ solicitud: sol }) && (
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {puedeEditarSolicitud(sol) && (
-                                  <Button size="sm" variant="outline" onClick={() => handleIniciarEdicionSolicitud(sol)} title="Corregir ítems o cambiar el tipo (Reembolso / Legalización)"><Pencil size={14} /> Editar solicitud</Button>
-                                )}
-                                {['Pendiente', 'Devuelto'].includes(sol.estado) && puedeEliminarSolicitud(sol) && (
-                                  <Button size="sm" variant="outline" className="text-destructive" onClick={() => handleDeleteSolicitud(sol.id, `¿Retirar esta solicitud de ${sol.tipo}?\n\nLa solicitud se elimina y sus ${recibos.length} recibo(s) vuelven a tu bandeja, con sus archivos, para presentarlos de nuevo.`)}>
-                                    <RotateCcw size={14} /> Retirar y devolver a mi bandeja
-                                  </Button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })()}
                   </CardContent>
                 </Card>
               )}
@@ -9133,9 +9073,13 @@ const App = () => {
 
             <Card className="gap-4 px-0 py-6 sm:py-7">
               <CardHeader className="sm:px-7">
-                <CardTitle className="text-lg">
-                  📋 {soloPropias ? 'Mis Solicitudes' : user.rol === 'Contadora' ? 'Solicitudes Auditadas' : 'Todas las Solicitudes'} ({solicitudesFiltradas.length})
-                </CardTitle>
+                <div className="flex flex-wrap items-center gap-2">
+                  <CardTitle className="flex-1 text-lg">
+                    📋 {soloPropias ? 'Mis Solicitudes' : user.rol === 'Contadora' ? 'Solicitudes Auditadas' : 'Todas las Solicitudes'} ({solicitudesFiltradas.length})
+                  </CardTitle>
+                  <Button size="sm" variant={!solicitudesSoloUltima ? 'default' : 'outline'} onClick={() => setSolicitudesSoloUltima(false)} aria-pressed={!solicitudesSoloUltima}>Ver todas</Button>
+                  <Button size="sm" variant={solicitudesSoloUltima ? 'default' : 'outline'} onClick={() => setSolicitudesSoloUltima(true)} aria-pressed={solicitudesSoloUltima}>Ver solo la última</Button>
+                </div>
               </CardHeader>
               <CardContent className="flex flex-col gap-4 sm:px-7">
 
@@ -9224,7 +9168,7 @@ const App = () => {
                 <TableBody>
                     {solicitudesFiltradas.length === 0 ? (
                       <TableRow className="hover:bg-transparent"><TableCell colSpan={canApprove ? 11 : 10} className="py-8 text-center text-muted-foreground">Sin solicitudes para estos filtros.</TableCell></TableRow>
-                    ) : solicitudesFiltradas.slice(0, limiteSolicitudes).map(s => {
+                    ) : solicitudesFiltradas.slice(0, solicitudesSoloUltima ? 1 : limiteSolicitudes).map(s => {
                       // Legalización con anticipo vinculado: base para las 2 columnas nuevas y para
                       // marcar el anticipo original como "ya legalizado" (solo visual, no toca s.estado).
                       // Nota: la búsqueda del vínculo sigue mirando TODAS las solicitudes del usuario
@@ -9385,9 +9329,105 @@ const App = () => {
                     })}
                 </TableBody>
               </Table>
-              <VerMasFilasUI total={solicitudesFiltradas.length} limite={limiteSolicitudes} setLimite={setLimiteSolicitudes} />
+              {!solicitudesSoloUltima && <VerMasFilasUI total={solicitudesFiltradas.length} limite={limiteSolicitudes} setLimite={setLimiteSolicitudes} />}
               </CardContent>
             </Card>
+
+              {!isReadOnly && presentaSolicitudes && (
+                <>
+                  {/* 📤 Enviados: recibos ya usados en una solicitud, agrupados por solicitud. Se ven con
+                      sus archivos; si la solicitud no se ha pagado se puede editar (ítems / tipo) o
+                      retirarla, y sus recibos vuelven a la bandeja para presentarlos de nuevo. */}
+                  {(() => {
+                    const grupos = Object.values(soportesEnviados.reduce((acc, r) => {
+                      (acc[r.solicitudId] = acc[r.solicitudId] || { solicitudId: r.solicitudId, recibos: [] }).recibos.push(r);
+                      return acc;
+                    }, {})).map(g => ({ ...g, solicitud: solicitudes.find(x => x.id === g.solicitudId) }))
+                      .filter(g => g.solicitud);
+                    const cerrada = (g) => ['Pagado', 'Legalizado'].includes(g.solicitud.estado);
+                    const visibles = grupos.filter(g => verEnviadosPagados || !cerrada(g));
+                    const ocultos = grupos.length - visibles.length;
+                    if (!grupos.length) return null;
+                    // Más reciente primero; "Ver solo la última" deja solo la solicitud más nueva.
+                    const ordenados = [...visibles].sort((a, b) => String(b.solicitud.createdAt || b.solicitud.fecha || '').localeCompare(String(a.solicitud.createdAt || a.solicitud.fecha || '')));
+                    const mostrados = enviadosSoloUltima ? ordenados.slice(0, 1) : ordenados;
+                    const alternarGrupo = (id) => setEnviadosAbiertos(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+                    return (
+                      <Card className="gap-4 px-0 py-6 sm:py-7">
+                        <CardHeader className="sm:px-7">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button type="button" onClick={() => setEnviadosVisible(v => !v)} aria-expanded={enviadosVisible}
+                              className="flex flex-1 cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left font-[inherit]">
+                              {enviadosVisible ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                              <CardTitle className="text-lg">📤 Enviados en solicitudes ({visibles.length})</CardTitle>
+                            </button>
+                            {enviadosVisible && (
+                              <>
+                                <Button size="sm" variant={!enviadosSoloUltima ? 'default' : 'outline'} onClick={() => setEnviadosSoloUltima(false)} aria-pressed={!enviadosSoloUltima}>Ver todas</Button>
+                                <Button size="sm" variant={enviadosSoloUltima ? 'default' : 'outline'} onClick={() => setEnviadosSoloUltima(true)} aria-pressed={enviadosSoloUltima}>Ver solo la última</Button>
+                                {(ocultos > 0 || verEnviadosPagados) && (
+                                  <Button size="sm" variant="outline" onClick={() => setVerEnviadosPagados(v => !v)}>
+                                    {verEnviadosPagados ? 'Ocultar los pagados' : `Ver también los pagados (${ocultos})`}
+                                  </Button>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </CardHeader>
+                        {enviadosVisible && (
+                        <CardContent className="flex flex-col gap-3 sm:px-7">
+                        {visibles.length === 0 && <p className="m-0 text-xs text-muted-foreground">Todo lo que enviaste ya está pagado.</p>}
+                        {mostrados.map(({ solicitud: sol, recibos }) => (
+                          <div key={sol.id} className="rounded-lg border border-solid border-border bg-background p-3">
+                            <button type="button" onClick={() => alternarGrupo(sol.id)} aria-expanded={enviadosAbiertos.has(sol.id)}
+                              title={enviadosAbiertos.has(sol.id) ? 'Contraer' : `Ver sus ${recibos.length} recibo(s)`}
+                              className="flex w-full cursor-pointer flex-wrap items-center gap-2 border-0 bg-transparent p-0 text-left font-[inherit]">
+                              {enviadosAbiertos.has(sol.id) ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                              <Badge variant="purple">Enviado a {sol.tipo}</Badge>
+                              <Badge variant={estadoBadge(sol.estado)}>{sol.estado}</Badge>
+                              <span className="text-xs text-muted-foreground">{sol.fecha}{sol.detalle ? ` · ${sol.detalle}` : ''} · {recibos.length} recibo(s)</span>
+                              <span className="ml-auto text-xs font-bold text-success">{formatMoneyByMoneda(sol.totalCalculado || 0, monedaDeSolicitud(sol))}</span>
+                            </button>
+                            {sol.estado === 'Devuelto' && sol.motivoDevolucion && <p className="m-0 mt-1.5 text-xs text-[#C4622D]">Motivo de devolución: {sol.motivoDevolucion}</p>}
+                            {enviadosAbiertos.has(sol.id) && (<>
+                            <ul className="m-0 mt-2 flex list-none flex-col gap-1 p-0">
+                              {recibos.map(r => (
+                                <li key={r.id} className="flex flex-wrap items-center gap-2 text-xs">
+                                  <Button variant="ghost" size="icon" onClick={() => handlePreviewSoporte(r)} disabled={cargandoPreviewSoporte} title="Ver archivo" aria-label="Ver archivo" className="size-7"><Eye size={14} /></Button>
+                                  <span className="text-muted-foreground">{r.fecha}</span>
+                                  <span>{r.proveedor || '—'}</span>
+                                  <span className="text-muted-foreground">{r.descripcion}</span>
+                                  {cerrada({ solicitud: sol }) && (
+                                    <Badge variant="success" className="text-[0.6rem]" title="Este recibo ya se pagó: no lo vuelvas a montar">
+                                      ✅ Pagado{sol.aprobadoAt ? ` ${new Date(sol.aprobadoAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'America/Bogota' })}` : ''}
+                                    </Badge>
+                                  )}
+                                  <span className="ml-auto font-semibold">{formatMoneyByMoneda(r.valor, monedaDeSolicitud(sol))}</span>
+                                </li>
+                              ))}
+                            </ul>
+                            {!cerrada({ solicitud: sol }) && (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {puedeEditarSolicitud(sol) && (
+                                  <Button size="sm" variant="outline" onClick={() => handleIniciarEdicionSolicitud(sol)} title="Corregir ítems o cambiar el tipo (Reembolso / Legalización)"><Pencil size={14} /> Editar solicitud</Button>
+                                )}
+                                {['Pendiente', 'Devuelto'].includes(sol.estado) && puedeEliminarSolicitud(sol) && (
+                                  <Button size="sm" variant="outline" className="text-destructive" onClick={() => handleDeleteSolicitud(sol.id, `¿Retirar esta solicitud de ${sol.tipo}?\n\nLa solicitud se elimina y sus ${recibos.length} recibo(s) vuelven a tu bandeja, con sus archivos, para presentarlos de nuevo.`)}>
+                                    <RotateCcw size={14} /> Retirar y devolver a mi bandeja
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                            </>)}
+                          </div>
+                        ))}
+                        </CardContent>
+                        )}
+                      </Card>
+                    );
+                  })()}
+                </>
+              )}
           </div>
         )}
 
