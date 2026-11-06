@@ -452,7 +452,7 @@ const App = () => {
   const tiposSolicitud = ['Anticipo', 'Legalización', 'Reembolso', 'Pago a Tercero', 'Legalización T. Pro', 'Comisión'];
   // Tipos con un solo valor digitado (no por ítems): Anticipo y Comisión.
   const esTipoValorUnico = (tipo) => tipo === 'Anticipo' || tipo === 'Comisión';
-  const tiposSoporte = ['Factura/Electrónica', 'Recibo/Entradas', 'Consignación', 'Cuenta de Cobro', 'Efectivo/T.Personal', 'Otro'];
+  const tiposSoporte = ['Factura/Electrónica', 'Recibo de Caja', 'Consignación', 'Cuenta de Cobro', 'Efectivo/T.Personal', 'Otro'];
 
   // "Legalización T. Pro": gastos pagados con efectivo o tarjeta personal del colaborador (no hay
   // anticipo previo de la empresa). Hoy solo aplica a este colaborador — ver el botón "Usar
