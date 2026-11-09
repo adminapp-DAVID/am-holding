@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import jsPDF from 'jspdf';
 // Faltaba este import — doc.autoTable() (usado más abajo en handleGenerarPDF, para el PDF
 // individual de Legalización/Reembolso) es un plugin de jsPDF: sin esta línea, "autoTable"
@@ -2257,12 +2257,18 @@ const App = () => {
     setSeleccionPresupuestoPendientes([]);
   }, [filtroPresupuesto.empresa, filtroPresupuesto.mes, filtroPresupuesto.anio]);
 
-  // Al entrar a "Mi Perfil" se refresca el borrador con los datos más recientes guardados.
+  // Al ENTRAR a "Mi Perfil" se carga el borrador con los datos guardados. Mientras la persona
+  // diligencia, usuariosDB se recarga solo (tiempo real: cualquier cambio en usuarios, o al volver a
+  // la pestaña tras copiar un dato de otra app) — antes eso reemplazaba el borrador y borraba lo
+  // escrito. Ahora en una recarga solo se actualizan la foto y los documentos (se suben aparte).
+  const vistaPerfilPrevia = useRef(null);
   useEffect(() => {
-    if (currentView === 'mi-perfil' && miPerfil) {
-      setMiPerfilForm(miPerfil);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const entrando = currentView === 'mi-perfil' && vistaPerfilPrevia.current !== 'mi-perfil';
+    vistaPerfilPrevia.current = currentView;
+    if (currentView !== 'mi-perfil' || !miPerfil) return;
+    setMiPerfilForm(prev => ((entrando || !prev || prev.id !== miPerfil.id)
+      ? miPerfil
+      : { ...prev, foto: miPerfil.foto, documentoCedula: miPerfil.documentoCedula, documentoPasaporte: miPerfil.documentoPasaporte }));
   }, [currentView, miPerfil]);
 
   // Agregar documento (línea de gasto/soporte) — se agrega AL INICIO de la lista (no al final):
