@@ -30,7 +30,7 @@ const CUENTAS_POR_EMPRESA: Record<string, string[]> = {
   'ARKO': ['JPMORGAN'],
   'CUBO': ['BANCOLOMBIA', 'ITAU', 'BTG', 'BBVA'],
 };
-const ROLES_EQUIVALENTES: Record<string, string> = { 'Gerente Financiero': 'Coordinadora Administrativa' };
+const ROLES_EQUIVALENTES: Record<string, string> = { 'Gerente Financiero': 'Coordinadora Administrativa', 'Coordinador Administrativo': 'Coordinadora Administrativa' };
 const MAX_FILAS_CONSULTA = 5000;   // filas que se traen de la base por consulta
 const MAX_FILAS_A_CLAUDE = 150;    // filas que se le muestran a Claude (el resto queda para exportar)
 const MAX_VUELTAS = 12;            // llamadas a Claude por pregunta

@@ -397,7 +397,7 @@ const App = () => {
     (cuentaDestino && cuentaDestino.includes(': ')) ? cuentaDestino.split(': ')[0] : empresaOrigen;
 
   // Data - DEBE ir primero
-  const rolesSensibles = ['Administrador', 'Contadora', 'Coordinadora Administrativa', 'Gerente Financiero'];
+  const rolesSensibles = ['Administrador', 'Contadora', 'Coordinadora Administrativa', 'Coordinador Administrativo', 'Gerente Financiero'];
 
   const empresas = ['AM SPORTS GROUP SAS', 'PRO INVESTMENTS GLOBAL SAS', 'PRONOVA CAPITAL SAS', 'FOR SEVEN MEDIA SAS', 'ARKO'];
   const estadosSolicitud = ['Pendiente', 'Aprobado', 'Devuelto', 'Pagado', 'Legalizado'];
@@ -629,6 +629,8 @@ const App = () => {
   const responsableVacio = { nombre: '', email: '', empresa: 'AM SPORTS GROUP SAS', foto: '', cedula: '', telefono: '', fechaNacimiento: '', cargo: '', fechaIngreso: '', tipoVinculacion: '', contactoEmergenciaNombre: '', contactoEmergenciaTelefono: '', eps: '', arl: '', funciones: '', banco: '', codigoBanco: '', tipoDocumento: '', tipoCuentaBancaria: '', numeroCuenta: '', titularCuenta: '', documentoCedula: null, documentoPasaporte: null };
   const [newResponsable, setNewResponsable] = useState(responsableVacio);
   const [newUserType, setNewUserType] = useState('Colaborador');
+  // Rol guardado del usuario en edición: el rol solo se envía si el Administrador lo cambió.
+  const [rolOriginalEdicion, setRolOriginalEdicion] = useState(null);
   // Cuentas de Cobro — conectado a Supabase (tabla public.cuentas_cobro). Cada archivo de
   // soporte se sube por separado al bucket "soportes" (no se unen en un solo PDF, a diferencia
   // de Solicitudes) y queda registrado en public.soportes con entidad_tipo='cuenta_cobro'.
@@ -4175,6 +4177,14 @@ const App = () => {
       return;
     }
 
+    // Cambio de rol: solo el Administrador, nunca el suyo propio, y con confirmación.
+    const cambiaRol = !!rolOriginalEdicion && newUserType !== rolOriginalEdicion;
+    if (cambiaRol) {
+      if (user?.rol !== 'Administrador') { alert('Solo el Administrador puede cambiar el rol'); return; }
+      if (editingResponsableId === user.id) { alert('No puedes cambiar tu propio rol'); return; }
+      if (!window.confirm(`¿Cambiar el rol de ${newResponsable.nombre} de "${rolOriginalEdicion}" a "${newUserType}"?\n\nLos permisos nuevos aplican la próxima vez que inicie sesión.`)) return;
+    }
+
     const existeEmail = usuariosDB.some(u => u.email === newResponsable.email && u.id !== editingResponsableId);
     if (existeEmail) {
       alert('Ese email ya está en uso por otro usuario');
@@ -4216,7 +4226,8 @@ const App = () => {
         codigo_banco: newResponsable.codigoBanco || null,
         tipo_cuenta_bancaria: newResponsable.tipoCuentaBancaria || null,
         numero_cuenta: limpiarNumeroCuenta(newResponsable.numeroCuenta) || null,
-        titular_cuenta: newResponsable.titularCuenta || null
+        titular_cuenta: newResponsable.titularCuenta || null,
+        ...(cambiaRol ? { rol: newUserType } : {})
       })
       .eq('id', editingResponsableId)
       .select('id');
@@ -4227,8 +4238,9 @@ const App = () => {
       return;
     }
 
-    alert('✅ Usuario actualizado');
+    alert(cambiaRol ? `✅ Usuario actualizado. Nuevo rol: ${newUserType}` : '✅ Usuario actualizado');
     await cargarUsuarios();
+    setRolOriginalEdicion(null);
     setEditingResponsableId(null);
     setEditingResponsableOrigen('responsables');
     setNewResponsable(responsableVacio);
@@ -4239,13 +4251,16 @@ const App = () => {
       alert('Solo el Administrador puede editar este usuario');
       return;
     }
-    setNewUserType(origen === 'admin' ? r.rol : 'Colaborador');
+    const rolGuardado = origen === 'admin' ? r.rol : 'Responsable';
+    setNewUserType(rolGuardado);
+    setRolOriginalEdicion(rolGuardado);
     setEditingResponsableId(r.id);
     setEditingResponsableOrigen(origen);
     setNewResponsable({ ...responsableVacio, ...r });
   };
 
   const handleCancelEditResponsable = () => {
+    setRolOriginalEdicion(null);
     setEditingResponsableId(null);
     setEditingResponsableOrigen('responsables');
     setNewResponsable(responsableVacio);
@@ -9616,7 +9631,7 @@ const App = () => {
             ...responsables.map(r => ({ ...r, rol: 'Colaborador', origen: 'responsables' })),
             ...usuariosAdmin.map(u => ({ ...u, origen: 'admin' }))
           ];
-          const rolIcono = { 'Colaborador': '👥', 'Gerente': '📈', 'Gerente Financiero': '💼', 'Coordinadora Administrativa': '🗂️', 'Contadora': '🧮', 'Administrador': '🔑' };
+          const rolIcono = { 'Colaborador': '👥', 'Gerente': '📈', 'Gerente Financiero': '💼', 'Coordinadora Administrativa': '🗂️', 'Coordinador Administrativo': '🗂️', 'Contadora': '🧮', 'Administrador': '🔑' };
           const seccion = (titulo, contenido, extra) => (
             <section className="flex flex-col gap-3">
               <h3 className="m-0 border-0 border-b border-solid border-border pb-2 text-sm font-bold">{titulo}</h3>
@@ -9673,14 +9688,17 @@ const App = () => {
                 {seccion('Acceso al sistema', (
                   <div className={grilla}>
                     <CampoUI label="Rol / Perfil" htmlFor="co-rol">
-                      <Select id="co-rol" value={newUserType} onChange={(e) => setNewUserType(e.target.value)} disabled>
+                      <Select id="co-rol" value={newUserType} onChange={(e) => setNewUserType(e.target.value)} disabled={user.rol !== 'Administrador' || editingResponsableId === user.id}>
+                        <option value="Responsable">👤 Responsable (colaborador)</option>
                         <option value="Colaborador">👥 Colaborador</option>
                         <option value="Gerente">📈 Gerente</option>
                         <option value="Coordinadora Administrativa">🗂️ Coordinadora Administrativa</option>
+                        <option value="Coordinador Administrativo">🗂️ Coordinador Administrativo</option>
+                        <option value="Gerente Financiero">💼 Gerente Financiero</option>
                         <option value="Contadora">🧮 Contadora</option>
                         <option value="Administrador">🔑 Administrador</option>
                       </Select>
-                      <p className="m-0 text-xs text-muted-foreground">El rol no se cambia desde aquí — avísame si alguien necesita otro perfil.</p>
+                      <p className="m-0 text-xs text-muted-foreground">{user.rol !== 'Administrador' ? 'Solo el Administrador cambia el rol.' : editingResponsableId === user.id ? 'No puedes cambiar tu propio rol.' : 'Los permisos nuevos aplican cuando la persona vuelve a iniciar sesión.'}</p>
                     </CampoUI>
                     <CampoUI label="Nombre Completo" htmlFor="co-nombre">
                       <Input id="co-nombre" type="text" placeholder="Nombre Completo" value={newResponsable.nombre} onChange={(e) => setNewResponsable({...newResponsable, nombre: e.target.value})} />
