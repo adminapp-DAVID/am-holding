@@ -3254,12 +3254,16 @@ const App = () => {
   // Pagos a Tercero van siempre en un lote aparte (otra moneda/beneficiario externo).
   const TIPOS_PAGO_LOTE_SOLICITUD = ['Reembolso', 'Anticipo', 'Comisión', 'Pago a Tercero'];
   const grupoPagoLote = (tipo) => (tipo === 'Pago a Tercero' ? 'terceros' : 'colaboradores');
+  // Una Legalización Aprobada entra al lote solo si queda saldo A FAVOR del colaborador (la empresa
+  // le paga la diferencia); si él debe devolver o quedó cuadrada, se gestiona individualmente.
+  const elegibleParaPagoLote = (s) => s.estado === 'Aprobado' && (TIPOS_PAGO_LOTE_SOLICITUD.includes(s.tipo)
+    || (s.tipo === 'Legalización' && calcularAccionFinanzasSolicitud(s).accion === 'gasto'));
   // Etiqueta para una lista de solicitudes del lote: "reembolsos", "anticipos", "pagos a
   // tercero" o, si se combinan, "reembolsos y anticipos".
   const etiquetaTipoLote = (tipos, plural) => {
     const unicos = [...new Set([].concat(tipos).filter(Boolean))];
-    const nombre = { Reembolso: ['reembolso', 'reembolsos'], Anticipo: ['anticipo', 'anticipos'], Comisión: ['comisión', 'comisiones'], 'Pago a Tercero': ['pago a tercero', 'pagos a tercero'] };
-    if (unicos.length > 1) return unicos.includes('Comisión') ? 'pagos a colaboradores' : 'reembolsos y anticipos';
+    const nombre = { Reembolso: ['reembolso', 'reembolsos'], Anticipo: ['anticipo', 'anticipos'], Comisión: ['comisión', 'comisiones'], Legalización: ['saldo de legalización', 'saldos de legalización'], 'Pago a Tercero': ['pago a tercero', 'pagos a tercero'] };
+    if (unicos.length > 1) return unicos.some(t => t === 'Comisión' || t === 'Legalización') ? 'pagos a colaboradores' : 'reembolsos y anticipos';
     return (nombre[unicos[0]] || ['solicitud', 'solicitudes'])[plural ? 1 : 0];
   };
 
@@ -9375,7 +9379,7 @@ const App = () => {
                       const empresaLoteActual = solicitudesUsuario.find(x => seleccionReembolsosPago.includes(x.id) && x.empresa)?.empresa || null;
                       const tipoLoteActual = primeraSeleccionada?.tipo || null;
                       const monedaLoteActual = primeraSeleccionada ? monedaDeSolicitud(primeraSeleccionada) : null;
-                      const elegibleParaLote = TIPOS_PAGO_LOTE_SOLICITUD.includes(s.tipo) && s.estado === 'Aprobado';
+                      const elegibleParaLote = elegibleParaPagoLote(s);
                       const monedaSolicitud = monedaDeSolicitud(s);
                       const deshabilitadoPorEmpresa = elegibleParaLote && !!tipoLoteActual && (
                         grupoPagoLote(s.tipo) !== grupoPagoLote(tipoLoteActual) ||
