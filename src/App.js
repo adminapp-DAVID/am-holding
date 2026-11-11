@@ -48,6 +48,7 @@ import { Badge, badgeVariants, estadoBadge } from '@/components/ui/badge';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { CODIGO_BANCO_EXTERIOR, inferirCodigoBanco, limpiarNumeroCuenta, limpiarDocumento } from './datosBancarios';
 import { parsearMonto, montoONumero0, confirmarMontos } from './montos';
+import { traerTodas, traerPorIds } from './paginar';
 import { cuotaEnMes, saldoPendienteEnMes, aplicacionDBToLocal, resumenDeduccion, ordenarPor, alternarOrden, validarAplicacionManual } from './deducciones';
 import DeduccionHistorial from './DeduccionHistorial';
 import CabeceraOrdenUI from './components/CabeceraOrden';
@@ -1549,14 +1550,15 @@ const App = () => {
 
   const cargarSolicitudes = async () => {
     setCargandoSolicitudes(true);
-    const { data, error } = await supabase
+    const { data, error } = await traerTodas(() => supabase
       .from('solicitudes')
       // OJO: usuarios!responsable_id — desde que "solicitudes" ganó revisado_por_id y
       // aprobado_por_id (Sección 19), hay 3 FKs de solicitudes hacia usuarios. Sin indicar
       // por cuál columna se hace el embed, PostgREST no sabe cuál usar y el select entero
       // falla con "more than one relationship was found" (deja el historial vacío).
       .select('id, created_at, fecha, tipo, valor, total_calculado, tipo_anticipo, fecha_requerida, requiere_confirmacion_gerencia, fecha_pago_estimada, extemporanea, devuelta_limite, devuelta_vencida, legalizar_antes, excepcion_politica, excepcion_motivo, excepcion_por, excepcion_at, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, lote_pago_id, motivo_devolucion, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .order('id'));
 
     if (error) {
       console.error('Error cargando solicitudes:', error);
@@ -1570,11 +1572,12 @@ const App = () => {
     // comprobantes de pago) viven en public.soportes, no en la columna "documentos" — se
     // cuentan aparte para que la columna "Docs" de la tabla también los refleje.
     if (solicitudesLocal.length > 0) {
-      const { data: soportesRows, error: soportesError } = await supabase
+      const { data: soportesRows, error: soportesError } = await traerPorIds((ids) => supabase
         .from('soportes')
         .select('entidad_id')
         .eq('entidad_tipo', 'solicitud')
-        .in('entidad_id', solicitudesLocal.map(s => s.id));
+        .in('entidad_id', ids)
+        .order('id'), solicitudesLocal.map(s => s.id));
       if (soportesError) {
         console.error('Error contando soportes de solicitudes:', soportesError);
       } else {
@@ -1652,10 +1655,11 @@ const App = () => {
 
   const cargarCuentasCobro = async () => {
     setCargandoCuentasCobro(true);
-    const { data, error } = await supabase
+    const { data, error } = await traerTodas(() => supabase
       .from('cuentas_cobro')
       .select('id, fecha, numero, vencimiento, ciudad, mes, anio, monto, funciones, estado, empresa_nit, responsable_id, responsable_cedula, responsable_cargo, tipo_documento, banco, codigo_banco, tipo_cuenta_bancaria, numero_cuenta, titular_cuenta, empresas ( nombre ), usuarios ( nombre )')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .order('id'));
 
     if (error) {
       console.error('Error cargando cuentas de cobro:', error);
@@ -1669,11 +1673,12 @@ const App = () => {
     // embebidos en la fila — se cuenta cuántos tiene cada una solo para saber si mostrar el
     // botón "Ver soportes" en la tabla (el contenido real se trae al hacer clic).
     if (cuentas.length > 0) {
-      const { data: soportesRows, error: soportesError } = await supabase
+      const { data: soportesRows, error: soportesError } = await traerPorIds((ids) => supabase
         .from('soportes')
         .select('entidad_id')
         .eq('entidad_tipo', 'cuenta_cobro')
-        .in('entidad_id', cuentas.map(c => c.id));
+        .in('entidad_id', ids)
+        .order('id'), cuentas.map(c => c.id));
       if (soportesError) {
         console.error('Error contando soportes de cuentas de cobro:', soportesError);
       } else {
@@ -1819,10 +1824,11 @@ const App = () => {
   };
 
   const cargarAplicacionesDeduccion = async () => {
-    const { data, error } = await supabase
+    const { data, error } = await traerTodas(() => supabase
       .from('deduccion_aplicaciones')
       .select('id, deduccion_id, anio, mes, valor, tipo, gasto_id, fecha, observaciones, created_at')
-      .order('fecha', { ascending: true });
+      .order('fecha', { ascending: true })
+      .order('id'));
     if (error) {
       // Sin la tabla (SQL aún sin correr) o sin permiso: cálculo por calendario.
       console.warn('Historial de deducciones no disponible:', error.message);
@@ -1841,11 +1847,12 @@ const App = () => {
   // Cuenta cuántos soportes reales (public.soportes) tiene cada fila de un conjunto de gastos/ingresos.
   const contarSoportesPorEntidad = async (entidadTipo, ids) => {
     if (ids.length === 0) return {};
-    const { data, error } = await supabase
+    const { data, error } = await traerPorIds((bloque) => supabase
       .from('soportes')
       .select('entidad_id')
       .eq('entidad_tipo', entidadTipo)
-      .in('entidad_id', ids);
+      .in('entidad_id', bloque)
+      .order('id'), ids);
     if (error) {
       console.error(`Error contando soportes de ${entidadTipo}:`, error);
       return {};
@@ -1862,8 +1869,8 @@ const App = () => {
     if (lista.length === 0) return {};
     const idsSol = [...new Set(lista.map(m => m.solicitudOrigenId).filter(Boolean))];
     const [{ data: propios, error: e1 }, { data: deSol, error: e2 }] = await Promise.all([
-      supabase.from('soportes').select('entidad_id, bucket_path').eq('entidad_tipo', entidadTipo).in('entidad_id', lista.map(m => m.id)),
-      idsSol.length ? supabase.from('soportes').select('entidad_id, bucket_path').eq('entidad_tipo', 'solicitud').in('entidad_id', idsSol) : Promise.resolve({ data: [], error: null })
+      traerPorIds((ids) => supabase.from('soportes').select('entidad_id, bucket_path').eq('entidad_tipo', entidadTipo).in('entidad_id', ids).order('id'), lista.map(m => m.id)),
+      traerPorIds((ids) => supabase.from('soportes').select('entidad_id, bucket_path').eq('entidad_tipo', 'solicitud').in('entidad_id', ids).order('id'), idsSol)
     ]);
     if (e1 || e2) console.error(`Error contando soportes de ${entidadTipo}:`, e1 || e2);
     const rutas = {};
@@ -1922,10 +1929,11 @@ const App = () => {
 
   const cargarGastos = async () => {
     setCargandoGastos(true);
-    const { data, error } = await supabase
+    const { data, error } = await traerTodas(() => supabase
       .from('gastos')
       .select('id, created_at, fecha, tipo, cuenta, cuenta_salida, cuenta_destino, detalle, valor, valor_destino, valor_bruto, deduccion_aplicada, categoria, estado, observaciones, presupuesto_item_id, soporte_drive_link, responsable_id, moneda_pago, tercero_info, tercero_id, solicitud_origen_id, lote_pago_id, neutro, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
-      .order('fecha', { ascending: false });
+      .order('fecha', { ascending: false })
+      .order('id'));
     if (error) {
       console.error('Error cargando gastos:', error);
       setCargandoGastos(false);
@@ -1966,10 +1974,11 @@ const App = () => {
 
   const cargarIngresos = async () => {
     setCargandoIngresos(true);
-    const { data, error } = await supabase
+    const { data, error } = await traerTodas(() => supabase
       .from('ingresos')
       .select('id, created_at, fecha, tipo, cuenta, detalle, valor, categoria, estado, observaciones, soporte_drive_link, responsable_id, solicitud_origen_id, empresas ( nombre ), usuarios ( nombre ), cecos ( codigo )')
-      .order('fecha', { ascending: false });
+      .order('fecha', { ascending: false })
+      .order('id'));
     if (error) {
       console.error('Error cargando ingresos:', error);
       setCargandoIngresos(false);
@@ -7118,11 +7127,12 @@ const App = () => {
         const claveMovimiento = (r) => [r.fecha, r.empresa_id, r.tipo, Number(r.valor), String(r.detalle || '').trim().toUpperCase()].join('|');
         const fechasImportadas = filasValidas.map(f => f.fecha).sort();
         const buscarExistentes = async (tabla) => {
-          const { data, error } = await supabase
+          const { data, error } = await traerTodas(() => supabase
             .from(tabla)
-            .select('fecha, empresa_id, tipo, valor, detalle')
+            .select('id, fecha, empresa_id, tipo, valor, detalle')
             .gte('fecha', fechasImportadas[0])
-            .lte('fecha', fechasImportadas[fechasImportadas.length - 1]);
+            .lte('fecha', fechasImportadas[fechasImportadas.length - 1])
+            .order('id'));
           if (error) throw new Error(`No se pudo revisar duplicados en ${tabla}: ${error.message}`);
           return new Set((data || []).map(claveMovimiento));
         };
