@@ -27,7 +27,8 @@ import AsistenteView from './AsistenteView';
 import LiquidacionesView from './LiquidacionesView';
 import { itemsAnticipo, validarItemsAnticipo, itemsParaGuardar, filasExcelAnticipo } from './anticipos';
 import { solicitudesLiquidables, anticiposVencidos, clavePresupuesto, estadoDestinoSolicitud, estadoOrigenSolicitud } from './liquidaciones';
-import { rolDePermisos } from './roles';
+import { IDS_MODULOS, nivelEfectivo, rolBaseDe, nombreRol, filaRol, codigosSensibles, rolDBToLocal } from './permisos';
+import RolesPermisosView from './RolesPermisosView';
 import { buscarReciboDuplicado } from './bandeja';
 import { POLITICA_POR_DEFECTO, TIPOS_ANTICIPO, anticipoFueraDePlazo, avisosPolitica } from './politicas';
 import ContabilidadView, { VisorSoportes } from './ContabilidadView';
@@ -397,8 +398,10 @@ const App = () => {
   const getEmpresaDestinoTraslado = (cuentaDestino, empresaOrigen) =>
     (cuentaDestino && cuentaDestino.includes(': ')) ? cuentaDestino.split(': ')[0] : empresaOrigen;
 
+  // Roles configurables (public.roles) — declarado aquí arriba porque rolesSensibles lo usa ya.
+  const [rolesDB, setRolesDB] = useState([]);
   // Data - DEBE ir primero
-  const rolesSensibles = ['Administrador', 'Contadora', 'Coordinadora Administrativa', 'Coordinador Administrativo', 'Gerente Financiero'];
+  const rolesSensibles = codigosSensibles(rolesDB);
 
   const empresas = ['AM SPORTS GROUP SAS', 'PRO INVESTMENTS GLOBAL SAS', 'PRONOVA CAPITAL SAS', 'FOR SEVEN MEDIA SAS', 'ARKO'];
   const estadosSolicitud = ['Pendiente', 'Aprobado', 'Devuelto', 'Pagado', 'Legalizado'];
@@ -1247,6 +1250,8 @@ const App = () => {
   // para el usuario de Authentication ya logueado, y arma el objeto `user`
   // que el resto de la app espera.
   const cargarPerfilUsuario = async (authUser) => {
+    // Roles configurables (public.roles): nombre visible, rol base y matriz de permisos.
+    const roles = await cargarRoles();
     const { data: perfil, error } = await supabase
       .from('usuarios')
       .select('id, nombre, email, rol, cargo, foto_url, cedula, telefono, funciones, banco, tipo_cuenta_bancaria, numero_cuenta, titular_cuenta, empresas ( nombre )')
@@ -1262,10 +1267,13 @@ const App = () => {
       id: perfil.id,
       nombre: perfil.nombre,
       email: perfil.email,
-      // rol = el de permisos (Gerente Financiero → Coordinadora Administrativa, ver roles.js);
-      // rolNombre = el que se muestra.
-      rol: rolDePermisos(perfil.rol),
-      rolNombre: perfil.rol,
+      // rol = el rol BASE de permisos (ver permisos.js / public.roles); rolCodigo = el guardado en
+      // usuarios.rol; rolNombre = el nombre visible; permisos = la matriz por módulo del rol.
+      rol: rolBaseDe(perfil.rol, roles),
+      rolCodigo: perfil.rol,
+      rolNombre: nombreRol(perfil.rol, roles),
+      permisos: filaRol(roles, perfil.rol)?.permisos || {},
+      presentaSolicitudes: filaRol(roles, perfil.rol) ? filaRol(roles, perfil.rol).presentaSolicitudes : perfil.rol === 'Gerente Financiero',
       empresa: perfil.empresas?.nombre || '',
       cargo: perfil.cargo || '',
       foto: perfil.foto_url || '',
@@ -1277,6 +1285,19 @@ const App = () => {
       numeroCuenta: perfil.numero_cuenta || '',
       titularCuenta: perfil.titular_cuenta || ''
     };
+  };
+
+  const cargarRoles = async () => {
+    const { data, error } = await supabase.from('roles').select('codigo, nombre, rol_base, descripcion, orden, activo, presenta_solicitudes, permisos').order('orden');
+    if (error) {
+      // Sin la tabla (SQL aún sin correr): se usan los roles de siempre.
+      console.warn('Roles no disponibles:', error.message);
+      setRolesDB([]);
+      return [];
+    }
+    const lista = (data || []).map(rolDBToLocal);
+    setRolesDB(lista);
+    return lista;
   };
 
   const handleLogin = async () => {
@@ -3708,7 +3729,7 @@ const App = () => {
   const gestionaSolicitudes = user?.rol === 'Administrador' || user?.rol === 'Coordinadora Administrativa';
   // Gerente Financiero: conserva los permisos de Coordinadora (gestiona todas) y además presenta
   // las suyas, con Mi Bandeja de Soportes y "Nueva Solicitud".
-  const presentaSolicitudes = !gestionaSolicitudes || user?.rolNombre === 'Gerente Financiero';
+  const presentaSolicitudes = !gestionaSolicitudes || !!user?.presentaSolicitudes;
   // OJO: isReadOnly se declara mucho más abajo; usarla aquí rompía el arranque de la app (TDZ).
   const solicitudesConPestanas = user?.rol !== 'Contadora' && presentaSolicitudes;
   const verPestanaSolicitudes = (p) => !solicitudesConPestanas || pestanaSolicitudes === p;
@@ -4204,7 +4225,7 @@ const App = () => {
     if (cambiaRol) {
       if (user?.rol !== 'Administrador') { alert('Solo el Administrador puede cambiar el rol'); return; }
       if (editingResponsableId === user.id) { alert('No puedes cambiar tu propio rol'); return; }
-      if (!window.confirm(`¿Cambiar el rol de ${newResponsable.nombre} de "${rolOriginalEdicion}" a "${newUserType}"?\n\nLos permisos nuevos aplican la próxima vez que inicie sesión.`)) return;
+      if (!window.confirm(`¿Cambiar el rol de ${newResponsable.nombre} de "${nombreRol(rolOriginalEdicion, rolesDB)}" a "${nombreRol(newUserType, rolesDB)}"?\n\nLos permisos nuevos aplican la próxima vez que inicie sesión.`)) return;
     }
 
     const existeEmail = usuariosDB.some(u => u.email === newResponsable.email && u.id !== editingResponsableId);
@@ -4260,7 +4281,7 @@ const App = () => {
       return;
     }
 
-    alert(cambiaRol ? `✅ Usuario actualizado. Nuevo rol: ${newUserType}` : '✅ Usuario actualizado');
+    alert(cambiaRol ? `✅ Usuario actualizado. Nuevo rol: ${nombreRol(newUserType, rolesDB)}` : '✅ Usuario actualizado');
     await cargarUsuarios();
     setRolOriginalEdicion(null);
     setEditingResponsableId(null);
@@ -8007,12 +8028,27 @@ const App = () => {
     .filter(r => r.mesCumple === (new Date().getMonth() + 1))
     .sort((a, b) => a.diaCumple - b.diaCumple);
 
+  // Si la matriz quita el acceso a la vista abierta, se vuelve al Dashboard (o al primer módulo
+  // permitido). El menú tampoco la muestra (TopNav, nivelDe).
+  useEffect(() => {
+    if (!user || !IDS_MODULOS.includes(currentView)) return;
+    if (nivelEfectivo(user.rol, user.permisos, currentView) !== 'ninguno') return;
+    const destino = IDS_MODULOS.find(id => nivelEfectivo(user.rol, user.permisos, id) !== 'ninguno');
+    if (destino && destino !== currentView) setCurrentView(destino);
+  }, [user, currentView]);
+
   // PERMISOS POR ROL
   // El Gerente dejó de ser "solo lectura" en Solicitudes/Cuentas de Cobro: ahora crea y gestiona
   // las suyas propias, igual que un Responsable (pero solo ve las suyas, no las de los demás).
-  const canEdit = user?.rol && ['Administrador', 'Coordinadora Administrativa', 'Responsable', 'Gerente'].includes(user.rol);
-  const canApprove = user?.rol && ['Administrador', 'Coordinadora Administrativa'].includes(user.rol);
-  const isReadOnly = user?.rol === 'Contadora';
+  // Matriz de Roles y permisos: en cada módulo el nivel del rol (Ver / Editar / Aprobar) puede
+  // ser MENOR que el de su rol base — nunca mayor (permisos.js). Fuera de los módulos, el rol base.
+  const nivelModulo = (modulo) => nivelEfectivo(user?.rol, user?.permisos, modulo);
+  const nivelActual = user && IDS_MODULOS.includes(currentView) ? nivelModulo(currentView) : null;
+  const canEdit = user?.rol && ['Administrador', 'Coordinadora Administrativa', 'Responsable', 'Gerente'].includes(user.rol)
+    && (!nivelActual || nivelActual === 'editar' || nivelActual === 'aprobar');
+  const canApprove = user?.rol && ['Administrador', 'Coordinadora Administrativa'].includes(user.rol)
+    && (!nivelActual || nivelActual === 'aprobar');
+  const isReadOnly = user?.rol === 'Contadora' || nivelActual === 'ver';
   // Finanzas, Dashboard Financiero y Presupuesto: solo Administrador, Coordinadora y Gerente
   // (mismo criterio que ROLES_FINANZAS en components/TopNav.jsx).
   const puedeVerFinanzas = ['Administrador', 'Coordinadora Administrativa', 'Gerente'].includes(user?.rol);
@@ -8288,6 +8324,7 @@ const App = () => {
         onNavigate={setCurrentView}
         role={user.rol}
         roleLabel={user.rolNombre || user.rol}
+        nivelDe={nivelModulo}
         userName={user.nombre}
         logoSrc={logoAmHolding}
         bell={<NotificacionesCampana user={user} onNavegar={setCurrentView} />}
@@ -8334,6 +8371,15 @@ const App = () => {
             solicitudes={solicitudesUsuario}
             onExcepcion={canApprove ? aplicarExcepcionPolitica : undefined}
             nombreColaborador={(s) => colaboradoresPublico.find(c => c.id === s.responsableId)?.nombre || s.responsableNombre || '—'}
+          />
+        )}
+
+        {currentView === 'roles' && (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa') && (
+          <RolesPermisosView
+            roles={rolesDB}
+            usuarios={usuariosDB}
+            puedeEditar={user.rol === 'Administrador' && nivelModulo('roles') === 'aprobar'}
+            onRecargar={cargarRoles}
           />
         )}
 
@@ -9679,10 +9725,10 @@ const App = () => {
           // Etapa 3 del sistema de diseño: Colaboradores migrado a los componentes de
           // src/components/ui/ (misma lógica, handlers y permisos que antes; solo cambia la presentación).
           const listaUsuarios = [
-            ...responsables.map(r => ({ ...r, rol: 'Colaborador', origen: 'responsables' })),
+            ...responsables.map(r => ({ ...r, origen: 'responsables' })),
             ...usuariosAdmin.map(u => ({ ...u, origen: 'admin' }))
           ];
-          const rolIcono = { 'Colaborador': '👥', 'Gerente': '📈', 'Gerente Financiero': '💼', 'Coordinadora Administrativa': '🗂️', 'Coordinador Administrativo': '🗂️', 'Contadora': '🧮', 'Administrador': '🔑' };
+          const rolIcono = { 'Responsable': '👥', 'Colaborador': '👥', 'Gerente': '📈', 'Gerente Financiero': '💼', 'Coordinadora Administrativa': '🗂️', 'Coordinador Administrativo': '🗂️', 'Contadora': '🧮', 'Administrador': '🔑' };
           const seccion = (titulo, contenido, extra) => (
             <section className="flex flex-col gap-3">
               <h3 className="m-0 border-0 border-b border-solid border-border pb-2 text-sm font-bold">{titulo}</h3>
@@ -9740,14 +9786,16 @@ const App = () => {
                   <div className={grilla}>
                     <CampoUI label="Rol / Perfil" htmlFor="co-rol">
                       <Select id="co-rol" value={newUserType} onChange={(e) => setNewUserType(e.target.value)} disabled={user.rol !== 'Administrador' || editingResponsableId === user.id}>
-                        <option value="Responsable">👤 Responsable (colaborador)</option>
-                        <option value="Colaborador">👥 Colaborador</option>
-                        <option value="Gerente">📈 Gerente</option>
-                        <option value="Coordinadora Administrativa">🗂️ Coordinadora Administrativa</option>
-                        <option value="Coordinador Administrativo">🗂️ Coordinador Administrativo</option>
-                        <option value="Gerente Financiero">💼 Gerente Financiero</option>
-                        <option value="Contadora">🧮 Contadora</option>
-                        <option value="Administrador">🔑 Administrador</option>
+                        {rolesDB.length > 0 ? (
+                          rolesDB.filter(r => r.activo || r.codigo === newUserType).map(r => <option key={r.codigo} value={r.codigo}>{r.nombre}</option>)
+                        ) : (<>
+                          <option value="Responsable">👥 Colaborador</option>
+                          <option value="Gerente">📈 Gerente</option>
+                          <option value="Coordinadora Administrativa">🗂️ Coordinación Administrativa</option>
+                          <option value="Gerente Financiero">💼 Gerente Financiero</option>
+                          <option value="Contadora">🧮 Contadora</option>
+                          <option value="Administrador">🔑 Administrador</option>
+                        </>)}
                       </Select>
                       <p className="m-0 text-xs text-muted-foreground">{user.rol !== 'Administrador' ? 'Solo el Administrador cambia el rol.' : editingResponsableId === user.id ? 'No puedes cambiar tu propio rol.' : 'Los permisos nuevos aplican cuando la persona vuelve a iniciar sesión.'}</p>
                     </CampoUI>
@@ -9926,7 +9974,7 @@ const App = () => {
                                 </div>
                               </div>
                             </TableCell>
-                            <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{rolIcono[r.rol] || ''} {r.rol}</TableCell>
+                            <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{rolIcono[r.rol] || rolIcono[rolBaseDe(r.rol, rolesDB)] || ''} {nombreRol(r.rol, rolesDB)}</TableCell>
                             <TableCell className="text-xs text-muted-foreground">{r.cargo || '-'}</TableCell>
                             <TableCell className="text-xs">{r.empresa ? <div className="flex items-center gap-2"><EmpresaLogo empresa={r.empresa} height={16} /><span className="text-primary">{r.empresa}</span></div> : '-'}</TableCell>
                             <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{r.telefono || '-'}</TableCell>
