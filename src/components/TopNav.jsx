@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   LayoutDashboard, ClipboardList, FileText, LineChart, Wallet, CalendarRange,
-  Banknote, Users, Landmark, ShieldCheck, BookOpen, BookCheck, Trash2, Sparkles, Calculator, Bell, ChevronDown, User, LogOut, Menu, X,
+  Banknote, Users, Landmark, ShieldCheck, BookOpen, BookCheck, Trash2, KeyRound, Sparkles, Calculator, Bell, ChevronDown, User, LogOut, Menu, X,
 } from "lucide-react";
 import "./TopNav.css";
 
@@ -49,11 +49,13 @@ const GRUPOS = [
     { id: "politicas", label: "Políticas financieras", icon: BookCheck, roles: TODOS },
     // Lo eliminado en Finanzas, Solicitudes y Cuentas de cobro (90 días para restaurar).
     { id: "papelera", label: "Papelera", icon: Trash2, roles: ADMIN },
+    // Roles y permisos: el Administrador los configura; la Coordinación los consulta.
+    { id: "roles", label: "Roles y permisos", icon: KeyRound, roles: ADMIN },
   ]},
 ];
 
 export default function TopNav({
-  active, onNavigate, role, roleLabel, userName, notifCount = 0,
+  active, onNavigate, role, roleLabel, userName, notifCount = 0, nivelDe,
   badges = {}, onBellClick, bell, onLogout, logoSrc,
 }) {
   const [open, setOpen] = useState(null);      // grupo desplegado
@@ -62,7 +64,8 @@ export default function TopNav({
   const ref = useRef(null);
 
   const grupos = GRUPOS
-    .map(g => ({ ...g, items: g.items.filter(i => i.roles.includes(role)) }))
+    // Además del rol base, la matriz de Roles y permisos puede quitar módulos (nivel "ninguno").
+    .map(g => ({ ...g, items: g.items.filter(i => i.roles.includes(role) && (!nivelDe || nivelDe(i.id) !== 'ninguno')) }))
     .filter(g => g.items.length);
 
   useEffect(() => {

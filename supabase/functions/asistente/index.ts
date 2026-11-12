@@ -394,7 +394,9 @@ Deno.serve(async (req) => {
     const { data: { user } } = await sb.auth.getUser(auth.replace(/^Bearer\s+/i, ''));
     if (!user) return json({ error: 'Sesión no válida.' }, 401);
     const { data: yo } = await sb.from('usuarios').select('nombre, rol').eq('auth_user_id', user.id).maybeSingle();
-    const rol = ROLES_EQUIVALENTES[yo?.rol] || yo?.rol;
+    // Rol base desde la base de datos (public.roles vía current_rol()); respaldo: equivalencias fijas.
+    const { data: rolBase } = await sb.rpc('current_rol');
+    const rol = (typeof rolBase === 'string' && rolBase) || ROLES_EQUIVALENTES[yo?.rol] || yo?.rol;
     if (!yo || !ROLES_ASISTENTE.includes(rol)) return json({ error: 'Tu rol no tiene acceso al asistente.' }, 403);
 
     const body = await req.json();
