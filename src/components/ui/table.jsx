@@ -1,11 +1,11 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 
-// Tabla con scroll horizontal propio (en celular no desborda la página).
-// `fija`: para listas largas (Historial de Finanzas, Solicitudes). La tabla se desplaza dentro de
-// su propio recuadro (alto máximo de la pantalla), el encabezado queda fijo arriba al bajar y hay
-// una barra de desplazamiento horizontal también ARRIBA, sincronizada con la de abajo, para ver
-// las columnas que no caben sin tener que ir al final de la lista.
+// Tabla con scroll horizontal propio (en celular no desborda la página). Cuando las columnas no
+// caben, además de la barra de abajo aparece una barra de desplazamiento ARRIBA, sincronizada,
+// para moverse a izquierda/derecha sin tener que bajar al final de la tabla.
+// `fija`: para listas largas (Historial de Finanzas, Solicitudes): la tabla se desplaza dentro de
+// su propio recuadro (alto máximo de la pantalla) y el encabezado queda fijo arriba al bajar.
 const Table = ({ className, fija = false, ...props }) => {
   const arriba = React.useRef(null);
   const contenedor = React.useRef(null);
@@ -14,8 +14,9 @@ const Table = ({ className, fija = false, ...props }) => {
   const [desborda, setDesborda] = React.useState(false);
 
   React.useEffect(() => {
-    if (!fija || !contenedor.current || !tabla.current) return undefined;
+    if (!contenedor.current || !tabla.current || typeof ResizeObserver === 'undefined') return undefined;
     const medir = () => {
+      if (!tabla.current || !contenedor.current) return;
       setAncho(tabla.current.scrollWidth);
       setDesborda(tabla.current.scrollWidth > contenedor.current.clientWidth + 1);
     };
@@ -24,19 +25,12 @@ const Table = ({ className, fija = false, ...props }) => {
     observador.observe(tabla.current);
     observador.observe(contenedor.current);
     return () => observador.disconnect();
-  }, [fija]);
+  }, []);
 
   const sincronizar = (origen, destino) => () => {
-    if (destino.current && destino.current.scrollLeft !== origen.current.scrollLeft) destino.current.scrollLeft = origen.current.scrollLeft;
+    if (destino.current && origen.current && destino.current.scrollLeft !== origen.current.scrollLeft) destino.current.scrollLeft = origen.current.scrollLeft;
   };
 
-  if (!fija) {
-    return (
-      <div data-slot="table-container" className="relative w-full overflow-x-auto rounded-lg border border-solid border-border bg-card">
-        <table data-slot="table" className={cn('w-full border-collapse text-sm', className)} {...props} />
-      </div>
-    );
-  }
   return (
     <div className="flex w-full flex-col gap-1">
       {desborda && (
@@ -48,7 +42,12 @@ const Table = ({ className, fija = false, ...props }) => {
         ref={contenedor}
         onScroll={sincronizar(contenedor, arriba)}
         data-slot="table-container"
-        className="barra-visible relative max-h-[75vh] w-full overflow-auto rounded-lg border border-solid border-border bg-card [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-10 [&_thead_th]:bg-muted [&_thead_th]:shadow-[inset_0_-1px_0_var(--border)]"
+        className={cn(
+          'barra-visible relative w-full rounded-lg border border-solid border-border bg-card',
+          fija
+            ? 'max-h-[75vh] overflow-auto [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-10 [&_thead_th]:bg-muted [&_thead_th]:shadow-[inset_0_-1px_0_var(--border)]'
+            : 'overflow-x-auto'
+        )}
       >
         <table ref={tabla} data-slot="table" className={cn('w-full border-collapse text-sm', className)} {...props} />
       </div>
