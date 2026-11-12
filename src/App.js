@@ -837,6 +837,8 @@ const App = () => {
   // (20261106_deduccion_aplicaciones.sql): entonces se usa el cálculo por calendario (src/deducciones.js).
   const [aplicacionesDeduccion, setAplicacionesDeduccion] = useState(null);
   const [ordenDeducciones, setOrdenDeducciones] = usePersistente('deducciones:orden', null);
+  // Orden de las demás tablas de Presupuesto (Mensual, Anual, Conceptos, Techos), por tabla.
+  const [ordenPresupuesto, setOrdenPresupuesto] = usePersistente('presupuesto:orden', {});
   const [deduccionAbierta, setDeduccionAbierta] = useState(null);
   const getCuotaAplicada = (deduccion, anio, mes) => cuotaEnMes(deduccion, anio, mes, aplicacionesDeduccion);
   const getSaldoPendienteEnMes = (deduccion, anio, mes) => saldoPendienteEnMes(deduccion, anio, mes, aplicacionesDeduccion);
@@ -11008,6 +11010,24 @@ const App = () => {
           // Gestión de Conceptos: filtrado por la Empresa de arriba salvo que se active "Todas".
           const conceptosGestionFiltrados = (gestionConceptosTodasEmpresas ? presupuestoItems : presupuestoItems.filter(p => p.empresa === filtroPresupuesto.empresa))
             .slice().sort((a, b) => (a.empresa || '').localeCompare(b.empresa || '') || (a.nombre || '').localeCompare(b.nombre || ''));
+          // Orden por columna (clic en el encabezado: natural → invertido → sin orden). Textos A-Z
+          // primero; números y fechas de mayor a menor primero.
+          const nombreCeco = (codigo) => cecos.find(c => c.codigo === codigo)?.nombre || codigo || '';
+          const cabecera = (tabla, campo, texto, { natural = 'asc', className, alinear } = {}) => (
+            <CabeceraOrdenUI orden={ordenPresupuesto[tabla] || null} campo={campo} className={className} alinear={alinear}
+              onOrdenar={(c) => setOrdenPresupuesto(o => ({ ...o, [tabla]: alternarOrden((o || {})[tabla], c, natural) }))}>{texto}</CabeceraOrdenUI>
+          );
+          const ordenarTablaPresupuesto = (tabla, lista, valorDe) => ordenarPor(lista, ordenPresupuesto[tabla] || null, valorDe);
+          const estadoAprobacion = (item) => (item.pagado ? 4 : item.aprobado ? 3 : item.aprobacionDesactualizada ? 2 : !item.requisitoCuentaCobro?.ok ? 0 : 1);
+          const mensualOrdenado = ordenarTablaPresupuesto('mensual', presupuestoMensualFiltrado, (it, c) => ({
+            nombre: it.nombre, ceco: nombreCeco(it.ceco), colaborador: it.responsableNombre || '', valor: Number(it.valorEsperado ?? it.valorMensual) || 0,
+            deducciones: Number(it.totalDeducciones) || 0, neto: Number(it.netoAPagar) || 0, dia: Number(it.diaLimitePago) || 0,
+            estado: it.pagado ? 1 : 0, aprobacion: estadoAprobacion(it),
+          })[c]);
+          const conceptosOrdenados = ordenarTablaPresupuesto('conceptos', conceptosGestionFiltrados, (it, c) => ({
+            empresa: it.empresa || '', ceco: nombreCeco(it.ceco), nombre: it.nombre || '', colaborador: personasFinanzas.find(u => u.id === it.responsableId)?.nombre || '',
+            valor: Number(it.valorMensual) || 0, dia: Number(it.diaLimitePago) || 0, activo: it.activo === false ? 0 : 1,
+          })[c]);
           const pestanas = [
             { id: 'mensual', label: '📆 Mensual: Pagado/Pendiente' },
             { id: 'anual', label: '📊 Ejecución Anual por CECO' },
@@ -11128,19 +11148,19 @@ const App = () => {
                         <TableHeader>
                           <TableRow className="hover:bg-transparent">
                             {puedeEditarPresupuesto && <TableHead className="text-center"></TableHead>}
-                            <TableHead>Concepto</TableHead>
-                            <TableHead>CECO</TableHead>
-                            <TableHead>Colaborador</TableHead>
-                            <TableHead className="text-right">Valor del Mes</TableHead>
-                            <TableHead className="text-right">Deducciones</TableHead>
-                            <TableHead className="text-right">Neto a Pagar</TableHead>
-                            <TableHead className="text-center">Día Límite</TableHead>
-                            <TableHead className="text-center">Estado</TableHead>
-                            <TableHead className="text-center">Aprobación</TableHead>
+                            {cabecera('mensual', 'nombre', 'Concepto')}
+                            {cabecera('mensual', 'ceco', 'CECO')}
+                            {cabecera('mensual', 'colaborador', 'Colaborador')}
+                            {cabecera('mensual', 'valor', 'Valor del Mes', { natural: 'desc', className: 'text-right', alinear: 'end' })}
+                            {cabecera('mensual', 'deducciones', 'Deducciones', { natural: 'desc', className: 'text-right', alinear: 'end' })}
+                            {cabecera('mensual', 'neto', 'Neto a Pagar', { natural: 'desc', className: 'text-right', alinear: 'end' })}
+                            {cabecera('mensual', 'dia', 'Día Límite', { className: 'text-center', alinear: 'center' })}
+                            {cabecera('mensual', 'estado', 'Estado', { className: 'text-center', alinear: 'center' })}
+                            {cabecera('mensual', 'aprobacion', 'Aprobación', { className: 'text-center', alinear: 'center' })}
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {presupuestoMensualFiltrado.map(item => (
+                            {mensualOrdenado.map(item => (
                               <TableRow key={item.id}>
                                 {puedeEditarPresupuesto && (
                                   <TableCell className="text-center">
@@ -11393,15 +11413,15 @@ const App = () => {
                     <Table>
                       <TableHeader>
                         <TableRow className="hover:bg-transparent">
-                          <TableHead>CECO</TableHead>
-                          <TableHead className="text-right">Presupuesto Anual</TableHead>
-                          <TableHead className="text-right">Ejecutado</TableHead>
-                          <TableHead className="text-right">Falta por Cubrir</TableHead>
-                          <TableHead className="w-[220px]">% Ejecutado</TableHead>
+                          {cabecera('anual', 'nombre', 'CECO')}
+                          {cabecera('anual', 'valorAnual', 'Presupuesto Anual', { natural: 'desc', className: 'text-right', alinear: 'end' })}
+                          {cabecera('anual', 'ejecutado', 'Ejecutado', { natural: 'desc', className: 'text-right', alinear: 'end' })}
+                          {cabecera('anual', 'restante', 'Falta por Cubrir', { natural: 'desc', className: 'text-right', alinear: 'end' })}
+                          {cabecera('anual', 'porcentaje', '% Ejecutado', { natural: 'desc', className: 'w-[220px]' })}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                          {presupuestoAnualDetalle.map(c => {
+                          {ordenarTablaPresupuesto('anual', presupuestoAnualDetalle, (c, campo) => (campo === 'nombre' ? c.nombre : Number(c[campo] ?? -1))).map(c => {
                             const pct = c.porcentaje === null ? 0 : Math.min(c.porcentaje, 100);
                             const colorBarra = c.porcentaje === null ? '#AFA897' : c.porcentaje >= 100 ? '#CC4B4B' : c.porcentaje >= 80 ? '#D6A419' : '#2F9E52';
                             return (
@@ -11511,20 +11531,20 @@ const App = () => {
                     <Table>
                       <TableHeader>
                         <TableRow className="hover:bg-transparent">
-                          <TableHead>Empresa</TableHead>
-                          <TableHead>CECO</TableHead>
-                          <TableHead>Concepto</TableHead>
-                          <TableHead>Colaborador</TableHead>
-                          <TableHead className="text-right">Valor Mensual</TableHead>
-                          <TableHead className="text-center">Día Límite</TableHead>
-                          <TableHead className="text-center">Activo</TableHead>
+                          {cabecera('conceptos', 'empresa', 'Empresa')}
+                          {cabecera('conceptos', 'ceco', 'CECO')}
+                          {cabecera('conceptos', 'nombre', 'Concepto')}
+                          {cabecera('conceptos', 'colaborador', 'Colaborador')}
+                          {cabecera('conceptos', 'valor', 'Valor Mensual', { natural: 'desc', className: 'text-right', alinear: 'end' })}
+                          {cabecera('conceptos', 'dia', 'Día Límite', { className: 'text-center', alinear: 'center' })}
+                          {cabecera('conceptos', 'activo', 'Activo', { natural: 'desc', className: 'text-center', alinear: 'center' })}
                           {puedeEditarPresupuesto && <TableHead className="text-center">Acción</TableHead>}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                           {conceptosGestionFiltrados.length === 0 ? (
                             <TableRow className="hover:bg-transparent"><TableCell colSpan={puedeEditarPresupuesto ? 8 : 7} className="py-8 text-center text-muted-foreground">{gestionConceptosTodasEmpresas ? 'Sin conceptos cargados todavía.' : `Sin conceptos cargados todavía para ${filtroPresupuesto.empresa}.`}</TableCell></TableRow>
-                          ) : conceptosGestionFiltrados.map(item => (
+                          ) : conceptosOrdenados.map(item => (
                             <TableRow key={item.id} className={cn(item.activo === false && 'opacity-50')}>
                               <TableCell className="text-xs text-muted-foreground"><div className="flex items-center gap-2"><EmpresaLogo empresa={item.empresa} height={16} />{item.empresa}</div></TableCell>
                               <TableCell className="text-xs text-muted-foreground">{cecos.find(c => c.codigo === item.ceco)?.nombre || item.ceco}</TableCell>
@@ -11593,17 +11613,17 @@ const App = () => {
                     <Table>
                       <TableHeader>
                         <TableRow className="hover:bg-transparent">
-                          <TableHead>Empresa</TableHead>
-                          <TableHead>CECO</TableHead>
-                          <TableHead className="text-center">Año</TableHead>
-                          <TableHead className="text-right">Valor Anual</TableHead>
+                          {cabecera('techos', 'empresa', 'Empresa')}
+                          {cabecera('techos', 'ceco', 'CECO')}
+                          {cabecera('techos', 'anio', 'Año', { natural: 'desc', className: 'text-center', alinear: 'center' })}
+                          {cabecera('techos', 'valor', 'Valor Anual', { natural: 'desc', className: 'text-right', alinear: 'end' })}
                           {puedeEditarPresupuesto && <TableHead className="text-center">Acción</TableHead>}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                           {presupuestoAnual.length === 0 ? (
                             <TableRow className="hover:bg-transparent"><TableCell colSpan={puedeEditarPresupuesto ? 5 : 4} className="py-8 text-center text-muted-foreground">Sin techos anuales cargados todavía.</TableCell></TableRow>
-                          ) : presupuestoAnual.map(p => (
+                          ) : ordenarTablaPresupuesto('techos', presupuestoAnual, (p, c) => ({ empresa: p.empresa || '', ceco: nombreCeco(p.ceco), anio: Number(p.anio) || 0, valor: Number(p.valorAnual) || 0 })[c]).map(p => (
                             <TableRow key={p.id}>
                               <TableCell className="text-xs text-muted-foreground"><div className="flex items-center gap-2"><EmpresaLogo empresa={p.empresa} height={16} />{p.empresa}</div></TableCell>
                               <TableCell className="text-xs text-muted-foreground">{cecos.find(c => c.codigo === p.ceco)?.nombre || p.ceco}</TableCell>
