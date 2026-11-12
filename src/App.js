@@ -6178,6 +6178,8 @@ const App = () => {
       empresa: filtroFinanzasEmpresa !== 'Todas' ? filtroFinanzasEmpresa : (user.empresa || empresas[0] || ''),
       cuenta: '',
       ceco: '',
+      // Fecha real del pago (se suele registrar días después): es la que queda en Finanzas.
+      fecha: fechaHoyLocal(),
       lineas: [nuevaLineaFacturaTercero()],
       comprobantesPago: []
     });
@@ -6269,6 +6271,8 @@ const App = () => {
   const handleGuardarEdicionLoteTercero = async () => {
     const lt = registrarFacturasTercero;
     const { terceroId, terceroNombre, empresa, cuenta, ceco, lineas, comprobantesPago, fecha } = lt;
+    if (!fecha) { alert('Indica la Fecha del pago (la que queda en Finanzas)'); return; }
+    if (fecha > fechaHoyLocal()) { alert('La Fecha del pago no puede ser futura'); return; }
     if (!cuenta) { alert('Elige la Cuenta con la que se pagó'); return; }
     if (!terceroNombre.trim()) { alert('Escribe o elige el Tercero'); return; }
     if (!ceco) { alert('Elige el CECO para estas facturas'); return; }
@@ -6313,7 +6317,7 @@ const App = () => {
       for (const linea of lineas) {
         try {
           if (linea.gastoId) {
-            const { data, error } = await supabase.from('gastos').update(camposLinea(linea)).eq('id', linea.gastoId).select('id');
+            const { data, error } = await supabase.from('gastos').update({ ...camposLinea(linea), fecha }).eq('id', linea.gastoId).select('id');
             if (error) throw error;
             if (!data || data.length === 0) throw new Error('sin permiso para editar este gasto');
             if (linea.factura) await subirSoporteEntidad(linea.factura, 'gasto', linea.gastoId);
@@ -6367,8 +6371,10 @@ const App = () => {
   const handleGuardarFacturasTercero = async () => {
     if (!registrarFacturasTercero) return;
     if (registrarFacturasTercero.modo === 'editar') { await handleGuardarEdicionLoteTercero(); return; }
-    const { terceroId, terceroNombre, empresa, cuenta, ceco, lineas, comprobantesPago } = registrarFacturasTercero;
+    const { terceroId, terceroNombre, empresa, cuenta, ceco, lineas, comprobantesPago, fecha: fechaPago } = registrarFacturasTercero;
     if (!empresa) { alert('Elige la Empresa'); return; }
+    if (!fechaPago) { alert('Indica la Fecha del pago (la que queda en Finanzas)'); return; }
+    if (fechaPago > fechaHoyLocal()) { alert('La Fecha del pago no puede ser futura'); return; }
     if (!cuenta) { alert('Elige la Cuenta con la que se pagó'); return; }
     if (!terceroNombre.trim()) { alert('Escribe o elige el Tercero que envía las facturas (ej. Caelum)'); return; }
     if (!ceco) { alert('Elige el CECO para estas facturas'); return; }
@@ -6391,7 +6397,7 @@ const App = () => {
     if (!confirmarMontos(lineas.flatMap(l => [{ etiqueta: `Valor ${l.responsable}`, texto: l.valor }, { etiqueta: `Retención ${l.responsable}`, texto: l.retencion }]))) return;
     setGuardandoFacturasTercero(true);
     try {
-      const fecha = new Date().toISOString().split('T')[0];
+      const fecha = fechaPago;
       const [empresaId, cecoId] = await Promise.all([resolverEmpresaId(empresa), resolverCecoId(ceco)]);
       const loteId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
       const idsCreados = [];
@@ -12093,6 +12099,10 @@ const App = () => {
                     <Select id="lt-empresa" value={lt.empresa} disabled={editando} onChange={(e) => setRegistrarFacturasTercero({ ...lt, empresa: e.target.value, cuenta: '' })}>
                       {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
                     </Select>
+                  </CampoUI>
+                  <CampoUI label="Fecha del pago *" htmlFor="lt-fecha">
+                    <Input id="lt-fecha" type="date" max={fechaHoyLocal()} value={lt.fecha || ''} onChange={(e) => setRegistrarFacturasTercero({ ...lt, fecha: e.target.value })} />
+                    <p className="m-0 text-xs text-muted-foreground">Queda en Finanzas para cada colaborador.</p>
                   </CampoUI>
                   <CampoUI label="Cuenta *" htmlFor="lt-cuenta">
                     <Select id="lt-cuenta" value={lt.cuenta} onChange={(e) => setRegistrarFacturasTercero({ ...lt, cuenta: e.target.value })}>
