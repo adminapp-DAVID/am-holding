@@ -1332,6 +1332,23 @@ const App = () => {
     }
   };
 
+  // Iniciar sesión con Google (cuenta corporativa @nossfootball.com u otra ya registrada). Supabase
+  // une la cuenta de Google con el usuario que ya tiene ese mismo correo, así entra a su perfil.
+  const handleLoginGoogle = async () => {
+    setLoginError('');
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin, queryParams: { prompt: 'select_account' } },
+    });
+    if (error) setLoginError('No se pudo iniciar sesión con Google: ' + error.message);
+  };
+
+  // Una sesión válida pero sin perfil en usuarios (ej. Google con un correo que no está registrado).
+  const cerrarSesionSinPerfil = async (correo) => {
+    await supabase.auth.signOut();
+    setLoginError(`El correo ${correo || ''} no tiene acceso a AM Holding. Entra con el correo registrado o pide acceso al administrador.`);
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setUser(null);
@@ -1419,6 +1436,7 @@ const App = () => {
       }
       if (session?.user) {
         const perfil = await cargarPerfilUsuario(session.user);
+        if (!perfil) await cerrarSesionSinPerfil(session.user.email);
         if (activo) {
           setUser(perfil);
           setAuthChecking(false);
@@ -1438,6 +1456,7 @@ const App = () => {
       if (esRecuperacion) return; // ya se maneja arriba
       if (session?.user) {
         const perfil = await cargarPerfilUsuario(session.user);
+        if (!perfil) await cerrarSesionSinPerfil(session.user.email);
         setUser(perfil);
       } else {
         setUser(null);
@@ -4226,6 +4245,17 @@ const App = () => {
       if (user?.rol !== 'Administrador') { alert('Solo el Administrador puede cambiar el rol'); return; }
       if (editingResponsableId === user.id) { alert('No puedes cambiar tu propio rol'); return; }
       if (!window.confirm(`¿Cambiar el rol de ${newResponsable.nombre} de "${nombreRol(rolOriginalEdicion, rolesDB)}" a "${nombreRol(newUserType, rolesDB)}"?\n\nLos permisos nuevos aplican la próxima vez que inicie sesión.`)) return;
+    }
+
+    // Cambio de correo de acceso (solo Administrador): Authentication + usuarios en la base.
+    const correoNuevo = String(newResponsable.email || '').trim().toLowerCase();
+    const correoAnterior = String(usuariosDB.find(u => u.id === editingResponsableId)?.email || '').trim().toLowerCase();
+    if (correoNuevo !== correoAnterior) {
+      if (user?.rol !== 'Administrador') { alert('Solo el Administrador cambia el correo de acceso'); return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correoNuevo)) { alert('El correo no es válido'); return; }
+      if (!window.confirm(`¿Cambiar el correo de acceso de ${newResponsable.nombre}?\n\n${correoAnterior || '(sin correo)'} → ${correoNuevo}\n\nDesde ya entra con el correo nuevo (misma contraseña, o con Google).`)) return;
+      const { error: errorCorreo } = await supabase.rpc('cambiar_correo_usuario', { p_usuario: String(editingResponsableId), p_correo: correoNuevo });
+      if (errorCorreo) { alert('❌ No se pudo cambiar el correo: ' + errorCorreo.message); return; }
     }
 
     const existeEmail = usuariosDB.some(u => u.email === newResponsable.email && u.id !== editingResponsableId);
@@ -8292,6 +8322,14 @@ const App = () => {
           )}
           <button onClick={handleLogin} disabled={loggingIn} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#C4A747', color: '#221E15', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: loggingIn ? 'default' : 'pointer', opacity: loggingIn ? 0.7 : 1 }}>{loggingIn ? 'Entrando...' : 'Entrar'}</button>
 
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', margin: '1rem 0', color: '#AFA897', fontSize: '0.8rem' }}>
+            <span style={{ flex: 1, height: '1px', backgroundColor: '#E6E0D2' }} />o<span style={{ flex: 1, height: '1px', backgroundColor: '#E6E0D2' }} />
+          </div>
+          <button onClick={handleLoginGoogle} style={{ width: '100%', padding: '0.75rem', backgroundColor: '#FFFFFF', color: '#221E15', border: '1px solid #E6E0D2', borderRadius: '4px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+            <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.2-.1-2.3-.4-3.5z"/></svg>
+            Continuar con Google
+          </button>
+
           <button onClick={() => { setMostrarOlvidoPassword(!mostrarOlvidoPassword); setRecuperacionEnviada(false); }} style={{ background: 'none', border: 'none', color: '#6B6458', fontSize: '0.8rem', cursor: 'pointer', marginTop: '1.25rem', textDecoration: 'underline', display: 'block', width: '100%', textAlign: 'center' }}>
             ¿Olvidaste tu contraseña?
           </button>
@@ -9803,8 +9841,8 @@ const App = () => {
                       <Input id="co-nombre" type="text" placeholder="Nombre Completo" value={newResponsable.nombre} onChange={(e) => setNewResponsable({...newResponsable, nombre: e.target.value})} />
                     </CampoUI>
                     <CampoUI label="Email" htmlFor="co-email">
-                      <Input id="co-email" type="email" placeholder="Email" value={newResponsable.email} disabled />
-                      <p className="m-0 text-xs text-muted-foreground">Es el email de acceso — se cambia desde Authentication en Supabase, aquí es solo informativo.</p>
+                      <Input id="co-email" type="email" placeholder="Email" value={newResponsable.email} disabled={user.rol !== 'Administrador'} onChange={(e) => setNewResponsable({ ...newResponsable, email: e.target.value })} />
+                      <p className="m-0 text-xs text-muted-foreground">{user.rol === 'Administrador' ? 'Es el correo de acceso: si lo cambias, la persona entra con el nuevo (su contraseña no cambia).' : 'Es el correo de acceso — solo el Administrador lo cambia.'}</p>
                     </CampoUI>
                     {(newUserType === 'Colaborador' || newUserType === 'Gerente') && (
                       <CampoUI label="Empresa" htmlFor="co-empresa">
