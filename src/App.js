@@ -1249,7 +1249,7 @@ const App = () => {
   // Trae el perfil de public.usuarios (rol, empresa, datos de Talento Humano)
   // para el usuario de Authentication ya logueado, y arma el objeto `user`
   // que el resto de la app espera.
-  const cargarPerfilUsuario = async (authUser) => {
+  const cargarPerfilUsuario = async (authUser, reintento = false) => {
     // Roles configurables (public.roles): nombre visible, rol base y matriz de permisos.
     const roles = await cargarRoles();
     const { data: perfil, error } = await supabase
@@ -1259,6 +1259,9 @@ const App = () => {
       .single();
 
     if (error || !perfil) {
+      // ¿Hay un perfil con su correo que aún no tiene cuenta de acceso? Se liga y se vuelve a leer.
+      const { data: vinculado } = await supabase.rpc('vincular_mi_usuario');
+      if (vinculado && !reintento) return cargarPerfilUsuario(authUser, true);
       console.warn('No se encontró perfil en usuarios para', authUser.email, error);
       return null;
     }

@@ -48,3 +48,25 @@ select u.nombre, u.email as correo_app, a.email as correo_acceso
 from public.usuarios u left join auth.users a on a.id = u.auth_user_id
 where a.email is distinct from u.email
 order by u.nombre;
+
+-- =====================================================================================
+-- Vincular al entrar: si alguien inicia sesión (ej. con Google) con un correo que ya está en un
+-- perfil SIN cuenta de acceso, se liga ese perfil a su cuenta. Solo su propio correo (auth.email()),
+-- solo perfiles sin cuenta y solo si el correo de acceso está verificado.
+-- =====================================================================================
+create or replace function public.vincular_mi_usuario() returns boolean
+language plpgsql security definer set search_path = public, auth as $$
+declare v_correo text; v_ok boolean;
+begin
+  select lower(email), email_confirmed_at is not null into v_correo, v_ok from auth.users where id = auth.uid();
+  if v_correo is null or not v_ok then return false; end if;
+  if exists (select 1 from public.usuarios where auth_user_id = auth.uid()) then return true; end if;
+  update public.usuarios set auth_user_id = auth.uid()
+   where lower(email) = v_correo and auth_user_id is null;
+  return found;
+end;
+$$;
+revoke all on function public.vincular_mi_usuario() from public, anon;
+grant execute on function public.vincular_mi_usuario() to authenticated;
+
+notify pgrst, 'reload schema';
