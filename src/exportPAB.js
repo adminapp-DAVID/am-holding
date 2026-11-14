@@ -207,7 +207,8 @@ export const construirCandidatosPAB = ({
   solicitudes
     // Las solicitudes "General" (sin empresa) entran al lote de cualquier empresa: al generarlo
     // quedan asignadas a la empresa del lote.
-    .filter(s => (s.empresa === empresa || !s.empresa) && s.estado === 'Aprobado' && TIPOS_SOLICITUD_PAB[s.tipo])
+    // Operación Financiera Noss: solo entra al lote de AM SPORTS GROUP SAS (la empresa de Noss).
+    .filter(s => (s.empresa === empresa || !s.empresa) && (!s.ofn || empresa === 'AM SPORTS GROUP SAS') && s.estado === 'Aprobado' && TIPOS_SOLICITUD_PAB[s.tipo])
     .forEach(s => {
       const esTercero = s.tipo === 'Pago a Tercero';
       const bloqueos = [];

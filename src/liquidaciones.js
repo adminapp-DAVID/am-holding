@@ -49,7 +49,9 @@ export function solicitudesLiquidables({ solicitudes, responsableId, empresa, mo
     if (!c) continue;
     const clave = claveSolicitud(s.id);
     let motivo = '';
-    if (s.empresa && s.empresa !== empresa) motivo = `es de ${s.empresa}`;
+    if (s.ofn && empresa !== 'AM SPORTS GROUP SAS') motivo = 'es Operación Financiera Noss (la paga AM SPORTS GROUP SAS)';
+    else if (s.ofn && s.ofnAprobacion !== 'Aprobada') motivo = 'falta la aprobación de Gerencia Noss';
+    else if (s.empresa && s.empresa !== empresa) motivo = `es de ${s.empresa}`;
     else if (s.moneda && monedaEmpresa && s.moneda !== monedaEmpresa) motivo = `está en ${s.moneda}`;
     else if (clavesOcupadas[clave]) motivo = clavesOcupadas[clave];
     if (motivo) excluidas.push({ solicitud: s, motivo });
