@@ -50,6 +50,8 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { CODIGO_BANCO_EXTERIOR, inferirCodigoBanco, limpiarNumeroCuenta, limpiarDocumento } from './datosBancarios';
 import { parsearMonto, montoONumero0, confirmarMontos } from './montos';
 import { traerTodas, traerPorIds } from './paginar';
+import OperacionFinancieraNoss from './OperacionFinancieraNoss';
+import { EMPRESA_OFN, validarOfn, ofnParaGuardar, estadoAprobacionNoss, bloqueadaPorNoss, resumenOfn } from './ofn';
 import { cuotaEnMes, saldoPendienteEnMes, aplicacionDBToLocal, resumenDeduccion, ordenarPor, alternarOrden, validarAplicacionManual } from './deducciones';
 import DeduccionHistorial from './DeduccionHistorial';
 import CabeceraOrdenUI from './components/CabeceraOrden';
@@ -605,6 +607,9 @@ const App = () => {
   const [editingResponsableOrigen, setEditingResponsableOrigen] = useState('responsables'); // 'responsables' | 'admin' — de qué lista viene el registro que se está editando
   // Políticas Financieras (fila única de public.politicas_financieras); null mientras carga.
   const [politicaFinanciera, setPoliticaFinanciera] = useState(null);
+  // Listas de la app Noss (procesos misionales, jugadores, clubes) para la Operación Financiera Noss.
+  const [nossCatalogo, setNossCatalogo] = useState([]);
+  const [actualizandoNoss, setActualizandoNoss] = useState(false);
   const [newSolicitud, setNewSolicitud] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', valor: '', valorAnticipoOriginal: '', anticipoIds: [], detalle: '', empresa: '', documentos: [], moneda: 'COP', tipoAnticipo: 'General', fechaRequerida: '', terceroId: '', terceroNombre: '', terceroDni: '', terceroTipoDocumento: '', terceroPaisOrigen: '', terceroBanco: '', terceroCodigoBanco: '', terceroTipoCuenta: '', terceroNumeroCuenta: '', guardarTercero: true, actualizarTercero: false });
   // Edición de una Solicitud ya guardada — solo se permite mientras está en estado Pendiente
   // (quien la creó, o Administrador/Coordinadora Administrativa). Reutiliza el mismo formulario
@@ -1290,6 +1295,25 @@ const App = () => {
     };
   };
 
+  const cargarNossCatalogo = async () => {
+    const { data, error } = await traerTodas(() => supabase.from('noss_catalogo').select('tipo, id, nombre, detalle, orden').eq('activo', true).order('tipo').order('id'));
+    if (error) { console.warn('Listas de Noss no disponibles:', error.message); return []; }
+    setNossCatalogo(data || []);
+    return data || [];
+  };
+  const actualizarCatalogoNoss = async () => {
+    setActualizandoNoss(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('integracion-noss', { body: { accion: 'actualizar_catalogo' } });
+      if (error || data?.error) throw new Error(data?.error || error.message);
+      await cargarNossCatalogo();
+    } catch (e) {
+      alert('❌ No se pudieron traer las listas de Noss: ' + (e.message || e));
+    } finally {
+      setActualizandoNoss(false);
+    }
+  };
+
   const cargarRoles = async () => {
     const { data, error } = await supabase.from('roles').select('codigo, nombre, rol_base, descripcion, orden, activo, presenta_solicitudes, permisos').order('orden');
     if (error) {
@@ -1584,6 +1608,12 @@ const App = () => {
     // Explicación de Administrador/Coordinadora Administrativa cuando el estado es "Devuelto" —
     // se limpia al editar y reenviar (vuelve a "Pendiente").
     motivoDevolucion: row.motivo_devolucion || '',
+    // Operación Financiera Noss (gasto de AM Sports) y la aprobación previa de Gerencia Noss.
+    ofn: row.ofn || null,
+    ofnAprobacion: row.ofn_aprobacion || '',
+    ofnAprobadoPor: row.ofn_aprobado_por || '',
+    ofnAprobadoAt: row.ofn_aprobado_at || null,
+    ofnComentario: row.ofn_comentario || '',
     // Conteo real de public.soportes para esta solicitud — se completa abajo en
     // cargarSolicitudes(). Necesario porque "documentos" (arriba) solo se llena para
     // Legalización/Reembolso (el desglose de recibos de la Bandeja de Soportes); Pago a
@@ -1601,7 +1631,7 @@ const App = () => {
       // aprobado_por_id (Sección 19), hay 3 FKs de solicitudes hacia usuarios. Sin indicar
       // por cuál columna se hace el embed, PostgREST no sabe cuál usar y el select entero
       // falla con "more than one relationship was found" (deja el historial vacío).
-      .select('id, created_at, fecha, tipo, valor, total_calculado, tipo_anticipo, fecha_requerida, requiere_confirmacion_gerencia, fecha_pago_estimada, extemporanea, devuelta_limite, devuelta_vencida, legalizar_antes, excepcion_politica, excepcion_motivo, excepcion_por, excepcion_at, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, lote_pago_id, motivo_devolucion, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
+      .select('id, created_at, fecha, tipo, valor, total_calculado, tipo_anticipo, fecha_requerida, requiere_confirmacion_gerencia, fecha_pago_estimada, extemporanea, devuelta_limite, devuelta_vencida, legalizar_antes, excepcion_politica, excepcion_motivo, excepcion_por, excepcion_at, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, lote_pago_id, motivo_devolucion, empresa_id, responsable_id, ofn, ofn_aprobacion, ofn_aprobado_por, ofn_aprobado_at, ofn_comentario, empresas ( nombre ), usuarios!responsable_id ( nombre )')
       .order('created_at', { ascending: false })
       .order('id'));
 
@@ -2704,6 +2734,7 @@ const App = () => {
       detalle: s.detalle || '',
       empresa: s.empresa || '',
       documentos: s.tipo === 'Anticipo' ? itemsAnticipo(s) : (s.documentos || []),
+      ofn: s.ofn ? { ...s.ofn, jugadores: s.ofn.jugadores || [], clubes: s.ofn.clubes || [] } : null,
       moneda: monedaDeSolicitud(s),
       tipoAnticipo: s.tipoAnticipo || 'General',
       fechaRequerida: s.fechaRequerida || '',
@@ -2796,6 +2827,8 @@ const App = () => {
       alert('Escribe el Concepto de la solicitud (es obligatorio y es el detalle con el que queda en Finanzas)');
       return;
     }
+    const errorOfn = validarOfn(newSolicitud.ofn);
+    if (errorOfn) { alert(errorOfn); return; }
 
     // Anticipo: formulario propio por conceptos (concepto + valor + cotización opcional); el valor es la suma.
     if (newSolicitud.tipo === 'Anticipo') {
@@ -2994,7 +3027,8 @@ const App = () => {
         tercero_info: terceroInfoFinal,
         tercero_id: terceroIdFinal,
         estado: estadoAlGuardar,
-        motivo_devolucion: null
+        motivo_devolucion: null,
+        ofn: ofnParaGuardar(newSolicitud.ofn || null, nossCatalogo.filter(c => c.tipo === 'proceso'))
       };
 
       let solicitudId;
@@ -3174,8 +3208,11 @@ const App = () => {
       }
 
       const eraEdicion = !!editingSolicitudId;
+      const conOfn = !!newSolicitud.ofn;
+      // Operación Financiera Noss: avisa a Gerencia Noss (si falla, igual aparece en su bandeja).
+      if (conOfn && solicitudId) supabase.functions.invoke('integracion-noss', { body: { accion: 'avisar_solicitud', solicitud_id: solicitudId } }).catch(() => {});
       handleCancelarEdicionSolicitud();
-      alert(eraEdicion ? '✅ Solicitud actualizada' : '✅ Solicitud creada');
+      alert((eraEdicion ? '✅ Solicitud actualizada' : '✅ Solicitud creada') + (conOfn ? '\n\n🎯 Operación Financiera Noss: queda esperando la aprobación de Gerencia Noss antes de que Coordinación la revise.' : ''));
     } finally {
       setGuardandoSolicitud(false);
     }
@@ -3186,6 +3223,11 @@ const App = () => {
   // "Aprobado" queda como revisor, y quien la mueve a "Pagado"/"Legalizado" (el paso final)
   // queda como quien aprobó — sin ningún campo ni paso nuevo que alguien tenga que diligenciar.
   const handleChangeEstado = async (id, nuevoEstado, opciones = {}) => {
+    const solicitudObjetivo = solicitudes.find(x => x.id === id);
+    if (['Aprobado', 'Pagado', 'Legalizado'].includes(nuevoEstado) && bloqueadaPorNoss(solicitudObjetivo)) {
+      alert('⏳ Esta solicitud es una Operación Financiera Noss: primero debe aprobarla Gerencia Noss (desde la app Noss).');
+      return false;
+    }
     const anteriores = solicitudes;
     const ahora = new Date().toISOString();
     const patch = { estado: nuevoEstado, updated_at: ahora };
@@ -3411,6 +3453,7 @@ const App = () => {
         estado: 'Pagado',
         observaciones: observacionesPorTipo[solicitud.tipo] || 'Generado automáticamente desde Solicitudes.',
         solicitud_origen_id: solicitud.id,
+        ...(tabla === 'gastos' && solicitud.ofn ? { ofn: solicitud.ofn } : {}),
         lote_pago_id: loteId || null
       };
       if (solicitud.tipo === 'Pago a Tercero') {
@@ -3533,7 +3576,7 @@ const App = () => {
 
   // Empresa con la que se abre el modal de pago: la que ya tenga la solicitud (las viejas) o,
   // en una Legalización, la del anticipo que legaliza. Las "General" quedan por elegir.
-  const empresaSugeridaPago = (s) => s.empresa
+  const empresaSugeridaPago = (s) => (s.ofn ? EMPRESA_OFN : '') || s.empresa
     || (s.tipo === 'Legalización' ? solicitudes.find(a => (s.anticipoIds || []).includes(a.id) && a.empresa)?.empresa : '')
     || '';
 
@@ -3611,7 +3654,7 @@ const App = () => {
   const handleAbrirPagoLoteReembolsos = () => {
     const items = solicitudesUsuario.filter(s => seleccionReembolsosPago.includes(s.id));
     if (items.length === 0) return;
-    setConfirmarPagoLoteReembolsos({ items, empresa: items.find(it => it.empresa)?.empresa || '', cuenta: '', ceco: '', comprobantes: [], fechaPago: fechaHoyLocal() });
+    setConfirmarPagoLoteReembolsos({ items, empresa: (items.some(it => it.ofn) ? EMPRESA_OFN : '') || items.find(it => it.empresa)?.empresa || '', cuenta: '', ceco: '', comprobantes: [], fechaPago: fechaHoyLocal() });
   };
 
   const handleSeleccionarComprobantePagoLoteReembolsos = (e) => {
@@ -5469,7 +5512,7 @@ const App = () => {
   const handleVerSolicitudOrigen = async (solicitudId) => {
     const { data, error } = await supabase
       .from('solicitudes')
-      .select('id, created_at, fecha, tipo, valor, total_calculado, tipo_anticipo, fecha_requerida, requiere_confirmacion_gerencia, fecha_pago_estimada, extemporanea, devuelta_limite, devuelta_vencida, legalizar_antes, excepcion_politica, excepcion_motivo, excepcion_por, excepcion_at, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, lote_pago_id, motivo_devolucion, empresa_id, responsable_id, empresas ( nombre ), usuarios!responsable_id ( nombre )')
+      .select('id, created_at, fecha, tipo, valor, total_calculado, tipo_anticipo, fecha_requerida, requiere_confirmacion_gerencia, fecha_pago_estimada, extemporanea, devuelta_limite, devuelta_vencida, legalizar_antes, excepcion_politica, excepcion_motivo, excepcion_por, excepcion_at, valor_anticipo_original, anticipo_id, anticipo_ids, revisado_por_id, revisado_at, aprobado_por_id, aprobado_at, detalle, estado, documentos, moneda_pago, tercero_info, tercero_id, gasto_generado_id, ingreso_generado_id, lote_pago_id, motivo_devolucion, empresa_id, responsable_id, ofn, ofn_aprobacion, ofn_aprobado_por, ofn_aprobado_at, ofn_comentario, empresas ( nombre ), usuarios!responsable_id ( nombre )')
       .eq('id', solicitudId)
       .maybeSingle();
     if (error) { console.error('Error cargando la solicitud de origen:', error); alert('❌ No se pudo abrir la solicitud: ' + error.message); return; }
@@ -9152,6 +9195,19 @@ const App = () => {
                   <Input id="sol-concepto" type="text" placeholder="Concepto * (obligatorio)" required value={newSolicitud.detalle} onChange={(e) => setNewSolicitud({...newSolicitud, detalle: e.target.value})} aria-invalid={newSolicitud.tipo && !newSolicitud.detalle.trim() ? true : undefined} />
                 </CampoUI>
 
+                {newSolicitud.tipo && (
+                  <OperacionFinancieraNoss
+                    valor={newSolicitud.ofn || null}
+                    onCambiar={(ofn) => {
+                      setNewSolicitud({ ...newSolicitud, ofn });
+                      if (ofn && !nossCatalogo.length) cargarNossCatalogo().then(l => { if (!l.length) actualizarCatalogoNoss(); });
+                    }}
+                    catalogo={nossCatalogo}
+                    onActualizarCatalogo={actualizarCatalogoNoss}
+                    actualizando={actualizandoNoss}
+                  />
+                )}
+
                 {newSolicitud.tipo === 'Pago a Tercero' && (
                   <>
                     <div className="flex flex-col gap-3 rounded-lg border border-solid border-border bg-background p-4">
@@ -9553,6 +9609,7 @@ const App = () => {
                         })()}</TableCell>
                         <TableCell className="min-w-[200px] max-w-[280px] text-muted-foreground">
                           <TextoResumido texto={s.detalle} />
+                          {s.ofn && <div className="mt-1 text-[0.7rem] text-[#8A6A0C]" title="Operación Financiera Noss">🎯 {resumenOfn(s.ofn)}</div>}
                           {s.tipo === 'Pago a Tercero' && s.terceroInfo?.nombre && (
                             <div className="text-[0.7rem] text-muted-foreground">👤 {s.terceroInfo.nombre}{s.terceroInfo.dni ? ` · ${s.terceroInfo.dni}` : ''}</div>
                           )}
@@ -9583,6 +9640,10 @@ const App = () => {
                           {canApprove ? (
                             <select aria-label="Cambiar estado" value={s.estado} onChange={(e) => {
                               const nuevoEstado = e.target.value;
+                              if (['Aprobado', 'Pagado', 'Legalizado'].includes(nuevoEstado) && bloqueadaPorNoss(s)) {
+                                alert('⏳ Esta solicitud es una Operación Financiera Noss: primero debe aprobarla Gerencia Noss (desde la app Noss).');
+                                return;
+                              }
                               // Pasar a "Pagado" pide antes Cuenta (+ CECO si no es Pago a Tercero) +
                               // Comprobante del banco en el modal "Confirmar Pago" — pero solo cuando
                               // el cambio realmente mueve plata (una Legalización cuadrada no genera
@@ -9611,6 +9672,11 @@ const App = () => {
                           )}
                           {legalizacionVinculada && (
                             <div className="mt-1.5 text-[0.65rem] font-bold text-[#6C63D1]">✅ Ya legalizado</div>
+                          )}
+                          {estadoAprobacionNoss(s) && (
+                            <div className="mt-1.5" title={[estadoAprobacionNoss(s).texto, s.ofnAprobadoPor && `por ${s.ofnAprobadoPor}`, s.ofnComentario && `— ${s.ofnComentario}`].filter(Boolean).join(' ')}>
+                              <Badge variant={estadoAprobacionNoss(s).variante} className="text-[0.6rem]">{estadoAprobacionNoss(s).corto}</Badge>
+                            </div>
                           )}
                           {s.estado === 'Aprobado' && lotePorClave[`solicitud:${s.id}`] && (
                             <div title="Ya va en un archivo PAB generado para el banco; falta confirmar el pago" className="mt-1.5 text-[0.65rem] font-bold text-chart-3">📤 Exportado · lote #{lotePorClave[`solicitud:${s.id}`]}</div>
@@ -11957,11 +12023,12 @@ const App = () => {
           return (
           <ModalUI titulo={`💳 Confirmar ${tituloAccion}`} descripcion={subtitulo}>
             <CampoUI label={`Empresa ${accion === 'ingreso' ? 'que recibió el dinero' : (esLegalizacionTPro ? 'que asume el gasto' : 'que pagó')} *`} htmlFor="cps-empresa">
-              <Select id="cps-empresa" value={empresaPago} onChange={(e) => setConfirmarPagoSolicitud({ ...confirmarPagoSolicitud, empresa: e.target.value, cuenta: '' })}>
+              <Select id="cps-empresa" value={empresaPago} disabled={!!solicitud.ofn} onChange={(e) => setConfirmarPagoSolicitud({ ...confirmarPagoSolicitud, empresa: e.target.value, cuenta: '' })}>
                 <option value="">Seleccionar</option>
                 {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
               </Select>
-              {!solicitud.empresa && <p className="m-0 text-xs text-muted-foreground">Solicitud general: queda asignada a la empresa que elijas.</p>}
+              {solicitud.ofn ? <p className="m-0 text-xs text-muted-foreground">🎯 Operación Financiera Noss: la paga {EMPRESA_OFN}.</p>
+                : !solicitud.empresa && <p className="m-0 text-xs text-muted-foreground">Solicitud general: queda asignada a la empresa que elijas.</p>}
               {monedaEmpresa && monedaEmpresa !== moneda && (
                 <p className="m-0 text-xs font-semibold text-[#C4622D]">⚠️ La solicitud está en {moneda} y {empresaPago} maneja {monedaEmpresa}: en Finanzas queda registrada en {moneda}.</p>
               )}
@@ -12121,7 +12188,7 @@ const App = () => {
               ))}
             </div>
             <CampoUI label="Empresa que pagó *" htmlFor="cpl-empresa">
-              <Select id="cpl-empresa" value={empresaLote} onChange={(e) => setConfirmarPagoLoteReembolsos({ ...confirmarPagoLoteReembolsos, empresa: e.target.value, cuenta: '' })}>
+              <Select id="cpl-empresa" value={empresaLote} disabled={items.some(it => it.ofn)} onChange={(e) => setConfirmarPagoLoteReembolsos({ ...confirmarPagoLoteReembolsos, empresa: e.target.value, cuenta: '' })}>
                 <option value="">Seleccionar</option>
                 {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
               </Select>

@@ -66,3 +66,15 @@ describe('liquidaciones', () => {
     expect(clavePresupuesto(9, 2026, 11)).toBe('presupuesto:9:2026-11');
   });
 });
+
+describe('Operación Financiera Noss en liquidaciones', () => {
+  it('solo entra a la liquidación de AM Sports y con aprobación de Gerencia Noss', () => {
+    const base = { id: 1, tipo: 'Reembolso', estado: 'Aprobado', responsableId: 'u', totalCalculado: 100, ofn: { proceso: 'scouting' } };
+    const r1 = solicitudesLiquidables({ solicitudes: [{ ...base, ofnAprobacion: 'Aprobada' }], responsableId: 'u', empresa: 'PRONOVA CAPITAL SAS', monedaEmpresa: 'COP' });
+    expect(r1.excluidas[0].motivo).toMatch(/Operación Financiera Noss/);
+    const r2 = solicitudesLiquidables({ solicitudes: [{ ...base, ofnAprobacion: 'Pendiente' }], responsableId: 'u', empresa: 'AM SPORTS GROUP SAS', monedaEmpresa: 'COP' });
+    expect(r2.excluidas[0].motivo).toMatch(/Gerencia Noss/);
+    const r3 = solicitudesLiquidables({ solicitudes: [{ ...base, ofnAprobacion: 'Aprobada' }], responsableId: 'u', empresa: 'AM SPORTS GROUP SAS', monedaEmpresa: 'COP' });
+    expect(r3.incluibles).toHaveLength(1);
+  });
+});
