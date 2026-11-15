@@ -30,6 +30,17 @@ const iguales = (a: string, b: string) => {
 };
 
 const SECRETO = Deno.env.get('INTEGRACION_AM_CLAVE') ?? '';
+
+// Clave con permisos de servidor: la nueva (SUPABASE_SECRET_KEYS, sb_secret_…) si existe; si no, la heredada
+// SUPABASE_SERVICE_ROLE_KEY (deja de servir si el proyecto apaga las claves heredadas).
+const claveServicio = () => {
+  try {
+    const nuevas = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') ?? '{}') as Record<string, string>;
+    const clave = nuevas.default || Object.values(nuevas).find((v) => typeof v === 'string' && v);
+    if (clave) return clave;
+  } catch { /* sin claves nuevas */ }
+  return Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+};
 const NOSS_URL = Deno.env.get('NOSS_INTEGRACION_URL') ?? '';
 
 const llamarNoss = async (cuerpo: unknown) => {
@@ -55,7 +66,7 @@ Deno.serve(async (req) => {
   try { cuerpo = await req.json(); } catch { return json({ error: 'JSON inválido' }, 400); }
   const accion = String(cuerpo.accion || '');
 
-  const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
+  const sb = createClient(Deno.env.get('SUPABASE_URL')!, claveServicio(), { auth: { persistSession: false } });
 
   try {
     // ---------- Desde Noss (clave compartida) ----------
@@ -109,8 +120,9 @@ Deno.serve(async (req) => {
     const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
     const { data: auth } = await sb.auth.getUser(token);
     if (!auth?.user) return json({ error: 'Sesión no válida' }, 401);
-    const { data: yo } = await sb.from('usuarios').select('id, nombre').eq('auth_user_id', auth.user.id).maybeSingle();
-    if (!yo) return json({ error: 'Sin perfil en AM Holding' }, 403);
+    const { data: yo, error: errYo } = await sb.from('usuarios').select('id, nombre').eq('auth_user_id', auth.user.id).limit(1).maybeSingle();
+    if (errYo) throw new Error(`No se pudo leer el perfil: ${errYo.message}`);
+    if (!yo) return json({ error: `Sin perfil en AM Holding (${auth.user.email})` }, 403);
 
     if (accion === 'actualizar_catalogo') {
       const cat = await llamarNoss({ accion: 'catalogo' }) as { procesos?: Item[]; jugadores?: Item[]; clubes?: Item[] };
