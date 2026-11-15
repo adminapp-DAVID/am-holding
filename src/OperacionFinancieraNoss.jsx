@@ -6,11 +6,12 @@ import { Select } from '@/components/ui/select';
 import { ofnVacia, conPorcentajes, EMPRESA_OFN } from './ofn';
 
 // Bloque "🎯 Operación Financiera Noss" del formulario de Solicitudes. `valor` = null (sin OFN) o
-// { proceso, jugadores: [{id, nombre, pct}], clubes: [...] }. Las listas vienen de noss_catalogo.
+// { proceso, jugadores: [{id, nombre, pct}], clubes: [...], evento: {id, nombre} | null }. Las listas vienen de
+// noss_catalogo (evento = Proyectos, Viajes y Competencias de Noss).
 
 const normalizar = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-function Selector({ titulo, opciones, elegidos, onCambiar, placeholder }) {
+function Selector({ titulo, opciones, elegidos, onCambiar, placeholder, unico = false }) {
   const [busqueda, setBusqueda] = useState('');
   const sugerencias = useMemo(() => {
     const q = normalizar(busqueda.trim());
@@ -24,7 +25,7 @@ function Selector({ titulo, opciones, elegidos, onCambiar, placeholder }) {
   return (
     <div className="flex flex-col gap-2">
       <span className="text-xs font-semibold text-muted-foreground">{titulo}</span>
-      <div className="relative">
+      {!(unico && elegidos.length) && <div className="relative">
         <Input aria-label={`Buscar ${titulo}`} placeholder={placeholder} value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
         {sugerencias.length > 0 && (
           <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-solid border-border bg-card shadow-lg">
@@ -36,19 +37,19 @@ function Selector({ titulo, opciones, elegidos, onCambiar, placeholder }) {
             ))}
           </div>
         )}
-      </div>
+      </div>}
       {elegidos.length > 0 && (
         <div className="flex flex-col gap-1.5">
           {elegidos.map((e, i) => (
             <div key={e.id} className="flex items-center gap-2 rounded-md bg-muted/50 px-2 py-1 text-sm">
-              <span className="flex-1">{e.nombre}</span>
-              <Input aria-label={`% de ${e.nombre}`} placeholder="% igual" value={e.pct ?? ''} onChange={(ev) => onCambiar(elegidos.map((x, j) => (j === i ? { ...x, pct: ev.target.value } : x)))} className="h-7 w-20 text-right text-xs" />
+              <span className="flex-1">{e.nombre}{e.detalle ? <span className="text-xs text-muted-foreground"> · {e.detalle}</span> : null}</span>
+              {!unico && <Input aria-label={`% de ${e.nombre}`} placeholder="% igual" value={e.pct ?? ''} onChange={(ev) => onCambiar(elegidos.map((x, j) => (j === i ? { ...x, pct: ev.target.value } : x)))} className="h-7 w-20 text-right text-xs" />}
               <Button type="button" variant="ghost" size="icon" onClick={() => onCambiar(elegidos.filter((_, j) => j !== i))} title="Quitar" aria-label={`Quitar ${e.nombre}`} className="size-7"><X size={14} /></Button>
             </div>
           ))}
-          <span className={`text-xs ${porcentajes && Math.abs(suma - 100) > 0.01 ? 'font-semibold text-destructive' : 'text-muted-foreground'}`}>
+          {!unico && <span className={`text-xs ${porcentajes && Math.abs(suma - 100) > 0.01 ? 'font-semibold text-destructive' : 'text-muted-foreground'}`}>
             {porcentajes ? `Reparto manual: ${Math.round(suma * 100) / 100}% (debe sumar 100%)` : `Se reparte en partes iguales (${Math.round((100 / elegidos.length) * 100) / 100}% c/u). Escribe % para repartir distinto.`}
-          </span>
+          </span>}
         </div>
       )}
     </div>
@@ -59,6 +60,8 @@ export default function OperacionFinancieraNoss({ valor, onCambiar, catalogo, on
   const procesos = catalogo.filter(c => c.tipo === 'proceso').sort((a, b) => a.orden - b.orden);
   const jugadores = catalogo.filter(c => c.tipo === 'jugador');
   const clubes = catalogo.filter(c => c.tipo === 'club');
+  const eventos = catalogo.filter(c => c.tipo === 'evento');
+  const eventoElegido = valor?.evento?.id ? [{ ...valor.evento, detalle: eventos.find(e => String(e.id) === String(valor.evento.id))?.detalle }] : [];
   const activo = !!valor;
 
   return (
@@ -90,6 +93,9 @@ export default function OperacionFinancieraNoss({ valor, onCambiar, catalogo, on
                 <Selector titulo="Jugadores (opcional)" placeholder="Escribe al menos 2 letras del jugador" opciones={jugadores} elegidos={valor.jugadores || []} onCambiar={(l) => onCambiar({ ...valor, jugadores: l })} />
                 <Selector titulo="Clubes (opcional)" placeholder="Escribe al menos 2 letras del club" opciones={clubes} elegidos={valor.clubes || []} onCambiar={(l) => onCambiar({ ...valor, clubes: l })} />
               </div>
+              <Selector unico titulo="Proyecto deportivo, viaje o competencia (opcional)" placeholder="Escribe al menos 2 letras del proyecto o evento" opciones={eventos} elegidos={eventoElegido}
+                onCambiar={(l) => onCambiar({ ...valor, evento: l[0] ? { id: String(l[0].id), nombre: l[0].nombre } : null })} />
+              {valor.evento && <p className="m-0 -mt-1 text-xs text-muted-foreground">Al pagarse, queda en el Gasto real de ese evento en Noss.</p>}
               <button type="button" onClick={onActualizarCatalogo} disabled={actualizando} className="self-start cursor-pointer border-0 bg-transparent p-0 text-xs text-[#6C63D1] underline">
                 {actualizando ? 'Actualizando listas de Noss…' : '🔄 ¿No aparece? Actualizar listas de Noss'}
               </button>

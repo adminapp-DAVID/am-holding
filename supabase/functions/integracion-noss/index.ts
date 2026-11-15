@@ -7,9 +7,11 @@
 //
 // Llamadas desde Noss (servidor a servidor, cabecera x-integracion-clave):
 //   pendientes → solicitudes con OFN esperando a Gerencia Noss (con enlaces temporales a sus soportes).
+//   movimientos → todos los gastos con OFN (Noss los guarda con ofn_sincronizar()).
 //   decision   → { solicitud_id, decision: 'Aprobada' | 'Devuelta', por, comentario } (ofn_decidir).
 // Llamadas desde la app AM Holding (usuario con sesión, cabecera Authorization):
 //   actualizar_catalogo → trae de Noss procesos, jugadores y clubes y los guarda en noss_catalogo.
+//   sincronizar         → manda a Noss todos los gastos con OFN (tableros y Gasto real de eventos).
 //   avisar_solicitud    → { solicitud_id } avisa a Noss que hay una solicitud OFN nueva o corregida.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
@@ -55,7 +57,41 @@ const llamarNoss = async (cuerpo: unknown) => {
   return datos;
 };
 
-type Item = { id: string; nombre: string; estado?: string; club?: string; pais?: string; clave?: string };
+type Item = { id: string; nombre: string; estado?: string; club?: string; pais?: string; clave?: string; familia?: string; fecha?: string };
+
+// Todos los gastos con Operación Financiera Noss, en el formato que guarda Noss (ofn_sincronizar()).
+// Va la lista COMPLETA: lo que falte, Noss lo da por quitado.
+// deno-lint-ignore no-explicit-any
+const movimientosOfn = async (sb: any) => {
+  const filas: Record<string, unknown>[] = [];
+  for (let desde = 0; ; desde += 1000) {
+    const { data, error } = await sb.from('gastos')
+      .select('id, fecha, tipo, detalle, valor, moneda_pago, neutro, ofn, tercero_info, solicitud_origen_id, empresas ( nombre ), usuarios ( nombre, email )')
+      .not('ofn', 'is', null).order('id').range(desde, desde + 999);
+    if (error) throw error;
+    filas.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  const idsSol = [...new Set(filas.map((g) => g.solicitud_origen_id).filter(Boolean).map(String))];
+  const tipos: Record<string, string> = {};
+  for (let i = 0; i < idsSol.length; i += 150) {
+    const { data } = await sb.from('solicitudes').select('id, tipo').in('id', idsSol.slice(i, i + 150));
+    for (const s of data || []) tipos[String(s.id)] = s.tipo;
+  }
+  return filas.filter((g) => !g.neutro).map((g) => {
+    const ofn = (g.ofn || {}) as { proceso?: string; proceso_nombre?: string; jugadores?: unknown[]; clubes?: unknown[]; evento?: { id?: string; nombre?: string } | null };
+    const u = g.usuarios as { nombre?: string; email?: string } | null;
+    const sol = g.solicitud_origen_id ? String(g.solicitud_origen_id) : '';
+    return {
+      id: String(g.id), solicitud_id: sol || null, fecha: g.fecha, valor: Number(g.valor) || 0, moneda: g.moneda_pago || 'COP',
+      concepto: g.detalle || '', tipo: (sol && tipos[sol]) || g.tipo || '', colaborador: u?.nombre || '', colaborador_correo: u?.email || '',
+      tercero: (g.tercero_info as { nombre?: string } | null)?.nombre || '', empresa: (g.empresas as { nombre?: string } | null)?.nombre || '',
+      proceso: ofn.proceso || '', proceso_nombre: ofn.proceso_nombre || ofn.proceso || '',
+      jugadores: ofn.jugadores || [], clubes: ofn.clubes || [],
+      evento_id: ofn.evento?.id || null, evento_nombre: ofn.evento?.nombre || null,
+    };
+  });
+};
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -105,6 +141,10 @@ Deno.serve(async (req) => {
         });
       }
 
+      if (accion === 'movimientos') {
+        return json({ movimientos: await movimientosOfn(sb) });
+      }
+
       if (accion === 'decision') {
         const { data, error } = await sb.rpc('ofn_decidir', {
           p_solicitud: String(cuerpo.solicitud_id || ''), p_decision: String(cuerpo.decision || ''),
@@ -125,12 +165,13 @@ Deno.serve(async (req) => {
     if (!yo) return json({ error: `Sin perfil en AM Holding (${auth.user.email})` }, 403);
 
     if (accion === 'actualizar_catalogo') {
-      const cat = await llamarNoss({ accion: 'catalogo' }) as { procesos?: Item[]; jugadores?: Item[]; clubes?: Item[] };
+      const cat = await llamarNoss({ accion: 'catalogo' }) as { procesos?: Item[]; jugadores?: Item[]; clubes?: Item[]; eventos?: Item[] };
       const ahora = new Date().toISOString();
       const filas = [
         ...(cat.procesos || []).map((p, i) => ({ tipo: 'proceso', id: String(p.clave), nombre: p.nombre, detalle: null, orden: i, activo: true, actualizado_at: ahora })),
         ...(cat.jugadores || []).map((j) => ({ tipo: 'jugador', id: String(j.id), nombre: j.nombre, detalle: [j.estado, j.club].filter(Boolean).join(' · ') || null, orden: 0, activo: true, actualizado_at: ahora })),
         ...(cat.clubes || []).map((c) => ({ tipo: 'club', id: String(c.id), nombre: c.nombre, detalle: c.pais || null, orden: 0, activo: true, actualizado_at: ahora })),
+        ...(cat.eventos || []).map((e, i) => ({ tipo: 'evento', id: String(e.id), nombre: e.nombre, detalle: [e.familia, e.fecha, e.club].filter(Boolean).join(' · ') || null, orden: i, activo: true, actualizado_at: ahora })),
       ];
       if (!filas.length) throw new Error('Noss no devolvió datos');
       for (let i = 0; i < filas.length; i += 500) {
@@ -139,7 +180,12 @@ Deno.serve(async (req) => {
       }
       // Lo que ya no viene de Noss queda inactivo (no se borra: puede estar en solicitudes guardadas).
       await sb.from('noss_catalogo').update({ activo: false }).lt('actualizado_at', ahora);
-      return json({ procesos: cat.procesos?.length || 0, jugadores: cat.jugadores?.length || 0, clubes: cat.clubes?.length || 0 });
+      return json({ procesos: cat.procesos?.length || 0, jugadores: cat.jugadores?.length || 0, clubes: cat.clubes?.length || 0, eventos: cat.eventos?.length || 0 });
+    }
+
+    if (accion === 'sincronizar') {
+      // Tras un pago con OFN: manda a Noss la lista completa (Gasto real de eventos y tableros de Financiero).
+      return json(await llamarNoss({ accion: 'movimientos_am', movimientos: await movimientosOfn(sb) }));
     }
 
     if (accion === 'avisar_solicitud') {
