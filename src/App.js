@@ -1305,7 +1305,12 @@ const App = () => {
     setActualizandoNoss(true);
     try {
       const { data, error } = await supabase.functions.invoke('integracion-noss', { body: { accion: 'actualizar_catalogo' } });
-      if (error || data?.error) throw new Error(data?.error || error.message);
+      if (error || data?.error) {
+        // El cuerpo de la respuesta trae el motivo real (p. ej. "Noss respondió 401").
+        let detalle = data?.error || error.message;
+        try { detalle = (await error?.context?.json())?.error || detalle; } catch { /* sin cuerpo */ }
+        throw new Error(detalle);
+      }
       await cargarNossCatalogo();
     } catch (e) {
       alert('❌ No se pudieron traer las listas de Noss: ' + (e.message || e));
