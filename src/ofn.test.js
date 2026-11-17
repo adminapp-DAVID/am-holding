@@ -44,3 +44,11 @@ describe('OFN con servicio del plan del jugador', () => {
     expect(g.jugadores[1]).toEqual({ id: '2', nombre: 'Leo', pct: null });
   });
 });
+
+describe('OFN con un solo jugador o club', () => {
+  it('ignora el % y le asigna el 100%', () => {
+    expect(validarOfn({ proceso: 'scouting', jugadores: [{ id: 1, pct: '20' }], clubes: [{ id: 2, pct: '80' }] })).toBe('');
+    expect(repartoEfectivo([{ id: 1, pct: 20 }]).map(x => x.pct)).toEqual([100]);
+    expect(ofnParaGuardar({ proceso: 'scouting', jugadores: [{ id: 1, nombre: 'N', pct: '20' }], clubes: [] }).jugadores[0].pct).toBeNull();
+  });
+});

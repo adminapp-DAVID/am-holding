@@ -19,6 +19,8 @@ function Selector({ titulo, opciones, elegidos, onCambiar, placeholder, unico = 
     const ya = new Set(elegidos.map(e => String(e.id)));
     return opciones.filter(o => !ya.has(String(o.id)) && normalizar(`${o.nombre} ${o.detalle || ''}`).includes(q)).slice(0, 8);
   }, [busqueda, opciones, elegidos]);
+  // Con un solo jugador (o club) el % no aplica: se le asigna todo el gasto.
+  const cambiar = (l) => onCambiar(l.length === 1 ? l.map(x => ({ ...x, pct: '' })) : l);
   const porcentajes = conPorcentajes(elegidos);
   const suma = elegidos.reduce((t, e) => t + (parseFloat(String(e.pct ?? '').replace(',', '.')) || 0), 0);
 
@@ -30,7 +32,7 @@ function Selector({ titulo, opciones, elegidos, onCambiar, placeholder, unico = 
         {sugerencias.length > 0 && (
           <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-solid border-border bg-card shadow-lg">
             {sugerencias.map(o => (
-              <button key={o.id} type="button" onClick={() => { onCambiar([...elegidos, { id: String(o.id), nombre: o.nombre, pct: '' }]); setBusqueda(''); }}
+              <button key={o.id} type="button" onClick={() => { cambiar([...elegidos, { id: String(o.id), nombre: o.nombre, pct: '' }]); setBusqueda(''); }}
                 className="block w-full cursor-pointer border-0 bg-transparent px-3 py-2 text-left text-sm hover:bg-muted">
                 {o.nombre}{o.detalle ? <span className="text-xs text-muted-foreground"> · {o.detalle}</span> : null}
               </button>
@@ -43,13 +45,15 @@ function Selector({ titulo, opciones, elegidos, onCambiar, placeholder, unico = 
           {elegidos.map((e, i) => (
             <div key={e.id} className="flex flex-wrap items-center gap-2 rounded-md bg-muted/50 px-2 py-1 text-sm">
               <span className="flex-1">{e.nombre}{e.detalle ? <span className="text-xs text-muted-foreground"> · {e.detalle}</span> : null}</span>
-              {!unico && <Input aria-label={`% de ${e.nombre}`} placeholder="% igual" value={e.pct ?? ''} onChange={(ev) => onCambiar(elegidos.map((x, j) => (j === i ? { ...x, pct: ev.target.value } : x)))} className="h-7 w-20 text-right text-xs" />}
+              {!unico && elegidos.length > 1 && <Input aria-label={`% de ${e.nombre}`} placeholder="% igual" value={e.pct ?? ''} onChange={(ev) => onCambiar(elegidos.map((x, j) => (j === i ? { ...x, pct: ev.target.value } : x)))} className="h-7 w-20 text-right text-xs" />}
               {extraFila && extraFila(e, (cambios) => onCambiar(elegidos.map((x, j) => (j === i ? { ...x, ...cambios } : x))))}
-              <Button type="button" variant="ghost" size="icon" onClick={() => onCambiar(elegidos.filter((_, j) => j !== i))} title="Quitar" aria-label={`Quitar ${e.nombre}`} className="size-7"><X size={14} /></Button>
+              <Button type="button" variant="ghost" size="icon" onClick={() => cambiar(elegidos.filter((_, j) => j !== i))} title="Quitar" aria-label={`Quitar ${e.nombre}`} className="size-7"><X size={14} /></Button>
             </div>
           ))}
-          {!unico && <span className={`text-xs ${porcentajes && Math.abs(suma - 100) > 0.01 ? 'font-semibold text-destructive' : 'text-muted-foreground'}`}>
-            {porcentajes ? `Reparto manual: ${Math.round(suma * 100) / 100}% (debe sumar 100%)` : `Se reparte en partes iguales (${Math.round((100 / elegidos.length) * 100) / 100}% c/u). Escribe % para repartir distinto.`}
+          {!unico && <span className={`text-xs ${porcentajes && elegidos.length > 1 && Math.abs(suma - 100) > 0.01 ? 'font-semibold text-destructive' : 'text-muted-foreground'}`}>
+            {elegidos.length === 1 ? 'Se le asigna el 100% del gasto.'
+              : porcentajes ? `Reparto manual entre ellos: ${Math.round(suma * 100) / 100}% (debe sumar 100%)`
+                : `Se reparte entre ellos en partes iguales (${Math.round((100 / elegidos.length) * 100) / 100}% c/u). Escribe % para repartir distinto.`}
           </span>}
         </div>
       )}

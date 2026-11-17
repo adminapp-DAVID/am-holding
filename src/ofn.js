@@ -13,7 +13,8 @@ const num = (v) => {
 };
 
 // Reparto: si nadie escribió porcentajes, partes iguales; si se escribieron, deben sumar 100.
-export const conPorcentajes = (lista) => (lista || []).some(x => num(x.pct) !== null);
+// Jugadores y clubes se reparten cada uno por su lado (no entre sí); con uno solo, recibe el 100%.
+export const conPorcentajes = (lista) => (lista || []).length > 1 && (lista || []).some(x => num(x.pct) !== null);
 export function repartoEfectivo(lista) {
   const l = lista || [];
   if (!l.length) return [];
@@ -37,7 +38,7 @@ export function validarOfn(ofn) {
 export function ofnParaGuardar(ofn, procesos = []) {
   if (!ofn) return null;
   const limpiar = (lista) => (lista || []).map(x => ({
-    id: String(x.id), nombre: x.nombre, pct: num(x.pct),
+    id: String(x.id), nombre: x.nombre, pct: (lista || []).length > 1 ? num(x.pct) : null,
     // Jugador: servicio de su plan de acompañamiento en Noss (planeado vs. real por servicio).
     ...(x.servicio_id ? { servicio_id: String(x.servicio_id), servicio_nombre: x.servicio_nombre || '' } : {}),
   }));
