@@ -43,11 +43,13 @@ function Selector({ titulo, opciones, elegidos, onCambiar, placeholder, unico = 
       {elegidos.length > 0 && (
         <div className="flex flex-col gap-1.5">
           {elegidos.map((e, i) => (
-            <div key={e.id} className="flex flex-wrap items-center gap-2 rounded-md bg-muted/50 px-2 py-1 text-sm">
+            <div key={e.id} className="flex flex-col gap-1 rounded-md bg-muted/50 px-2 py-1 text-sm">
+              <div className="flex items-center gap-2">
               <span className="flex-1">{e.nombre}{e.detalle ? <span className="text-xs text-muted-foreground"> · {e.detalle}</span> : null}</span>
               {!unico && elegidos.length > 1 && <Input aria-label={`% de ${e.nombre}`} placeholder="% igual" value={e.pct ?? ''} onChange={(ev) => onCambiar(elegidos.map((x, j) => (j === i ? { ...x, pct: ev.target.value } : x)))} className="h-7 w-20 text-right text-xs" />}
-              {extraFila && extraFila(e, (cambios) => onCambiar(elegidos.map((x, j) => (j === i ? { ...x, ...cambios } : x))))}
               <Button type="button" variant="ghost" size="icon" onClick={() => cambiar(elegidos.filter((_, j) => j !== i))} title="Quitar" aria-label={`Quitar ${e.nombre}`} className="size-7"><X size={14} /></Button>
+              </div>
+              {extraFila && <div className="pb-1">{extraFila(e, (cambios) => onCambiar(elegidos.map((x, j) => (j === i ? { ...x, ...cambios } : x))))}</div>}
             </div>
           ))}
           {!unico && <span className={`text-xs ${porcentajes && elegidos.length > 1 && Math.abs(suma - 100) > 0.01 ? 'font-semibold text-destructive' : 'text-muted-foreground'}`}>
@@ -73,7 +75,7 @@ export default function OperacionFinancieraNoss({ valor, onCambiar, catalogo, on
     const delPlan = new Set((jugadores.find(j => String(j.id) === String(e.id))?.extra?.servicios || []).map(String));
     const orden = [...servicios].sort((a, b) => delPlan.has(String(b.id)) - delPlan.has(String(a.id)));
     return (
-      <Select aria-label={`Servicio de ${e.nombre}`} value={e.servicio_id || ''} className="h-7 w-auto min-w-[150px] text-xs"
+      <Select aria-label={`Servicio de ${e.nombre}`} value={e.servicio_id || ''} className="h-8 text-xs"
         onChange={(ev) => actualizar({ servicio_id: ev.target.value, servicio_nombre: servicios.find(s => String(s.id) === ev.target.value)?.nombre || '' })}>
         <option value="">Servicio (opcional)</option>
         {orden.map(s => <option key={s.id} value={s.id}>{s.nombre}{delPlan.has(String(s.id)) ? ' · en su plan' : ''}</option>)}
