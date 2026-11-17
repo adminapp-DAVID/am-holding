@@ -1,10 +1,11 @@
 // OPERACIÓN FINANCIERA NOSS (OFN) — reglas puras. Una solicitud con OFN es un gasto de AM SPORTS GROUP SAS
 // (Noss) y queda ligada a un proceso misional y, si aplica, a jugadores y clubes de la app Noss (listas en
-// public.noss_catalogo). Necesita la aprobación de Gerencia Noss antes de que Coordinación la apruebe
+// public.noss_catalogo) y, opcional, a un evento de Noss (Proyecto, Viaje o Competencia), cuyo Gasto real recibe
+// el pago. Necesita la aprobación de Gerencia Noss antes de que Coordinación la apruebe
 // (20261115_operacion_financiera_noss.sql).
 
 export const EMPRESA_OFN = 'AM SPORTS GROUP SAS';
-export const ofnVacia = () => ({ proceso: '', jugadores: [], clubes: [] });
+export const ofnVacia = () => ({ proceso: '', jugadores: [], clubes: [], evento: null });
 
 const num = (v) => {
   const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
@@ -41,6 +42,7 @@ export function ofnParaGuardar(ofn, procesos = []) {
     proceso_nombre: procesos.find(p => p.id === ofn.proceso)?.nombre || ofn.proceso_nombre || ofn.proceso,
     jugadores: limpiar(ofn.jugadores),
     clubes: limpiar(ofn.clubes),
+    evento: ofn.evento?.id ? { id: String(ofn.evento.id), nombre: ofn.evento.nombre } : null,
   };
 }
 
@@ -60,5 +62,6 @@ export const resumenOfn = (ofn) => {
   const partes = [ofn.proceso_nombre || ofn.proceso];
   if (ofn.jugadores?.length) partes.push(`${ofn.jugadores.length} jugador(es): ${ofn.jugadores.map(j => j.nombre).join(', ')}`);
   if (ofn.clubes?.length) partes.push(`${ofn.clubes.length} club(es): ${ofn.clubes.map(c => c.nombre).join(', ')}`);
+  if (ofn.evento?.nombre) partes.push(`Proyecto/evento: ${ofn.evento.nombre}`);
   return partes.join(' · ');
 };

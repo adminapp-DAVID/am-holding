@@ -1301,6 +1301,18 @@ const App = () => {
     setNossCatalogo(data || []);
     return data || [];
   };
+  // Tras pagar algo con OFN, Noss recibe la lista de gastos (Gasto real de sus eventos y tableros de Financiero).
+  // Espera unos segundos para que un pago en lote mande una sola vez; si falla, Noss igual puede "Sincronizar".
+  const temporizadorNoss = useRef(null);
+  const programarSincronizacionNoss = () => {
+    clearTimeout(temporizadorNoss.current);
+    temporizadorNoss.current = setTimeout(() => {
+      supabase.functions.invoke('integracion-noss', { body: { accion: 'sincronizar' } })
+        .then(({ error }) => { if (error) console.warn('No se pudo sincronizar con Noss:', error.message); })
+        .catch(() => {});
+    }, 4000);
+  };
+
   const actualizarCatalogoNoss = async () => {
     setActualizandoNoss(true);
     try {
@@ -3299,6 +3311,7 @@ const App = () => {
         const { accion, monto } = calcularAccionFinanzasSolicitud(solicitud);
         if (accion !== 'ninguno') {
           await generarMovimientoDesdeSolicitud(solicitud, { cuentaPago: opciones.cuentaPago || null, cecoCodigo: opciones.cecoCodigo || null, accion, monto, loteId: opciones.loteId || null, fechaPago: opciones.fechaPago || null, neutro: opciones.neutro || null, detalle: opciones.detalle || null });
+          if (solicitud.ofn) programarSincronizacionNoss();
         }
       }
     }

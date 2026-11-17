@@ -16,7 +16,7 @@ describe('Operación Financiera Noss', () => {
   });
   it('guarda con nombre de proceso y pct numérico o null', () => {
     const g = ofnParaGuardar({ proceso: 'acompanamiento', jugadores: [{ id: 7, nombre: 'Juan', pct: '' }], clubes: [] }, [{ id: 'acompanamiento', nombre: 'Acompañamiento' }]);
-    expect(g).toEqual({ proceso: 'acompanamiento', proceso_nombre: 'Acompañamiento', jugadores: [{ id: '7', nombre: 'Juan', pct: null }], clubes: [] });
+    expect(g).toEqual({ proceso: 'acompanamiento', proceso_nombre: 'Acompañamiento', jugadores: [{ id: '7', nombre: 'Juan', pct: null }], clubes: [], evento: null });
     expect(resumenOfn(g)).toBe('Acompañamiento · 1 jugador(es): Juan');
   });
   it('estado y bloqueo de la aprobación de Gerencia Noss', () => {
@@ -25,5 +25,14 @@ describe('Operación Financiera Noss', () => {
     expect(bloqueadaPorNoss({ ofn: {}, ofnAprobacion: 'Pendiente' })).toBe(true);
     expect(bloqueadaPorNoss({ ofn: {}, ofnAprobacion: 'Aprobada' })).toBe(false);
     expect(bloqueadaPorNoss({})).toBe(false);
+  });
+});
+
+describe('OFN con proyecto/evento de Noss', () => {
+  it('guarda solo id y nombre del evento y lo muestra en el resumen', () => {
+    const g = ofnParaGuardar({ proceso: 'gestion', jugadores: [], clubes: [], evento: { id: 'e1', nombre: 'Gira Europa', detalle: 'Viajes' } }, [{ id: 'gestion', nombre: 'Gestión' }]);
+    expect(g.evento).toEqual({ id: 'e1', nombre: 'Gira Europa' });
+    expect(resumenOfn(g)).toContain('Proyecto/evento: Gira Europa');
+    expect(ofnParaGuardar({ proceso: 'gestion' }).evento).toBeNull();
   });
 });
