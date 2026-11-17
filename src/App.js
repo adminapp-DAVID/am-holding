@@ -1296,7 +1296,7 @@ const App = () => {
   };
 
   const cargarNossCatalogo = async () => {
-    const { data, error } = await traerTodas(() => supabase.from('noss_catalogo').select('tipo, id, nombre, detalle, orden').eq('activo', true).order('tipo').order('id'));
+    const { data, error } = await traerTodas(() => supabase.from('noss_catalogo').select('*').eq('activo', true).order('tipo').order('id'));
     if (error) { console.warn('Listas de Noss no disponibles:', error.message); return []; }
     setNossCatalogo(data || []);
     return data || [];

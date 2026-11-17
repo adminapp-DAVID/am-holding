@@ -11,7 +11,7 @@ import { ofnVacia, conPorcentajes, EMPRESA_OFN } from './ofn';
 
 const normalizar = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-function Selector({ titulo, opciones, elegidos, onCambiar, placeholder, unico = false }) {
+function Selector({ titulo, opciones, elegidos, onCambiar, placeholder, unico = false, extraFila = null }) {
   const [busqueda, setBusqueda] = useState('');
   const sugerencias = useMemo(() => {
     const q = normalizar(busqueda.trim());
@@ -41,9 +41,10 @@ function Selector({ titulo, opciones, elegidos, onCambiar, placeholder, unico = 
       {elegidos.length > 0 && (
         <div className="flex flex-col gap-1.5">
           {elegidos.map((e, i) => (
-            <div key={e.id} className="flex items-center gap-2 rounded-md bg-muted/50 px-2 py-1 text-sm">
+            <div key={e.id} className="flex flex-wrap items-center gap-2 rounded-md bg-muted/50 px-2 py-1 text-sm">
               <span className="flex-1">{e.nombre}{e.detalle ? <span className="text-xs text-muted-foreground"> · {e.detalle}</span> : null}</span>
               {!unico && <Input aria-label={`% de ${e.nombre}`} placeholder="% igual" value={e.pct ?? ''} onChange={(ev) => onCambiar(elegidos.map((x, j) => (j === i ? { ...x, pct: ev.target.value } : x)))} className="h-7 w-20 text-right text-xs" />}
+              {extraFila && extraFila(e, (cambios) => onCambiar(elegidos.map((x, j) => (j === i ? { ...x, ...cambios } : x))))}
               <Button type="button" variant="ghost" size="icon" onClick={() => onCambiar(elegidos.filter((_, j) => j !== i))} title="Quitar" aria-label={`Quitar ${e.nombre}`} className="size-7"><X size={14} /></Button>
             </div>
           ))}
@@ -61,6 +62,20 @@ export default function OperacionFinancieraNoss({ valor, onCambiar, catalogo, on
   const jugadores = catalogo.filter(c => c.tipo === 'jugador');
   const clubes = catalogo.filter(c => c.tipo === 'club');
   const eventos = catalogo.filter(c => c.tipo === 'evento');
+  const servicios = catalogo.filter(c => c.tipo === 'servicio').sort((a, b) => a.orden - b.orden);
+  // Servicio del plan de acompañamiento del jugador (los de su plan primero).
+  const selectorServicio = (e, actualizar) => {
+    if (!servicios.length) return null;
+    const delPlan = new Set((jugadores.find(j => String(j.id) === String(e.id))?.extra?.servicios || []).map(String));
+    const orden = [...servicios].sort((a, b) => delPlan.has(String(b.id)) - delPlan.has(String(a.id)));
+    return (
+      <Select aria-label={`Servicio de ${e.nombre}`} value={e.servicio_id || ''} className="h-7 w-auto min-w-[150px] text-xs"
+        onChange={(ev) => actualizar({ servicio_id: ev.target.value, servicio_nombre: servicios.find(s => String(s.id) === ev.target.value)?.nombre || '' })}>
+        <option value="">Servicio (opcional)</option>
+        {orden.map(s => <option key={s.id} value={s.id}>{s.nombre}{delPlan.has(String(s.id)) ? ' · en su plan' : ''}</option>)}
+      </Select>
+    );
+  };
   const eventoElegido = valor?.evento?.id ? [{ ...valor.evento, detalle: eventos.find(e => String(e.id) === String(valor.evento.id))?.detalle }] : [];
   const activo = !!valor;
 
@@ -90,7 +105,7 @@ export default function OperacionFinancieraNoss({ valor, onCambiar, catalogo, on
                 </Select>
               </div>
               <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]">
-                <Selector titulo="Jugadores (opcional)" placeholder="Escribe al menos 2 letras del jugador" opciones={jugadores} elegidos={valor.jugadores || []} onCambiar={(l) => onCambiar({ ...valor, jugadores: l })} />
+                <Selector titulo="Jugadores (opcional)" placeholder="Escribe al menos 2 letras del jugador" opciones={jugadores} elegidos={valor.jugadores || []} onCambiar={(l) => onCambiar({ ...valor, jugadores: l })} extraFila={selectorServicio} />
                 <Selector titulo="Clubes (opcional)" placeholder="Escribe al menos 2 letras del club" opciones={clubes} elegidos={valor.clubes || []} onCambiar={(l) => onCambiar({ ...valor, clubes: l })} />
               </div>
               <Selector unico titulo="Proyecto deportivo, viaje o competencia (opcional)" placeholder="Escribe al menos 2 letras del proyecto o evento" opciones={eventos} elegidos={eventoElegido}

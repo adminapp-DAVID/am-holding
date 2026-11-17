@@ -57,7 +57,7 @@ const llamarNoss = async (cuerpo: unknown) => {
   return datos;
 };
 
-type Item = { id: string; nombre: string; estado?: string; club?: string; pais?: string; clave?: string; familia?: string; fecha?: string };
+type Item = { id: string; nombre: string; estado?: string; club?: string; pais?: string; clave?: string; familia?: string; fecha?: string; servicios?: string[] };
 
 // Todos los gastos con Operación Financiera Noss, en el formato que guarda Noss (ofn_sincronizar()).
 // Va la lista COMPLETA: lo que falte, Noss lo da por quitado.
@@ -165,13 +165,14 @@ Deno.serve(async (req) => {
     if (!yo) return json({ error: `Sin perfil en AM Holding (${auth.user.email})` }, 403);
 
     if (accion === 'actualizar_catalogo') {
-      const cat = await llamarNoss({ accion: 'catalogo' }) as { procesos?: Item[]; jugadores?: Item[]; clubes?: Item[]; eventos?: Item[] };
+      const cat = await llamarNoss({ accion: 'catalogo' }) as { procesos?: Item[]; jugadores?: Item[]; clubes?: Item[]; eventos?: Item[]; servicios?: Item[] };
       const ahora = new Date().toISOString();
       const filas = [
-        ...(cat.procesos || []).map((p, i) => ({ tipo: 'proceso', id: String(p.clave), nombre: p.nombre, detalle: null, orden: i, activo: true, actualizado_at: ahora })),
-        ...(cat.jugadores || []).map((j) => ({ tipo: 'jugador', id: String(j.id), nombre: j.nombre, detalle: [j.estado, j.club].filter(Boolean).join(' · ') || null, orden: 0, activo: true, actualizado_at: ahora })),
-        ...(cat.clubes || []).map((c) => ({ tipo: 'club', id: String(c.id), nombre: c.nombre, detalle: c.pais || null, orden: 0, activo: true, actualizado_at: ahora })),
-        ...(cat.eventos || []).map((e, i) => ({ tipo: 'evento', id: String(e.id), nombre: e.nombre, detalle: [e.familia, e.fecha, e.club].filter(Boolean).join(' · ') || null, orden: i, activo: true, actualizado_at: ahora })),
+        ...(cat.procesos || []).map((p, i) => ({ tipo: 'proceso', id: String(p.clave), nombre: p.nombre, detalle: null, orden: i, activo: true, actualizado_at: ahora, extra: null })),
+        ...(cat.jugadores || []).map((j) => ({ tipo: 'jugador', id: String(j.id), nombre: j.nombre, detalle: [j.estado, j.club].filter(Boolean).join(' · ') || null, orden: 0, activo: true, actualizado_at: ahora, extra: { servicios: (j.servicios || []).map(String) } })),
+        ...(cat.clubes || []).map((c) => ({ tipo: 'club', id: String(c.id), nombre: c.nombre, detalle: c.pais || null, orden: 0, activo: true, actualizado_at: ahora, extra: null })),
+        ...(cat.servicios || []).map((s, i) => ({ tipo: 'servicio', id: String(s.id), nombre: s.nombre, detalle: null, orden: i, activo: true, actualizado_at: ahora, extra: null })),
+        ...(cat.eventos || []).map((e, i) => ({ tipo: 'evento', id: String(e.id), nombre: e.nombre, detalle: [e.familia, e.fecha, e.club].filter(Boolean).join(' · ') || null, orden: i, activo: true, actualizado_at: ahora, extra: null })),
       ];
       if (!filas.length) throw new Error('Noss no devolvió datos');
       for (let i = 0; i < filas.length; i += 500) {
@@ -180,7 +181,7 @@ Deno.serve(async (req) => {
       }
       // Lo que ya no viene de Noss queda inactivo (no se borra: puede estar en solicitudes guardadas).
       await sb.from('noss_catalogo').update({ activo: false }).lt('actualizado_at', ahora);
-      return json({ procesos: cat.procesos?.length || 0, jugadores: cat.jugadores?.length || 0, clubes: cat.clubes?.length || 0, eventos: cat.eventos?.length || 0 });
+      return json({ procesos: cat.procesos?.length || 0, jugadores: cat.jugadores?.length || 0, clubes: cat.clubes?.length || 0, eventos: cat.eventos?.length || 0, servicios: cat.servicios?.length || 0 });
     }
 
     if (accion === 'sincronizar') {
