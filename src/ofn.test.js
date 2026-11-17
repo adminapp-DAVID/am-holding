@@ -36,3 +36,11 @@ describe('OFN con proyecto/evento de Noss', () => {
     expect(ofnParaGuardar({ proceso: 'gestion' }).evento).toBeNull();
   });
 });
+
+describe('OFN con servicio del plan del jugador', () => {
+  it('guarda el servicio solo cuando se eligió', () => {
+    const g = ofnParaGuardar({ proceso: 'acompanamiento', jugadores: [{ id: 1, nombre: 'Ana', pct: '', servicio_id: 's9', servicio_nombre: 'Nutrición' }, { id: 2, nombre: 'Leo', pct: '', servicio_id: '' }] });
+    expect(g.jugadores[0]).toEqual({ id: '1', nombre: 'Ana', pct: null, servicio_id: 's9', servicio_nombre: 'Nutrición' });
+    expect(g.jugadores[1]).toEqual({ id: '2', nombre: 'Leo', pct: null });
+  });
+});

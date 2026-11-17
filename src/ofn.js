@@ -36,7 +36,11 @@ export function validarOfn(ofn) {
 // Lo que se guarda en solicitudes.ofn / gastos.ofn.
 export function ofnParaGuardar(ofn, procesos = []) {
   if (!ofn) return null;
-  const limpiar = (lista) => (lista || []).map(x => ({ id: String(x.id), nombre: x.nombre, pct: num(x.pct) }));
+  const limpiar = (lista) => (lista || []).map(x => ({
+    id: String(x.id), nombre: x.nombre, pct: num(x.pct),
+    // Jugador: servicio de su plan de acompañamiento en Noss (planeado vs. real por servicio).
+    ...(x.servicio_id ? { servicio_id: String(x.servicio_id), servicio_nombre: x.servicio_nombre || '' } : {}),
+  }));
   return {
     proceso: ofn.proceso,
     proceso_nombre: procesos.find(p => p.id === ofn.proceso)?.nombre || ofn.proceso_nombre || ofn.proceso,
