@@ -5616,7 +5616,7 @@ const App = () => {
   const [editandoConceptoFinanzas, setEditandoConceptoFinanzas] = useState(null); // { tabla, id, texto, fecha, ceco, valor, valorDestino }
   const [guardandoConceptoFinanzas, setGuardandoConceptoFinanzas] = useState(false);
   const handleGuardarConceptoFinanzas = async () => {
-    const { tabla, id, texto, fecha, ceco, valor: valorTexto, valorDestino: valorDestinoTexto, tieneValorDestino, permiteNeutro, neutro, moneda, monedaOriginal, permiteVinculo, presupuestoItemId, presupuestoItemIdOriginal, permiteEmpresa, empresa, empresaOriginal, cuenta, cuentaOriginal, solicitudOrigenId } = editandoConceptoFinanzas || {};
+    const { tabla, id, texto, fecha, ceco, valor: valorTexto, valorDestino: valorDestinoTexto, tieneValorDestino, permiteNeutro, neutro, moneda, monedaOriginal, permiteVinculo, presupuestoItemId, presupuestoItemIdOriginal, permiteEmpresa, empresa, empresaOriginal, cuenta, cuentaOriginal, solicitudOrigenId, permiteEmpresaTraslado, cuentaSalida, cuentaSalidaOriginal, destinoExterno, empresaDestino, empresaDestinoOriginal, cuentaDestinoNombre, cuentaDestinoNombreOriginal } = editandoConceptoFinanzas || {};
     // Moneda real del pago (solo Gastos): Neutro siempre queda en COP; si no, se guarda la elegida
     // en el editor, pero solo cuando cambió — para no escribir moneda_pago en registros que nunca la tuvieron.
     const monedaFinal = permiteNeutro ? (neutro ? 'COP' : moneda) : null;
@@ -5638,6 +5638,15 @@ const App = () => {
       if (empresa !== empresaOriginal && getMoneda(empresa) !== getMoneda(empresaOriginal)
         && !window.confirm(`${empresa} maneja ${getMoneda(empresa)} y ${empresaOriginal || 'la empresa actual'} ${getMoneda(empresaOriginal)}. El valor NO se convierte: revísalo antes de guardar.\n\n¿Cambiar la empresa de todas formas?`)) return;
     }
+    // Traslado: empresa/cuenta de salida y de destino (Administrador / Coordinación). El destino a Empresa Externa no se toca.
+    const cambiaTraslado = !!permiteEmpresaTraslado && ((empresa || '') !== (empresaOriginal || '') || (cuentaSalida || '') !== (cuentaSalidaOriginal || '')
+      || (!destinoExterno && ((empresaDestino || '') !== (empresaDestinoOriginal || '') || (cuentaDestinoNombre || '') !== (cuentaDestinoNombreOriginal || ''))));
+    if (cambiaTraslado) {
+      if (!canApprove) { alert('Solo Administrador o Coordinación Administrativa cambian las empresas del traslado'); return; }
+      if (!empresa || !cuentaSalida) { alert('Elige la empresa y la cuenta de salida'); return; }
+      if (!destinoExterno && (!empresaDestino || !cuentaDestinoNombre)) { alert('Elige la empresa y la cuenta de destino'); return; }
+      if (!destinoExterno && empresa === empresaDestino && cuentaSalida === cuentaDestinoNombre) { alert('La cuenta de salida y la de destino no pueden ser la misma'); return; }
+    }
     if (!confirmarMontos([{ etiqueta: 'Valor', texto: valorTexto }, { etiqueta: 'Valor destino', texto: tieneValorDestino ? valorDestinoTexto : null }])) return;
     setGuardandoConceptoFinanzas(true);
     try {
@@ -5645,6 +5654,11 @@ const App = () => {
       if (!cecoId) { alert('❌ No se encontró el CECO ' + ceco); return; }
       let empresaPatch = {};
       let empresaIdNueva = null;
+      if (cambiaTraslado) {
+        const idOrigen = await resolverEmpresaId(empresa);
+        if (!idOrigen) { alert('❌ No se encontró la empresa ' + empresa); return; }
+        empresaPatch = { empresa_id: idOrigen, cuenta_salida: cuentaSalida, ...(destinoExterno ? {} : { cuenta_destino: `${empresaDestino}: ${cuentaDestinoNombre}` }), ...(tieneValorDestino ? {} : { valor_destino: null }) };
+      }
       if (cambiaEmpresa) {
         empresaIdNueva = await resolverEmpresaId(empresa);
         if (!empresaIdNueva) { alert('❌ No se encontró la empresa ' + empresa); return; }
@@ -5664,7 +5678,8 @@ const App = () => {
         if (errSol || !solAct?.length) alert('⚠️ El movimiento quedó con la nueva empresa, pero no se pudo actualizar la solicitud de origen: ' + (errSol?.message || 'sin permiso'));
         else setSolicitudes(prev => prev.map(x => (x.id === solicitudOrigenId ? { ...x, empresa, empresaId: empresaIdNueva } : x)));
       }
-      const cambios = { ...(cambiaEmpresa ? { empresa, cuenta } : {}), detalle, fecha, ceco, valor, ...(tieneValorDestino ? { valorDestino } : {}), ...(permiteNeutro ? { neutro: !!neutro } : {}), ...(cambiaMoneda ? { moneda: monedaFinal } : {}), ...(cambiaVinculo ? { presupuestoItemId: presupuestoItemId || null, ...(conceptoVinculo?.responsableId ? { responsableId: conceptoVinculo.responsableId } : {}) } : {}) };
+      const cambios = { ...(cambiaEmpresa ? { empresa, cuenta } : {}),
+        ...(cambiaTraslado ? { empresa, cuentaSalida, ...(destinoExterno ? {} : { cuentaDestino: `${empresaDestino}: ${cuentaDestinoNombre}` }), ...(tieneValorDestino ? {} : { valorDestino: null }) } : {}), detalle, fecha, ceco, valor, ...(tieneValorDestino ? { valorDestino } : {}), ...(permiteNeutro ? { neutro: !!neutro } : {}), ...(cambiaMoneda ? { moneda: monedaFinal } : {}), ...(cambiaVinculo ? { presupuestoItemId: presupuestoItemId || null, ...(conceptoVinculo?.responsableId ? { responsableId: conceptoVinculo.responsableId } : {}) } : {}) };
       if (tabla === 'ingresos') setIngresos(prev => prev.map(i => (i.id === id ? { ...i, ...cambios } : i)));
       else setGastos(prev => prev.map(g => (g.id === id ? { ...g, ...cambios } : g)));
       setEditandoConceptoFinanzas(null);
@@ -10707,6 +10722,39 @@ const App = () => {
                             {editandoConceptoFinanzas && editandoConceptoFinanzas.id === r.id && editandoConceptoFinanzas.tabla === (esIngreso ? 'ingresos' : 'gastos') ? (
                               <div className="flex flex-wrap items-center gap-1.5">
                                 <Input type="date" value={editandoConceptoFinanzas.fecha} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, fecha: e.target.value })} title="Fecha" aria-label="Fecha" className="h-8 w-auto border-primary text-xs" />
+                                {editandoConceptoFinanzas.permiteEmpresaTraslado && (() => {
+                                  const ed = editandoConceptoFinanzas;
+                                  // Si origen y destino quedan en monedas distintas, se pide el valor que entra al destino.
+                                  const conDestino = (cambios) => {
+                                    const n = { ...ed, ...cambios };
+                                    const cruza = !n.destinoExterno && getMoneda(n.empresa) !== getMoneda(n.empresaDestino);
+                                    return { ...n, tieneValorDestino: cruza, valorDestino: cruza ? n.valorDestino : '' };
+                                  };
+                                  return (
+                                    <div className="flex w-full flex-wrap items-center gap-1.5 rounded-md border border-dashed border-primary/50 p-1.5">
+                                      <span className="text-[0.7rem] font-semibold text-muted-foreground">Sale de</span>
+                                      <Select value={ed.empresa} onChange={(e) => setEditandoConceptoFinanzas(conDestino({ empresa: e.target.value, cuentaSalida: (cuentasPorEmpresa[e.target.value] || [])[0] || '' }))} title="Empresa de salida" aria-label="Empresa de salida" className="h-8 w-auto max-w-[180px] border-primary text-xs">
+                                        {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                                      </Select>
+                                      <Select value={ed.cuentaSalida} onChange={(e) => setEditandoConceptoFinanzas({ ...ed, cuentaSalida: e.target.value })} title="Cuenta de salida" aria-label="Cuenta de salida" className="h-8 w-auto max-w-[170px] border-primary text-xs">
+                                        {!(cuentasPorEmpresa[ed.empresa] || []).includes(ed.cuentaSalida) && <option value={ed.cuentaSalida}>{ed.cuentaSalida || 'Elegir cuenta…'}</option>}
+                                        {(cuentasPorEmpresa[ed.empresa] || []).map(c => <option key={c} value={c}>{c}</option>)}
+                                      </Select>
+                                      <span className="text-[0.7rem] font-semibold text-muted-foreground">→ entra a</span>
+                                      {ed.destinoExterno ? (
+                                        <span className="text-xs text-muted-foreground" title="El destino a Empresa Externa no se cambia aquí">🏢 {ed.cuentaDestinoNombre}</span>
+                                      ) : (<>
+                                        <Select value={ed.empresaDestino} onChange={(e) => setEditandoConceptoFinanzas(conDestino({ empresaDestino: e.target.value, cuentaDestinoNombre: (cuentasPorEmpresa[e.target.value] || [])[0] || '' }))} title="Empresa de destino" aria-label="Empresa de destino" className="h-8 w-auto max-w-[180px] border-primary text-xs">
+                                          {empresas.map(emp => <option key={emp} value={emp}>{emp}</option>)}
+                                        </Select>
+                                        <Select value={ed.cuentaDestinoNombre} onChange={(e) => setEditandoConceptoFinanzas({ ...ed, cuentaDestinoNombre: e.target.value })} title="Cuenta de destino" aria-label="Cuenta de destino" className="h-8 w-auto max-w-[170px] border-primary text-xs">
+                                          {!(cuentasPorEmpresa[ed.empresaDestino] || []).includes(ed.cuentaDestinoNombre) && <option value={ed.cuentaDestinoNombre}>{ed.cuentaDestinoNombre || 'Elegir cuenta…'}</option>}
+                                          {(cuentasPorEmpresa[ed.empresaDestino] || []).map(c => <option key={c} value={c}>{c}</option>)}
+                                        </Select>
+                                      </>)}
+                                    </div>
+                                  );
+                                })()}
                                 {editandoConceptoFinanzas.permiteEmpresa && (<>
                                   <div className="w-auto max-w-[190px]">
                                     <Select value={editandoConceptoFinanzas.empresa} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, empresa: e.target.value, cuenta: (cuentasPorEmpresa[e.target.value] || [])[0] || '', presupuestoItemId: e.target.value === editandoConceptoFinanzas.empresaOriginal ? editandoConceptoFinanzas.presupuestoItemIdOriginal : '' })} title="Empresa" aria-label="Empresa" className="h-8 border-primary text-xs">
@@ -10771,7 +10819,7 @@ const App = () => {
                               <div className="flex items-start gap-1">
                                 <div><TextoResumido texto={r.detalle} /></div>
                                 {puedeEditarConceptoFinanzas && (
-                                  <Button variant="ghost" size="icon" onClick={() => setEditandoConceptoFinanzas({ tabla: esIngreso ? 'ingresos' : 'gastos', id: r.id, texto: r.detalle || '', fecha: r.fecha || '', ceco: r.ceco || '', valor: String((esIngreso ? r : (gastos.find(g => g.id === r.id) || r)).valor ?? ''), tieneValorDestino: esTraslado && r.valorDestino != null, permiteNeutro: !esIngreso && !esTraslado, neutro: !!r.neutro, permiteVinculo: esGasto && (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa'), empresa: r.empresa, permiteEmpresa: !esTraslado && canApprove, empresaOriginal: r.empresa || '', cuenta: r.cuenta || '', cuentaOriginal: r.cuenta || '', solicitudOrigenId: r.solicitudOrigenId || '', presupuestoItemId: r.presupuestoItemId || '', presupuestoItemIdOriginal: r.presupuestoItemId || '', moneda: r.moneda || getMoneda(r.empresa), monedaOriginal: r.moneda || getMoneda(r.empresa), valorDestino: String(r.valorDestino ?? ''), opcionesCeco: esIngreso ? cecosIngreso : (esTraslado ? cecosTraslado : cecosGasto) })} title="Editar fecha, CECO, valor y concepto (solo en Finanzas)" aria-label="Editar" className="size-7 shrink-0 text-[#6C63D1]"><Pencil size={14} /></Button>
+                                  <Button variant="ghost" size="icon" onClick={() => setEditandoConceptoFinanzas({ tabla: esIngreso ? 'ingresos' : 'gastos', id: r.id, texto: r.detalle || '', fecha: r.fecha || '', ceco: r.ceco || '', valor: String((esIngreso ? r : (gastos.find(g => g.id === r.id) || r)).valor ?? ''), tieneValorDestino: esTraslado && r.valorDestino != null, permiteNeutro: !esIngreso && !esTraslado, neutro: !!r.neutro, permiteVinculo: esGasto && (user.rol === 'Administrador' || user.rol === 'Coordinadora Administrativa'), empresa: r.empresa, permiteEmpresa: !esTraslado && canApprove, empresaOriginal: r.empresa || '', ...(esTraslado && canApprove ? (() => { const g0 = gastos.find(g => g.id === r.id) || r; const d0 = destinoTraslado(g0.cuentaDestino, g0.empresa); return { permiteEmpresaTraslado: true, empresa: g0.empresa || '', empresaOriginal: g0.empresa || '', cuentaSalida: g0.cuentaSalida || '', cuentaSalidaOriginal: g0.cuentaSalida || '', destinoExterno: d0.externa, empresaDestino: d0.empresa, empresaDestinoOriginal: d0.empresa, cuentaDestinoNombre: d0.cuenta, cuentaDestinoNombreOriginal: d0.cuenta, valor: String(g0.valor ?? ''), valorDestino: String(g0.valorDestino ?? '') }; })() : {}), cuenta: r.cuenta || '', cuentaOriginal: r.cuenta || '', solicitudOrigenId: r.solicitudOrigenId || '', presupuestoItemId: r.presupuestoItemId || '', presupuestoItemIdOriginal: r.presupuestoItemId || '', moneda: r.moneda || getMoneda(r.empresa), monedaOriginal: r.moneda || getMoneda(r.empresa), valorDestino: String(r.valorDestino ?? ''), opcionesCeco: esIngreso ? cecosIngreso : (esTraslado ? cecosTraslado : cecosGasto) })} title="Editar fecha, CECO, valor y concepto (solo en Finanzas)" aria-label="Editar" className="size-7 shrink-0 text-[#6C63D1]"><Pencil size={14} /></Button>
                                 )}
                               </div>
                             )}
