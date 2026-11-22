@@ -36,7 +36,7 @@ import RevisarFotos from './components/RevisarFotos';
 import { esImagen, prepararArchivos } from './archivos';
 import { guardarSoporteGirado } from './girarSoportes';
 import TopNav from './components/TopNav';
-import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, RotateCw, FileDown, Eye, Plus, Check, X, Pencil, Search, Loader2, FileSpreadsheet, Upload, FilePlus2, Pause, Play, LayoutDashboard, FileText, Banknote, DollarSign, Clock, Undo2, CheckCircle2, Building2, Users, ClipboardList, Archive, TrendingUp, TrendingDown, Scale, BarChart3, Trophy, FolderOpen } from 'lucide-react';
+import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, RotateCw, FileDown, Eye, Plus, Check, X, Pencil, Search, Loader2, FileSpreadsheet, Upload, FilePlus2, Pause, Play, LayoutDashboard, FileText, Banknote, DollarSign, Euro, Clock, Undo2, CheckCircle2, Building2, Users, ClipboardList, Archive, TrendingUp, TrendingDown, Scale, BarChart3, Trophy, FolderOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -383,6 +383,9 @@ const App = () => {
     if (moneda === 'USD') {
       return `US$ ${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
+    if (moneda === 'EUR') {
+      return `€ ${num.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
     return `$ ${num.toLocaleString('es-CO', { maximumFractionDigits: 2 })}`;
   };
 
@@ -569,6 +572,16 @@ const App = () => {
   // (que sigue igual para no afectar Colaboradores, Solicitudes ni el ranking del
   // Dashboard, donde sí corresponde solo mirar ese rol).
   const personasFinanzas = usuariosDB;
+  // Para ELEGIR colaborador: sin los usuarios de Administración y Coordinación (esas personas tienen además su usuario
+  // de Colaborador, que es el que se vincula). Un valor ya guardado con uno de ellos se sigue mostrando en su select.
+  const colaboradoresSeleccionables = [...usuariosDB]
+    .filter(u => !['Administrador', 'Coordinadora Administrativa'].includes(rolBaseDe(u.rol, rolesDB)))
+    .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+  const opcionActualColaborador = (valor, campo = 'id') => {
+    if (!valor || colaboradoresSeleccionables.some(u => u[campo] === valor)) return null;
+    const u = usuariosDB.find(x => x[campo] === valor);
+    return <option key="actual" value={valor}>{u?.nombre || valor}</option>;
+  };
   // CECOs (Centros de Costo/Ingreso) — catálogo editable en Supabase (tabla public.cecos).
   // `cecos` = catálogo completo (activos e inactivos, se usa para mostrar el nombre de CECOs
   // viejos en registros históricos). `cecosGasto`/`cecosIngreso`/`cecosTraslado` = solo los
@@ -3862,6 +3875,7 @@ const App = () => {
   const monedaSolicitud = monedaDeSolicitud;
   const totalMontoCOP = solicitudesUsuario.filter(s => monedaSolicitud(s) === 'COP').reduce((sum, s) => sum + montoSolicitud(s), 0);
   const totalMontoUSD = solicitudesUsuario.filter(s => monedaSolicitud(s) === 'USD').reduce((sum, s) => sum + montoSolicitud(s), 0);
+  const totalMontoEUR = solicitudesUsuario.filter(s => monedaSolicitud(s) === 'EUR').reduce((sum, s) => sum + montoSolicitud(s), 0);
 
   const statsPorEmpresa = [...empresas, EMPRESA_GENERAL].map(emp => ({
     empresa: emp,
@@ -7893,7 +7907,8 @@ const App = () => {
   // Los totales se agrupan por la moneda de la EMPRESA: las empresas en COP pagan en COP y ARKO
   // en USD. La única excepción (FOR SEVEN: Pago a Tercero solicitado en USD y pagado en COP) se
   // registra como Gasto Neutro en COP y no suma como gasto.
-  const monedaMovimiento = (m) => getMoneda(m.empresa);
+  // Moneda real del pago (moneda_pago, p. ej. un Pago a Tercero en USD/EUR) o, si no la tiene, la de la empresa.
+  const monedaMovimiento = (m) => (m.tipo !== 'Traslado' && m.moneda) || getMoneda(m.empresa);
 
   // Los Traslados viven en la tabla de gastos pero NO son gastos: mueven plata entre cuentas
   // (propias o de otra empresa de la holding). Se excluyen de Gastos/Balance/CECOs y se
@@ -7911,6 +7926,8 @@ const App = () => {
   const gastosFiltradomatUSD = gastosFiltradomat.filter(g => monedaMovimiento(g) === 'USD');
   const ingresosFiltradomatCOP = ingresosFiltradomat.filter(i => monedaMovimiento(i) === 'COP');
   const ingresosFiltradomatUSD = ingresosFiltradomat.filter(i => monedaMovimiento(i) === 'USD');
+  const gastosFiltradomatEUR = gastosFiltradomat.filter(g => monedaMovimiento(g) === 'EUR');
+  const ingresosFiltradomatEUR = ingresosFiltradomat.filter(i => monedaMovimiento(i) === 'EUR');
 
   // Traslados agrupados por ruta (empresa origen → destino), en la moneda de SALIDA.
   const trasladosPorRuta = Object.values(trasladosFiltrados.reduce((acc, t) => {
@@ -8571,11 +8588,12 @@ const App = () => {
           <div className="flex flex-col gap-6">
             <h2 className="m-0 flex items-center gap-2 text-xl font-extrabold"><LayoutDashboard size={22} className="text-primary" /> Dashboard</h2>
 
-            <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:[grid-template-columns:repeat(auto-fit,minmax(230px,1fr))]">
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-5 xl:grid-cols-9">
               {[
                 { icon: FileText, label: 'Total Solicitudes', value: totalSolicitudes, color: '#C4A747' },
                 { icon: Banknote, label: 'Monto Total (COP)', value: formatMoneyByMoneda(totalMontoCOP, 'COP'), color: '#2F9E52', compact: true },
-                { icon: DollarSign, label: 'Monto Total ARKO (USD)', value: formatMoneyByMoneda(totalMontoUSD, 'USD'), color: '#2F9E52', compact: true },
+                { icon: DollarSign, label: 'Monto Total (USD)', value: formatMoneyByMoneda(totalMontoUSD, 'USD'), color: '#2F9E52', compact: true },
+                { icon: Euro, label: 'Monto Total (EUR)', value: formatMoneyByMoneda(totalMontoEUR, 'EUR'), color: '#2F9E52', compact: true },
                 { icon: Clock, label: 'Pendiente', value: statsEstado.Pendiente, color: '#CC4B4B' },
                 { icon: Search, label: 'Aprobado', value: statsEstado.Aprobado, color: '#D6A419' },
                 { icon: Undo2, label: 'Devuelto', value: statsEstado.Devuelto, color: '#C4622D' },
@@ -8584,12 +8602,12 @@ const App = () => {
               ].map((card, idx) => {
                 const Icono = card.icon;
                 return (
-                  <Card key={idx} className="min-w-0 gap-2 overflow-hidden px-3.5 py-4 sm:gap-3 sm:px-5 sm:py-5">
+                  <Card key={idx} className="min-w-0 gap-2 overflow-hidden px-3 py-3.5">
                     <div className="flex min-w-0 items-center gap-2">
                       <span className="flex size-8 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: `${card.color}1F`, color: card.color }}><Icono size={16} /></span>
-                      <p className="m-0 text-[0.7rem] font-semibold uppercase leading-tight tracking-wide text-muted-foreground sm:truncate sm:text-xs">{card.label}</p>
+                      <p className="m-0 text-[0.65rem] font-semibold uppercase leading-tight tracking-wide text-muted-foreground">{card.label}</p>
                     </div>
-                    <p className={cn('m-0 min-w-0 font-extrabold leading-tight tabular-nums [overflow-wrap:anywhere]', card.compact ? 'text-[clamp(1.05rem,2vw,1.6rem)]' : 'text-[clamp(1.5rem,2.5vw,2.25rem)]')} style={{ color: card.color }}>{card.value}</p>
+                    <p className={cn('m-0 min-w-0 font-extrabold leading-tight tabular-nums [overflow-wrap:anywhere]', card.compact ? 'text-[clamp(0.9rem,1.05vw,1.15rem)]' : 'text-[clamp(1.4rem,2vw,2rem)]')} style={{ color: card.color }}>{card.value}</p>
                   </Card>
                 );
               })}
@@ -9139,6 +9157,7 @@ const App = () => {
                       <Select id="sol-moneda" value={newSolicitud.moneda} onChange={(e) => setNewSolicitud({...newSolicitud, moneda: e.target.value})}>
                         <option value="COP">Pesos Colombianos (COP)</option>
                         <option value="USD">Dólares (USD)</option>
+                        <option value="EUR">Euros (EUR)</option>
                       </Select>
                     </CampoUI>
                   )}
@@ -10261,7 +10280,8 @@ const App = () => {
                     <CampoUI label="Colaborador" htmlFor="fin-colaborador">
                       <Select id="fin-colaborador" value={newGasto.responsable} onChange={(e) => {setNewGasto({...newGasto, responsable: e.target.value}); setNewIngreso({...newIngreso, responsable: e.target.value});}}>
                         <option value="">Seleccionar</option>
-                        {[...personasFinanzas].sort((a, b) => a.nombre.localeCompare(b.nombre)).map(r => <option key={r.id} value={r.nombre}>{r.nombre}{r.rol && r.rol !== 'Responsable' ? ` (${r.rol})` : ''}</option>)}
+                        {opcionActualColaborador(newGasto.responsable, 'nombre')}
+                        {colaboradoresSeleccionables.map(r => <option key={r.id} value={r.nombre}>{r.nombre}</option>)}
                       </Select>
                     </CampoUI>
                   </>
@@ -10436,6 +10456,7 @@ const App = () => {
                     <Select id="fin-moneda" value={newGasto.moneda} onChange={(e) => setNewGasto({...newGasto, moneda: e.target.value})}>
                       <option value="COP">Pesos Colombianos (COP)</option>
                       <option value="USD">Dólares (USD)</option>
+                      <option value="EUR">Euros (EUR)</option>
                     </Select>
                   </CampoUI>
                 )}
@@ -10733,7 +10754,8 @@ const App = () => {
                                     <Select value={editandoConceptoFinanzas.responsableId || ''} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, responsableId: e.target.value })} title="Colaborador" aria-label="Colaborador" className="h-8 border-primary text-xs">
                                       <option value="">Sin colaborador</option>
                                       {editandoConceptoFinanzas.responsableId && !personasFinanzas.some(u => u.id === editandoConceptoFinanzas.responsableId) && <option value={editandoConceptoFinanzas.responsableId}>{colaboradoresPublico.find(c => c.id === editandoConceptoFinanzas.responsableId)?.nombre || 'Colaborador actual'}</option>}
-                                      {[...personasFinanzas].sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '')).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                                      {opcionActualColaborador(editandoConceptoFinanzas.responsableId)}
+                                      {colaboradoresSeleccionables.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                                     </Select>
                                   </div>
                                 )}
@@ -10794,6 +10816,7 @@ const App = () => {
                                     <Select value={editandoConceptoFinanzas.neutro ? 'COP' : editandoConceptoFinanzas.moneda} disabled={!!editandoConceptoFinanzas.neutro} onChange={(e) => setEditandoConceptoFinanzas({ ...editandoConceptoFinanzas, moneda: e.target.value })} title="Moneda en que realmente se pagó (si la cambias, corrige también el valor)" aria-label="Moneda" className="h-8 border-primary text-xs">
                                       <option value="COP">COP</option>
                                       <option value="USD">USD</option>
+                                      <option value="EUR">EUR</option>
                                     </Select>
                                   </div>
                                 )}
@@ -10959,6 +10982,8 @@ const App = () => {
               const ingresosUSDFiltrado = ingresosFiltradomatUSD.reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0);
               const gastosUSDFiltrado = gastosFiltradomatUSD.reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
               const balanceUSDFiltrado = ingresosUSDFiltrado - gastosUSDFiltrado;
+              const ingresosEURFiltrado = ingresosFiltradomatEUR.reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0);
+              const gastosEURFiltrado = gastosFiltradomatEUR.reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
               // Tres tarjetas Ingresos / Gastos / Balance para una moneda.
               const tarjetasResumen = (ingresos, gastos, balance, moneda, sufijo) => (
                 <div className="grid gap-3 sm:grid-cols-3">
@@ -11023,6 +11048,14 @@ const App = () => {
                     {tarjetasResumen(ingresosUSDFiltrado, gastosUSDFiltrado, balanceUSDFiltrado, 'USD', ' USD')}
                   </div>
 
+                  {/* CARDS RESUMEN — EUR (solo si hay movimientos en euros en el período) */}
+                  {(ingresosEURFiltrado > 0 || gastosEURFiltrado > 0) && (
+                    <div className="flex flex-col gap-3">
+                      {subtitulo('💶 Resumen en Euros (EUR)', 'pagos en EUR de cualquier empresa (sin traslados)')}
+                      {tarjetasResumen(ingresosEURFiltrado, gastosEURFiltrado, ingresosEURFiltrado - gastosEURFiltrado, 'EUR', ' EUR')}
+                    </div>
+                  )}
+
                   <div className="grid gap-4 lg:grid-cols-2">
                     {/* GASTOS NEUTROS — registrados en COP pero sin sumar como gasto de la empresa */}
                     {neutrosFiltrados.length > 0 && (
@@ -11030,7 +11063,7 @@ const App = () => {
                         {subtitulo('⚪ Gastos Neutros del período', 'registrados, pero no cuentan como gasto')}
                         <div className="flex flex-wrap gap-8">
                           <div><p className="m-0 mb-1 text-xs text-muted-foreground">Cantidad</p><p className="m-0 text-2xl font-extrabold text-muted-foreground">{neutrosFiltrados.length}</p></div>
-                          {['COP', 'USD'].map(m => {
+                          {['COP', 'USD', 'EUR'].map(m => {
                             const total = neutrosFiltrados.filter(g => monedaMovimiento(g) === m).reduce((sum, g) => sum + (parseFloat(g.valor) || 0), 0);
                             return total > 0 ? <div key={m}><p className="m-0 mb-1 text-xs text-muted-foreground">Total ({m})</p><p className="m-0 text-2xl font-extrabold text-muted-foreground">{formatMoneyByMoneda(total, m)}</p></div> : null;
                           })}
@@ -11047,7 +11080,7 @@ const App = () => {
                         <>
                           <div className="flex flex-wrap gap-8">
                             <div><p className="m-0 mb-1 text-xs text-muted-foreground">Cantidad</p><p className="m-0 text-2xl font-extrabold text-chart-3">{trasladosFiltrados.length}</p></div>
-                            {['COP', 'USD'].map(m => {
+                            {['COP', 'USD', 'EUR'].map(m => {
                               const total = trasladosPorRuta.filter(r => r.moneda === m).reduce((sum, r) => sum + r.total, 0);
                               return total > 0 ? <div key={m}><p className="m-0 mb-1 text-xs text-muted-foreground">Total movido ({m})</p><p className="m-0 text-2xl font-extrabold text-chart-3">{formatMoneyByMoneda(total, m)}</p></div> : null;
                             })}
@@ -11724,7 +11757,8 @@ const App = () => {
                           <CampoUI label="Colaborador" htmlFor="pc-colaborador">
                             <Select id="pc-colaborador" value={newPresupuestoItem.responsableId} onChange={(e) => setNewPresupuestoItem({...newPresupuestoItem, responsableId: e.target.value})}>
                               <option value="">Sin vincular a colaborador</option>
-                              {[...personasFinanzas].sort((a, b) => a.nombre.localeCompare(b.nombre)).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                              {opcionActualColaborador(newPresupuestoItem.responsableId)}
+                              {colaboradoresSeleccionables.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                             </Select>
                           </CampoUI>
                           <CampoUI label="Tipo" htmlFor="pc-tipo">
@@ -11796,7 +11830,8 @@ const App = () => {
                                 {puedeEditarPresupuesto ? (
                                   <Select aria-label="Colaborador" value={item.responsableId} onChange={(e) => handleUpdatePresupuestoItemResponsable(item.id, e.target.value)} className="h-8 min-w-[160px] text-xs">
                                     <option value="">Sin vincular</option>
-                                    {[...personasFinanzas].sort((a, b) => a.nombre.localeCompare(b.nombre)).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                                    {opcionActualColaborador(item.responsableId)}
+                                    {colaboradoresSeleccionables.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                                   </Select>
                                 ) : (item.responsableNombre || '—')}
                               </TableCell>
@@ -12395,7 +12430,8 @@ const App = () => {
                         <CampoUI label={idx === 0 ? 'Colaborador *' : null} className="col-span-2 sm:col-span-1">
                           <Select aria-label="Colaborador" value={linea.responsable} onChange={(e) => handleCambiarLineaFacturaTercero(linea.id, 'responsable', e.target.value)} className="text-xs">
                             <option value="">Colaborador *</option>
-                            {personasFinanzas.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+                            {opcionActualColaborador(linea.responsable, 'nombre')}
+                            {colaboradoresSeleccionables.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
                           </Select>
                         </CampoUI>
                         <CampoUI label={idx === 0 ? 'N° factura' : null}>
