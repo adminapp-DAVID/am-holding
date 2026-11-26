@@ -3830,20 +3830,27 @@ const App = () => {
   // las suyas, con Mi Bandeja de Soportes y "Nueva Solicitud".
   const presentaSolicitudes = !gestionaSolicitudes || !!user?.presentaSolicitudes;
   // OJO: isReadOnly se declara mucho más abajo; usarla aquí rompía el arranque de la app (TDZ).
-  const solicitudesConPestanas = user?.rol !== 'Contadora' && presentaSolicitudes;
-  const verPestanaSolicitudes = (p) => !solicitudesConPestanas || pestanaSolicitudes === p;
+  // Contadora: auditora (ve todas las Aprobadas/Pagadas/Legalizadas) y además presenta las suyas.
+  const esContadora = user?.rol === 'Contadora';
+  const solicitudesConPestanas = presentaSolicitudes;
+  const verPestanaSolicitudes = (p) => !solicitudesConPestanas || pestanaSolicitudes === p || (p === 'mis' && pestanaSolicitudes === 'auditadas');
   const soloPropias = ['Colaborador', 'Responsable', 'Gerente'].includes(user?.rol);
+  const solicitudesAuditadas = solicitudes.filter(s => ['Aprobado', 'Pagado', 'Legalizado'].includes(s.estado));
   const solicitudesUsuario = soloPropias
     ? solicitudes.filter(s => s.responsableId === user.id)
-    : user?.rol === 'Contadora'
-    ? solicitudes.filter(s => ['Aprobado', 'Pagado', 'Legalizado'].includes(s.estado))
+    : esContadora
+    ? solicitudes.filter(s => s.responsableId === user.id || ['Aprobado', 'Pagado', 'Legalizado'].includes(s.estado))
     : solicitudes;
+  // Lista de la pestaña: la Contadora ve "Mis solicitudes" (las suyas) o "Auditadas" (las del resto ya aprobadas).
+  const solicitudesDeLista = esContadora
+    ? (pestanaSolicitudes === 'auditadas' ? solicitudesAuditadas : solicitudes.filter(s => s.responsableId === user.id))
+    : solicitudesUsuario;
 
   // Filtros del historial de Solicitudes (buscador + Tipo/Estado/Empresa + rango de fechas) —
   // se aplican solo sobre la tabla del historial, nunca sobre `solicitudesUsuario` en sí (el
   // Dashboard, los totales y las referencias cruzadas como "legalización vinculada" siguen
   // viendo todas las solicitudes, filtradas solo por permiso de rol, no por este filtro de UI).
-  const solicitudesFiltradas = solicitudesUsuario.filter(s => {
+  const solicitudesFiltradas = solicitudesDeLista.filter(s => {
     if (filtroSolicitudesTipo !== 'Todos' && s.tipo !== filtroSolicitudesTipo) return false;
     if (filtroSolicitudesEstado !== 'Todos' && s.estado !== filtroSolicitudesEstado) return false;
     if (filtroSolicitudesEmpresa !== 'Todas' && empresaSolicitudTexto(s) !== filtroSolicitudesEmpresa) return false;
@@ -8202,7 +8209,8 @@ const App = () => {
     && (!nivelActual || nivelActual === 'editar' || nivelActual === 'aprobar');
   const canApprove = user?.rol && ['Administrador', 'Coordinadora Administrativa'].includes(user.rol)
     && (!nivelActual || nivelActual === 'aprobar');
-  const isReadOnly = user?.rol === 'Contadora' || nivelActual === 'ver';
+  // La Contadora es de solo lectura salvo en Solicitudes, donde presenta las suyas (nunca aprueba ni paga: canApprove).
+  const isReadOnly = (user?.rol === 'Contadora' && currentView !== 'solicitudes') || nivelActual === 'ver';
   // Finanzas, Dashboard Financiero y Presupuesto: solo Administrador, Coordinadora y Gerente
   // (mismo criterio que ROLES_FINANZAS en components/TopNav.jsx).
   const puedeVerFinanzas = ['Administrador', 'Coordinadora Administrativa', 'Gerente'].includes(user?.rol);
@@ -8935,8 +8943,9 @@ const App = () => {
                 const pestanas = [
                   ['bandeja', `📥 Bandeja (${soportesPendientes.length})`],
                   ['nueva', editingSolicitudId ? '✏️ Editando solicitud' : '➕ Nueva solicitud'],
-                  ['mis', `📋 ${soloPropias ? 'Mis solicitudes' : 'Solicitudes'} (${solicitudesFiltradas.length})`],
+                  ['mis', `📋 ${soloPropias || esContadora ? 'Mis solicitudes' : 'Solicitudes'} (${esContadora ? solicitudes.filter(s => s.responsableId === user.id).length : solicitudesFiltradas.length})`],
                   ['enviados', `📤 Enviados (${enviadosAbiertas})`],
+                  ...(esContadora ? [['auditadas', `🔎 Auditadas (${solicitudesAuditadas.length})`]] : []),
                 ];
                 return (
                   <div role="tablist" className="flex flex-wrap gap-1 rounded-lg bg-muted p-1">
@@ -9118,7 +9127,7 @@ const App = () => {
                 {isReadOnly && (
                   <div className="rounded-lg border border-solid border-destructive bg-destructive/10 p-4 text-[#B0102B]">
                     <p className="m-0 font-bold">🔒 Modo Solo Lectura</p>
-                    <p className="m-0 mt-2 text-sm">Los Contadores no pueden crear ni editar solicitudes. Solo pueden ver y descargar.</p>
+                    <p className="m-0 mt-2 text-sm">Tu rol solo puede ver y descargar solicitudes.</p>
                   </div>
                 )}
 
@@ -9511,7 +9520,7 @@ const App = () => {
               <CardHeader className="sm:px-7">
                 <div className="flex flex-wrap items-center gap-2">
                   <CardTitle className="flex-1 text-lg">
-                    📋 {soloPropias ? 'Mis Solicitudes' : user.rol === 'Contadora' ? 'Solicitudes Auditadas' : 'Todas las Solicitudes'} ({solicitudesFiltradas.length})
+                    📋 {soloPropias || (esContadora && pestanaSolicitudes !== 'auditadas') ? 'Mis Solicitudes' : esContadora ? 'Solicitudes Auditadas' : 'Todas las Solicitudes'} ({solicitudesFiltradas.length})
                   </CardTitle>
                   <Button size="sm" variant={!solicitudesSoloUltima ? 'default' : 'outline'} onClick={() => setSolicitudesSoloUltima(false)} aria-pressed={!solicitudesSoloUltima}>Ver todas</Button>
                   <Button size="sm" variant={solicitudesSoloUltima ? 'default' : 'outline'} onClick={() => setSolicitudesSoloUltima(true)} aria-pressed={solicitudesSoloUltima}>Ver solo la última</Button>
