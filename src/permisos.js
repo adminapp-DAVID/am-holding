@@ -51,7 +51,8 @@ export const MAXIMO_POR_BASE = {
   },
   Contadora: {
     ...todos('ninguno'),
-    dashboard: 'ver', solicitudes: 'ver', cuentasCobro: 'ver', liquidaciones: 'ver', contabilidad: 'ver', politicas: 'ver',
+    // solicitudes 'editar': presenta las suyas (auditora del resto, sin aprobar ni pagar).
+    dashboard: 'ver', solicitudes: 'editar', cuentasCobro: 'ver', liquidaciones: 'ver', contabilidad: 'ver', politicas: 'ver',
   },
   Responsable: {
     ...todos('ninguno'),
