@@ -36,7 +36,7 @@ import RevisarFotos from './components/RevisarFotos';
 import { esImagen, prepararArchivos } from './archivos';
 import { guardarSoporteGirado } from './girarSoportes';
 import TopNav from './components/TopNav';
-import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, RotateCw, FileDown, Eye, Plus, Check, X, Pencil, Search, Loader2, FileSpreadsheet, Upload, FilePlus2, Pause, Play, LayoutDashboard, FileText, Banknote, DollarSign, Euro, Clock, Undo2, CheckCircle2, Building2, Users, ClipboardList, Archive, TrendingUp, TrendingDown, Scale, BarChart3, Trophy, FolderOpen } from 'lucide-react';
+import { ChevronDown, ChevronRight, Paperclip, Trash2, RotateCcw, RotateCw, FileDown, Eye, Plus, Check, X, Pencil, Search, Loader2, FileSpreadsheet, Upload, FilePlus2, Pause, Play, LayoutDashboard, FileText, Banknote, DollarSign, Euro, Clock, Undo2, CheckCircle2, Building2, Users, ClipboardList, Archive, TrendingUp, TrendingDown, Scale, BarChart3, Trophy, FolderOpen, Receipt } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -54,6 +54,7 @@ import OperacionFinancieraNoss from './OperacionFinancieraNoss';
 import { EMPRESA_OFN, validarOfn, ofnParaGuardar, estadoAprobacionNoss, bloqueadaPorNoss, resumenOfn } from './ofn';
 import { cuotaEnMes, saldoPendienteEnMes, aplicacionDBToLocal, resumenDeduccion, ordenarPor, alternarOrden, validarAplicacionManual } from './deducciones';
 import DeduccionHistorial from './DeduccionHistorial';
+import { recibosDeSolicitud } from './recibosSolicitud';
 import CabeceraOrdenUI from './components/CabeceraOrden';
 
 // Logo por empresa. Para sumar ARKO, sube el archivo a src/assets/logos/,
@@ -516,6 +517,8 @@ const App = () => {
   const [revisionFotos, setRevisionFotos] = useState(null);
   // Visor "Ver documentos" de una solicitud (PDF y Excel del sistema + soportes, en pestañas).
   const [visorSolicitud, setVisorSolicitud] = useState(null);
+  // 🧾 Recibos de una solicitud: cada concepto con su recibo (revisión de Admin / Coordinación / Gerencia)
+  const [recibosSolicitud, setRecibosSolicitud] = useState(null);
   // Visor de documentos de un movimiento del Historial de Finanzas y de una Cuenta de cobro.
   const [visorMovimiento, setVisorMovimiento] = useState(null);
   const [visorCuentaCobro, setVisorCuentaCobro] = useState(null);
@@ -4221,6 +4224,25 @@ const App = () => {
     return docs;
   };
   const abrirVisorSolicitud = (s) => setVisorSolicitud(s);
+  // 🧾 Recibos: el desglose de la solicitud (fecha, pagado a, concepto, valor) con el ojito para ver
+  // el recibo de cada concepto. Une los ítems con sus recibos de la bandeja (soportes_pendientes) y
+  // con los archivos de la solicitud (public.soportes) — ver recibosDeSolicitud.
+  const puedeRevisarRecibos = ['Administrador', 'Coordinadora Administrativa', 'Gerente'].includes(user?.rol);
+  const abrirRecibosSolicitud = async (s) => {
+    setRecibosSolicitud({ sol: s, cargando: true, filas: [], sueltos: [] });
+    const [arch, band] = await Promise.all([
+      supabase.from('soportes').select('bucket_path, nombre_original').eq('entidad_tipo', 'solicitud').eq('entidad_id', s.id).order('created_at'),
+      supabase.from('soportes_pendientes').select('id, fecha, proveedor, descripcion, valor, bucket_path, nombre_original').eq('solicitud_id', s.id),
+    ]);
+    if (arch.error) console.error('Error cargando soportes de la solicitud:', arch.error);
+    if (band.error) console.error('Error cargando recibos de la bandeja de la solicitud:', band.error);
+    const { filas, sueltos } = recibosDeSolicitud({
+      documentos: s.documentos || [],
+      bandeja: (band.data || []).map(r => ({ id: r.id, fecha: r.fecha, proveedor: r.proveedor, descripcion: r.descripcion, valor: r.valor, nombre: r.nombre_original, bucketPath: r.bucket_path })),
+      archivos: (arch.data || []).map(r => ({ nombre: r.nombre_original, bucketPath: r.bucket_path })),
+    });
+    setRecibosSolicitud(prev => (prev && prev.sol.id === s.id ? { sol: s, cargando: false, filas, sueltos, error: arch.error ? arch.error.message : null } : prev));
+  };
   // Un anticipo ya tiene una Legalización presentada (deja de correr su plazo de legalización).
   // Excepción a la política (Administración): la aplica la base (aplicar_excepcion_politica), que
   // valida el rol, fija el próximo día de pago del reembolso y avisa al colaborador.
@@ -9755,6 +9777,12 @@ const App = () => {
                               <FolderOpen size={16} />
                             </Button>
                           )}
+                          {/* 🧾 Recibos: cada concepto con su recibo (ojito), para revisar la solicitud en orden. */}
+                          {puedeRevisarRecibos && (
+                            <Button variant="ghost" size="icon" onClick={() => abrirRecibosSolicitud(s)} className="text-chart-3" title="Ver recibos por concepto" aria-label="Ver recibos por concepto">
+                              <Receipt size={16} />
+                            </Button>
+                          )}
                           {/* Pago a Tercero: "Ver Detalle" muestra al instante los datos del tercero y su
                               cuenta bancaria, para que quien vaya a pagar no tenga que buscarlos. */}
                           {s.tipo === 'Pago a Tercero' && (user.rol === 'Administrador' || user.rol === 'Contadora' || user.rol === 'Coordinadora Administrativa' || user.rol === 'Gerente' || s.responsableId === user.id) && (
@@ -12721,6 +12749,70 @@ const App = () => {
                 </CardContent>
               </Card>
             </div>
+          );
+        })()}
+
+        {/* 🧾 RECIBOS DE UNA SOLICITUD — cada concepto con su recibo (como "Enviados" del colaborador) */}
+        {recibosSolicitud && (() => {
+          const { sol, cargando, filas, sueltos, error } = recibosSolicitud;
+          const moneda = monedaDeSolicitud(sol);
+          const colaborador = colaboradoresPublico.find(c => c.id === sol.responsableId)?.nombre || sol.responsableNombre || '';
+          const total = filas.reduce((t, f) => t + (parsearMonto(f.valor) || 0), 0);
+          const sinRecibo = filas.filter(f => !f.archivo).length;
+          return (
+            <ModalUI titulo={`🧾 Recibos · ${sol.tipo}`} className="max-w-3xl"
+              descripcion={[colaborador, sol.fecha, sol.detalle].filter(Boolean).join(' · ')}>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={estadoBadge(sol.estado)}>{sol.estado}</Badge>
+                {!cargando && filas.length > 0 && <span className="text-xs text-muted-foreground">{filas.length} concepto(s){sinRecibo ? ` · ${sinRecibo} sin recibo identificado` : ''}</span>}
+                {!cargando && filas.length > 0 && <span className="ml-auto text-sm font-bold text-success">{formatMoneyByMoneda(total, moneda)}</span>}
+              </div>
+              {cargando ? (
+                <p className="m-0 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 size={14} className="animate-spin" /> Cargando recibos…</p>
+              ) : (
+                <>
+                  {error && <p className="m-0 text-xs text-destructive">No se pudieron cargar los archivos: {error}</p>}
+                  {filas.length > 0 && (
+                    <ul className="m-0 flex list-none flex-col gap-1 rounded-lg border border-solid border-border bg-background p-2">
+                      {[...filas].sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || ''))).map((f, i) => (
+                        <li key={i} className="flex flex-wrap items-center gap-2 text-xs">
+                          {f.archivo ? (
+                            <Button variant="ghost" size="icon" onClick={() => handlePreviewSoporte(f.archivo)} disabled={cargandoPreviewSoporte}
+                              title={f.porPosicion ? 'Ver recibo (asociado por orden de carga)' : 'Ver recibo'} aria-label="Ver recibo" className="size-7"><Eye size={14} /></Button>
+                          ) : (
+                            <span className="inline-flex size-7 items-center justify-center text-muted-foreground" title="Sin recibo identificado: revísalo en Ver todos los documentos">—</span>
+                          )}
+                          <span className="text-muted-foreground">{f.fecha}</span>
+                          <span className="font-medium">{f.proveedor || '—'}</span>
+                          <span className="text-muted-foreground">{f.descripcion}</span>
+                          {f.tipoSoporte && <Badge variant="outline" className="text-[0.6rem]">{f.tipoSoporte}</Badge>}
+                          <span className="ml-auto font-semibold">{formatMoneyByMoneda(parsearMonto(f.valor) || 0, moneda)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {sueltos.length > 0 && (
+                    <div className="flex flex-col gap-1">
+                      <p className="m-0 text-xs font-bold text-muted-foreground">{filas.length > 0 ? 'Otros archivos de la solicitud' : 'Archivos de la solicitud'}</p>
+                      <ul className="m-0 flex list-none flex-col gap-1 rounded-lg border border-solid border-border bg-background p-2">
+                        {sueltos.map(a => (
+                          <li key={a.bucketPath} className="flex items-center gap-2 text-xs">
+                            <Button variant="ghost" size="icon" onClick={() => handlePreviewSoporte(a)} disabled={cargandoPreviewSoporte} title="Ver archivo" aria-label="Ver archivo" className="size-7"><Eye size={14} /></Button>
+                            <span className="truncate">{a.nombre}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {filas.length === 0 && sueltos.length === 0 && <p className="m-0 text-sm text-muted-foreground">Esta solicitud no tiene recibos ni archivos adjuntos.</p>}
+                </>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => { setRecibosSolicitud(null); abrirVisorSolicitud(sol); }}><FolderOpen size={14} /> Ver todos los documentos</Button>
+                <div className="flex-1" />
+                <Button variant="outline" onClick={() => setRecibosSolicitud(null)}>Cerrar</Button>
+              </div>
+            </ModalUI>
           );
         })()}
 
